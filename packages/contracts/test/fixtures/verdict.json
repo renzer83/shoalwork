@@ -1,0 +1,7 @@
+{
+  "kind": "ok",
+  "summary": "Retry implemented and covered by tests.",
+  "evidence": ["pnpm --filter @shoalwork/contracts test: 30 passed"],
+  "cost": { "tokensIn": 1200, "tokensOut": 300, "usd": 0.01, "seconds": 42 },
+  "sessionId": "sess-abc-123"
+}

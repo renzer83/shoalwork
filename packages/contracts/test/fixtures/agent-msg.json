@@ -1,0 +1,43 @@
+[
+  {
+    "kind": "handoff",
+    "from": "bot_3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b7a41",
+    "to": "bot_8c1d0e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+    "task": {
+      "id": "task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "botId": "bot_8c1d0e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+      "title": "Write the retry tests",
+      "prompt": "Write failing tests for the retry policy.",
+      "kind": "code",
+      "acceptance": [],
+      "budget": { "tokens": 20000, "seconds": 300, "usd": 0.2 },
+      "tier": "decision",
+      "origin": "bot"
+    },
+    "budget": { "tokens": 20000, "seconds": 300, "usd": 0.2 }
+  },
+  {
+    "kind": "result",
+    "from": "bot_8c1d0e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+    "taskId": "task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+    "verdict": {
+      "kind": "ok",
+      "summary": "Tests written.",
+      "evidence": ["3 failing tests added"],
+      "cost": { "tokensIn": 900, "tokensOut": 200, "usd": 0.005, "seconds": 20 }
+    },
+    "artifacts": [
+      {
+        "kind": "pr",
+        "ref": "https://github.com/renzer83/shoalwork/pull/12",
+        "summary": "retry tests"
+      }
+    ]
+  },
+  {
+    "kind": "status",
+    "bot": "bot_3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b7a41",
+    "state": "working",
+    "note": "running step 2"
+  }
+]

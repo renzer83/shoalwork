@@ -1,0 +1,16 @@
+{
+  "name": "reviewer",
+  "role": "code reviewer",
+  "instructions": "Review diffs and report findings with evidence.",
+  "kind": "auxiliary",
+  "executors": {
+    "preferred": "codex",
+    "allowed": ["codex"]
+  },
+  "modelTiers": {},
+  "connectors": [],
+  "budget": { "tokens": 80000, "seconds": 900, "usd": 1 },
+  "policy": "default",
+  "tank": { "mode": "server", "host": "tank-01" },
+  "memory": { "scope": "pod" }
+}

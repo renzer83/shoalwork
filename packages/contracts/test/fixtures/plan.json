@@ -1,0 +1,47 @@
+{
+  "id": "plan_1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+  "taskId": "task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+  "steps": [
+    {
+      "id": "step_2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+      "title": "Read the sync job",
+      "prompt": "Map the sync job entry points and retry hooks.",
+      "dependsOn": [],
+      "acceptance": ["entry points listed"],
+      "budget": { "tokens": 20000, "seconds": 300, "usd": 0.2 },
+      "tier": "light",
+      "parallelizable": true
+    },
+    {
+      "id": "step_3d4e5f6a-7b8c-4d9e-8f0a-2b3c4d5e6f7a",
+      "title": "Write the retry tests",
+      "prompt": "Write failing tests for the retry policy.",
+      "dependsOn": [],
+      "acceptance": ["pnpm test fails before the change"],
+      "budget": { "tokens": 20000, "seconds": 300, "usd": 0.2 },
+      "tier": "decision",
+      "parallelizable": true,
+      "assignedBot": "bot_8c1d0e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f"
+    },
+    {
+      "id": "step_4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b",
+      "title": "Implement the retry",
+      "prompt": "Implement exponential retry with jitter.",
+      "dependsOn": ["step_2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"],
+      "acceptance": ["pnpm test passes"],
+      "budget": { "tokens": 40000, "seconds": 600, "usd": 0.4 },
+      "tier": "heavy",
+      "parallelizable": false
+    },
+    {
+      "id": "step_5f6a7b8c-9d0e-4f1a-8b2c-4d5e6f7a8b9c",
+      "title": "Verify the sync job",
+      "prompt": "Run the acceptance commands and report the verdict.",
+      "dependsOn": ["step_4e5f6a7b-8c9d-4e0f-9a1b-3c4d5e6f7a8b"],
+      "acceptance": ["pnpm test passes"],
+      "budget": { "tokens": 10000, "seconds": 300, "usd": 0.1 },
+      "tier": "light",
+      "parallelizable": false
+    }
+  ]
+}

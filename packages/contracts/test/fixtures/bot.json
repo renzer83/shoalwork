@@ -1,0 +1,20 @@
+{
+  "id": "bot_3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b7a41",
+  "name": "lead",
+  "role": "coordinator",
+  "instructions": "Coordinate the team, split the work and deliver the result.",
+  "kind": "fixed",
+  "executors": {
+    "preferred": "claude-code",
+    "allowed": ["claude-code", "codex"]
+  },
+  "modelTiers": {
+    "chat": { "executor": "claude-code", "model": "haiku", "effort": "low" }
+  },
+  "connectors": ["telegram"],
+  "budget": { "tokens": 200000, "seconds": 1800, "usd": 2.5 },
+  "policy": "default",
+  "tank": { "mode": "local", "host": "localhost" },
+  "memory": { "scope": "bot" },
+  "telegram": { "threadId": 42 }
+}

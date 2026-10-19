@@ -1,0 +1,31 @@
+{
+  "name": "@shoalwork/root",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "test": "turbo run test",
+    "test:scripts": "vitest run scripts/test",
+    "build": "turbo run build",
+    "db:backup": "tsx scripts/db-backup.ts",
+    "db:reset": "tsx scripts/db-reset.ts --yes",
+    "db:shell": "tsx scripts/db-shell.ts",
+    "gate:no-docs": "sh -c 'f=$(find . -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"./.git/*\"); if [ -n \"$f\" ]; then echo \"$f\"; exit 1; fi'",
+    "gate:no-secrets": "gitleaks detect --no-git -s . --redact"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.9",
+    "typescript": "7.0.2",
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "vitest": "5.0.5"
+  }
+}
