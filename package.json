@@ -15,6 +15,7 @@
     "test:scripts": "vitest run scripts/test",
     "build": "turbo run build",
     "db:backup": "tsx scripts/db-backup.ts",
+    "db:migrate": "tsx packages/db/src/cli-migrate.ts",
     "db:reset": "tsx scripts/db-reset.ts --yes",
     "db:shell": "tsx scripts/db-shell.ts",
     "gate:no-docs": "sh -c 'f=$(find . -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"./.git/*\"); if [ -n \"$f\" ]; then echo \"$f\"; exit 1; fi'",

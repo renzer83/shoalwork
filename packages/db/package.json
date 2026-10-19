@@ -1,0 +1,23 @@
+{
+  "name": "@shoalwork/db",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@effect/sql-sqlite-node": "catalog:",
+    "@shoalwork/contracts": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
