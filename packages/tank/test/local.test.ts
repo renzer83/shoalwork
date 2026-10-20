@@ -5,7 +5,7 @@ import { it } from "@effect/vitest"
 import { TankError, WorktreeConflict } from "@shoalwork/contracts"
 import { Effect } from "effect"
 import { describe, expect } from "vitest"
-import { slugRepoUrl, TankLocalLive } from "../src/local.js"
+import { buildBotEnv, slugRepoUrl, TankLocalLive } from "../src/local.js"
 import { Tank } from "../src/tank.js"
 import { gitEnv, makeBot, makeOrigin, stepId, tempDir } from "./helpers.js"
 
@@ -21,6 +21,30 @@ const baseEnv = {
 }
 const layer = TankLocalLive({ root: tankRoot, baseEnv })
 const run = <A, E>(eff: Effect.Effect<A, E, Tank>) => eff.pipe(Effect.provide(layer))
+
+// Output of `env(1)`: one KEY=value per line.
+const parseEnv = (out: string): Record<string, string> => {
+  const parsed: Record<string, string> = {}
+  for (const line of out.split("\n")) {
+    const at = line.indexOf("=")
+    if (at > 0) parsed[line.slice(0, at)] = line.slice(at + 1)
+  }
+  return parsed
+}
+
+const leakyBaseEnv = {
+  PATH: process.env.PATH,
+  USER: "tester",
+  LANG: "C.UTF-8",
+  TZ: "UTC",
+  HTTPS_PROXY: "http://proxy.invalid:3128",
+  CLAUDE_CODE_FOO: "leak-claude-code",
+  TELEGRAM_BOT_TOKEN: "leak-telegram",
+  GH_TOKEN: "leak-gh",
+  ANTHROPIC_AUTH_TOKEN: "leak-anthropic-auth",
+  ANTHROPIC_API_KEY: "leak-anthropic-key",
+  RANDOM_VAR: "leak-random",
+}
 
 describe("TankLocal", () => {
   it.live("prepare without repo creates home and an empty work dir, with isolated env", () =>
@@ -252,6 +276,76 @@ describe("TankLocal", () => {
       }),
     ),
   )
+
+  it.live("Bot process env holds only the allowlist, Tank keys and extraEnv (checked with env(1))", () => {
+    const isolated = TankLocalLive({
+      root: join(root, "allowlist-tanks"),
+      baseEnv: leakyBaseEnv,
+      extraEnv: { FOO: "1", ANTHROPIC_API_KEY: "x" },
+    })
+    return Effect.gen(function* () {
+      const tank = yield* Tank
+      const ctx = yield* tank.prepare(makeBot("allowlist"), { stepId: stepId() })
+      const r = yield* tank.exec(ctx, ["env"])
+      const seen = parseEnv(r.stdout)
+      expect(Object.keys(seen).sort()).toEqual(
+        [
+          "PATH",
+          "USER",
+          "LANG",
+          "TZ",
+          "HTTPS_PROXY",
+          "HOME",
+          "CLAUDE_CONFIG_DIR",
+          "CODEX_HOME",
+          "GEMINI_CLI_HOME",
+          "GIT_TERMINAL_PROMPT",
+          "GIT_ALLOW_PROTOCOL",
+          "FOO",
+        ].sort(),
+      )
+      expect(r.stdout).not.toContain("leak-")
+      expect(seen.HOME).toBe(ctx.home)
+      expect(seen.CLAUDE_CONFIG_DIR).toBe(join(ctx.home, ".claude"))
+      expect(seen.USER).toBe("tester")
+      expect(seen.LANG).toBe("C.UTF-8")
+      expect(seen.HTTPS_PROXY).toBe("http://proxy.invalid:3128")
+      expect(seen.FOO).toBe("1")
+      expect(seen).not.toHaveProperty("ANTHROPIC_API_KEY")
+    }).pipe(Effect.provide(isolated))
+  })
+})
+
+describe("buildBotEnv", () => {
+  it("applies extraEnv last and drops ANTHROPIC_API_KEY from it", () => {
+    const env = buildBotEnv({ PATH: "/usr/bin" }, "/home/bot-x", { FOO: "1", ANTHROPIC_API_KEY: "x" })
+    expect(env.FOO).toBe("1")
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY")
+  })
+
+  it("Tank-owned keys win over extraEnv (HOME, CLAUDE_CONFIG_DIR, GIT_*)", () => {
+    const env = buildBotEnv({ PATH: "/usr/bin" }, "/home/bot-x", {
+      HOME: "/tmp/x",
+      CLAUDE_CONFIG_DIR: "/tmp/y",
+      GIT_TERMINAL_PROMPT: "1",
+      GIT_ALLOW_PROTOCOL: "ext",
+    })
+    expect(env.HOME).toBe("/home/bot-x")
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/home/bot-x/.claude")
+    expect(env.GIT_TERMINAL_PROMPT).toBe("0")
+    expect(env.GIT_ALLOW_PROTOCOL).toBe("file:git:http:https:ssh")
+  })
+
+  it("copies only allowlisted keys from the base env, lowercase proxy vars included", () => {
+    const env = buildBotEnv(
+      { PATH: "/usr/bin", http_proxy: "http://p.invalid:1", RANDOM_VAR: "x", SSL_CERT_FILE: "/ca.pem" },
+      "/home/bot-x",
+    )
+    expect(env.http_proxy).toBe("http://p.invalid:1")
+    expect(env.SSL_CERT_FILE).toBe("/ca.pem")
+    expect(env).not.toHaveProperty("RANDOM_VAR")
+    expect(env.GIT_TERMINAL_PROMPT).toBe("0")
+  })
 })
 
 describe("slugRepoUrl", () => {

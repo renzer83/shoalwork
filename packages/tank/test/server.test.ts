@@ -110,6 +110,38 @@ describe("credentials under sudo", () => {
     expect(argv).toContain(`CLAUDE_CONFIG_DIR=${botHome}/.claude`)
     expect(argv).toContain(`HOME=${botHome}`)
   })
+
+  it("the sudo argv carries only the allowlist, Tank keys and extraEnv", () => {
+    const baseEnv = {
+      PATH: "/usr/bin:/bin",
+      LANG: "C.UTF-8",
+      HTTPS_PROXY: "http://proxy.invalid:3128",
+      CLAUDE_CODE_FOO: "leak-claude-code",
+      TELEGRAM_BOT_TOKEN: "leak-telegram",
+      GH_TOKEN: "leak-gh",
+      ANTHROPIC_AUTH_TOKEN: "leak-anthropic-auth",
+      RANDOM_VAR: "leak-random",
+    }
+    const env = buildBotEnv(baseEnv, botHome, { FOO: "1", ANTHROPIC_API_KEY: "x" })
+    const argv = Effect.runSync(sudoArgv({ user: "bot-alice", cwd: botHome, env, cmd: ["claude"] }))
+    const assigned = argv.filter((a) => a.includes("=")).map((a) => a.slice(0, a.indexOf("=")))
+    expect(assigned.sort()).toEqual(
+      [
+        "PATH",
+        "LANG",
+        "HTTPS_PROXY",
+        "HOME",
+        "CLAUDE_CONFIG_DIR",
+        "CODEX_HOME",
+        "GEMINI_CLI_HOME",
+        "GIT_TERMINAL_PROMPT",
+        "GIT_ALLOW_PROTOCOL",
+        "FOO",
+      ].sort(),
+    )
+    expect(argv.join("\n")).not.toContain("leak-")
+    expect(argv.join("\n")).not.toContain("ANTHROPIC_API_KEY")
+  })
 })
 
 describe("sudoRefusal", () => {

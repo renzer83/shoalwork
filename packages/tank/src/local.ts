@@ -14,6 +14,8 @@ export type TankLocalConfig = {
   // <root>/<bot.name>/{home,repos,work}
   readonly root: string
   readonly baseEnv: BaseEnv
+  // Explicit values the core passes to every Bot process, applied last (ADR-011: ANTHROPIC_API_KEY is always dropped).
+  readonly extraEnv?: Readonly<Record<string, string>>
 }
 
 // Where a Tank keeps a Bot's directories and how it runs commands for it. Local and server mode differ only here.
@@ -93,25 +95,60 @@ const resolveInside = (ctx: TankContext, rel: string): Effect.Effect<string, Tan
     catch: (cause) => (cause instanceof TankError ? cause : new TankError({ op: "path", cause })),
   })
 
-// Env a Bot process receives: the base env minus host credentials, with the Bot's own HOME and CLI config dirs.
-export const buildBotEnv = (baseEnv: BaseEnv, home: string): Record<string, string> => {
-  const merged: Record<string, string | undefined> = {
-    ...baseEnv,
-    HOME: home,
-    CLAUDE_CONFIG_DIR: join(home, ".claude"),
-    CODEX_HOME: join(home, ".codex"),
-    GEMINI_CLI_HOME: home,
-    // Bots authenticate through their own CLI login (CLAUDE_CONFIG_DIR); host credentials must not win.
-    ANTHROPIC_API_KEY: undefined,
-    ANTHROPIC_AUTH_TOKEN: undefined,
-    CLAUDE_CODE_OAUTH_TOKEN: undefined,
-  }
+// The only keys a Bot process inherits from the core's base env. Everything else is dropped (R7, ADR-011).
+const INHERITED_ENV_KEYS: ReadonlyArray<string> = [
+  "PATH",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TERM",
+  "TMPDIR",
+  "TZ",
+  "SHELL",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  "SSL_CERT_FILE",
+  "NODE_EXTRA_CA_CERTS",
+]
+
+// Bots never get an API key from the core, even when extraEnv asks for one.
+const DROPPED_EXTRA_KEYS: ReadonlySet<string> = new Set(["ANTHROPIC_API_KEY"])
+
+// Env a Bot process receives: an allowlist of the base env, then extraEnv (minus dropped keys), then the keys the
+// Tank always owns (Bot home, CLI config dirs, git safety defaults). Tank keys win over extraEnv.
+export const buildBotEnv = (
+  baseEnv: BaseEnv,
+  home: string,
+  extraEnv: Readonly<Record<string, string>> = {},
+): Record<string, string> => {
   const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(merged)) if (value !== undefined) env[key] = value
+  for (const key of INHERITED_ENV_KEYS) {
+    const value = baseEnv[key]
+    if (value !== undefined) env[key] = value
+  }
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (!DROPPED_EXTRA_KEYS.has(key)) env[key] = value
+  }
+  env.HOME = home
+  env.CLAUDE_CONFIG_DIR = join(home, ".claude")
+  env.CODEX_HOME = join(home, ".codex")
+  env.GEMINI_CLI_HOME = home
+  env.GIT_TERMINAL_PROMPT = "0"
+  env.GIT_ALLOW_PROTOCOL = "file:git:http:https:ssh"
   return env
 }
 
-export const makeBotTank = (layout: TankLayout, baseEnv: BaseEnv): TankShape => {
+export const makeBotTank = (
+  layout: TankLayout,
+  baseEnv: BaseEnv,
+  extraEnv: Readonly<Record<string, string>> = {},
+): TankShape => {
   // One lock per base clone: concurrent fetch/worktree-add on the same repo race on git's own locks.
   const repoLocks = new Map<string, Semaphore.Semaphore>()
   const lockFor = (repoDir: string): Semaphore.Semaphore => {
@@ -136,7 +173,7 @@ export const makeBotTank = (layout: TankLayout, baseEnv: BaseEnv): TankShape => 
       const home = layout.home(botDir)
       const workPath = join(botDir, "work", step.stepId)
       for (const sub of [".claude", ".codex", ".gemini"]) yield* ops.mkdirp(join(home, sub))
-      const env = buildBotEnv(baseEnv, home)
+      const env = buildBotEnv(baseEnv, home, extraEnv)
       const base = { botId: bot.id, botName: bot.name, home, env }
       if (step.repo === undefined) {
         yield* ops.mkdirp(workPath)
@@ -222,6 +259,7 @@ export const makeTankLocal = (config: TankLocalConfig): TankShape => {
       preflight: noPreflight,
     },
     config.baseEnv,
+    config.extraEnv,
   )
 }
 

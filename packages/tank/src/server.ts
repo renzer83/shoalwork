@@ -16,6 +16,8 @@ export type TankServerConfig = {
   readonly baseEnv: BaseEnv
   // true: commands run as bot-<name> through sudo. false (fallback): commands run as the current user.
   readonly sudo: boolean
+  // Same meaning as TankLocalConfig.extraEnv; reaches the Bot only through the `env K=V` argv.
+  readonly extraEnv?: Readonly<Record<string, string>>
 }
 
 type Call = {
@@ -111,6 +113,7 @@ export const makeTankServer = (config: TankServerConfig): TankShape => {
       preflight: (botName) => (config.sudo ? preflightUser(botName, spawnEnv) : Effect.void),
     },
     config.baseEnv,
+    config.extraEnv,
   )
 }
 
