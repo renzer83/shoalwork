@@ -10,7 +10,7 @@ import { Lead, LeadWithStore } from "@shoalwork/lead"
 import { Tank, TankLocalLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Redacted, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest"
 import { makeApp } from "../src/http/app.js"
 import type { RunEffect } from "../src/http/routes/respond.js"
 import { DEFAULT_TIERS } from "../src/model-tiers.js"
@@ -153,6 +153,15 @@ const groupAlive = (pid: number): boolean => {
   }
 }
 
+// The process group of the task's own run, once it exists (never another task's: pids are shared by the whole file).
+const processOf = async (taskId: string): Promise<number> => {
+  await waitFor(
+    async () => pidOfTask.has(taskId) && (await stateOf(taskId)) === "running",
+    "the task's process",
+  )
+  return pidOfTask.get(taskId) as number
+}
+
 const ledger = async (taskId: string): Promise<ReadonlyArray<number>> =>
   runEffect(
     Effect.gen(function* () {
@@ -165,10 +174,14 @@ const ledger = async (taskId: string): Promise<ReadonlyArray<number>> =>
   )
 
 describe("control routes", () => {
+  // A test that fails halfway must not leave a running task behind for the next one.
+  afterEach(async () => {
+    await post("/control/stop")
+  })
+
   it("records the process group of a run and forgets it when the run ends", async () => {
     const id = await createTask(beta, "hang ledger")
-    await waitFor(async () => (await stateOf(id)) === "running" && pids.length > 0, "the task to run")
-    const pid = pids.at(-1) as number
+    const pid = await processOf(id)
     await waitFor(async () => (await ledger(id)).includes(pid), "the process group to be recorded")
 
     expect((await post(`/tasks/${id}/stop`)).status).toBe(200)
@@ -179,8 +192,7 @@ describe("control routes", () => {
 
   it("the watchdog stops a stuck task of this process through the same path, killing its processes", async () => {
     const id = await createTask(alpha, "hang watchdog")
-    await waitFor(async () => (await stateOf(id)) === "running" && pids.length > 0, "the task to run")
-    const pid = pids.at(-1) as number
+    const pid = await processOf(id)
     // Out of attempts and silent for longer than the limit: the watchdog stops it instead of requeueing.
     await runEffect(
       Effect.gen(function* () {
@@ -198,8 +210,7 @@ describe("control routes", () => {
 
   it("POST /tasks/:id/stop kills the Tank process group of a running task and cancels the task", async () => {
     const id = await createTask(alpha, "hang until stopped")
-    await waitFor(async () => pids.length > 0 && (await stateOf(id)) === "running", "the task to run")
-    const pid = pids.at(-1) as number
+    const pid = await processOf(id)
     expect(groupAlive(pid)).toBe(true)
 
     const started = Date.now()
