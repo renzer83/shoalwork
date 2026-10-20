@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { type Bot as GrammyBot, InlineKeyboard } from "grammy"
+import { ANSWER_TEXT, parseApprovalCallback } from "./approvals.js"
 import { chatAllowed, type InboundOptions, recordInbound, senderAllowed } from "./bot.js"
 
 // Bot proposal ids are "prop_<uuid>" (issued by the lead's bot factory). Button data and parser share this format.
@@ -42,6 +43,22 @@ export const installCallbacks = (bot: GrammyBot, options: InboundOptions): void 
       return
     }
     const data = ctx.callbackQuery.data
+    const approval = parseApprovalCallback(data)
+    if (approval !== undefined) {
+      const userId = ctx.from.id
+      const answer =
+        options.approvals === undefined
+          ? "failed"
+          : await Effect.runPromiseWith(options.context)(
+              options.approvals.decide(approval.id, approval.decision, `user:telegram:${userId}`),
+            )
+      // A decision is made once: the buttons go away once it is decided, by this press or an earlier one.
+      if (answer !== "failed") {
+        await ctx.editMessageReplyMarkup().catch(() => undefined)
+      }
+      await ctx.answerCallbackQuery({ text: ANSWER_TEXT[answer] })
+      return
+    }
     const memoryText = memoryCallbackText(data)
     const text = memoryText ?? proposalCallbackText(data)
     const chat = ctx.chat

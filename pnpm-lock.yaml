@@ -273,6 +273,9 @@ importers:
       '@shoalwork/executors':
         specifier: workspace:*
         version: link:../executors
+      '@shoalwork/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@shoalwork/reef':
         specifier: workspace:*
         version: link:../reef
@@ -317,6 +320,9 @@ importers:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.5(effect@4.0.5)(vitest@5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))
+      '@shoalwork/db':
+        specifier: workspace:*
+        version: link:../db
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -468,6 +474,9 @@ importers:
       '@shoalwork/lead':
         specifier: workspace:*
         version: link:../../packages/lead
+      '@shoalwork/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@shoalwork/reef':
         specifier: workspace:*
         version: link:../../packages/reef

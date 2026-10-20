@@ -3,6 +3,7 @@ import type { SchemaViolation } from "@shoalwork/contracts"
 import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
+import { approvalDecide } from "./commands/approve.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
 import { costsReport, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
@@ -21,6 +22,7 @@ const USAGE = [
   "       shoalwork stop [--bot <bot id or name>] | shoalwork stop task <task id>",
   "       shoalwork pause [--bot <bot id or name>]",
   "       shoalwork resume [--bot <bot id or name>]",
+  "       shoalwork approve <approval id> | shoalwork deny <approval id>",
   "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
@@ -100,6 +102,23 @@ const control = (
       return yield* Effect.fail(new UsageError({ message: `unexpected argument: ${first}` }))
     }
     yield* Console.log(JSON.stringify(yield* controlScope(settings, action, flags)))
+  })
+
+// approve | deny: one approval id, decided once; a second call only reports what was decided.
+const approval = (
+  decision: "approved" | "denied",
+  argv: ReadonlyArray<string>,
+): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const { flags, positionals } = yield* parseArgs(argv, SETTINGS_FLAGS)
+    const [id, ...extra] = positionals
+    if (id === undefined || extra.length > 0) {
+      return yield* Effect.fail(
+        new UsageError({ message: `usage: ${decision === "approved" ? "approve" : "deny"} <approval id>` }),
+      )
+    }
+    const settings = yield* resolveSettings(flags, process.env)
+    yield* Console.log(JSON.stringify(yield* approvalDecide(settings, decision, id)))
   })
 
 const status = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
@@ -226,6 +245,10 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
     case "pause":
     case "resume":
       return control(command, rest)
+    case "approve":
+      return approval("approved", rest)
+    case "deny":
+      return approval("denied", rest)
     case "status":
       return status(rest)
     case "events":

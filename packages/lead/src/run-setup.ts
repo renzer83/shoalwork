@@ -103,7 +103,7 @@ export const executorTaskFor = (input: {
     prompt:
       carry === undefined
         ? buildPrompt(promptSource(spec))
-        : buildRetryPrompt(promptSource(spec), { tail: carry.tail }),
+        : buildRetryPrompt(promptSource(spec), { tail: carry.tail, approval: carry.approval }),
     tier: spec.tier,
     allowedTools: spec.kind === "code" && spec.repo !== undefined ? [...CODE_ALLOWED_TOOLS] : [],
     permissionMode: "edit",

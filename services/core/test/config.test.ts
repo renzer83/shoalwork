@@ -75,6 +75,13 @@ describe("setting: unset and blank take the default", () => {
     expect(parseEnv({ PLAN_CONCURRENCY: "0" }).planConcurrency).toBe(1)
   })
 
+  it("APPROVAL_TTL_MINUTES defaults to 120 when unset or blank, is parsed otherwise and never drops below 1", () => {
+    expect(parseEnv({}).approvalTtlMinutes).toBe(120)
+    expect(parseEnv({ APPROVAL_TTL_MINUTES: "" }).approvalTtlMinutes).toBe(120)
+    expect(parseEnv({ APPROVAL_TTL_MINUTES: "30" }).approvalTtlMinutes).toBe(30)
+    expect(parseEnv({ APPROVAL_TTL_MINUTES: "0" }).approvalTtlMinutes).toBe(1)
+  })
+
   it("a non-blank Int is parsed", () => {
     expect(parseEnv({ PORT: "3000" }).port).toBe(3000)
   })

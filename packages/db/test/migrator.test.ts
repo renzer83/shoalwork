@@ -33,6 +33,7 @@ describe("runMigrations", () => {
         "0013_webhook_deliveries.sql",
         "0014_plans.sql",
         "0015_pods.sql",
+        "0016_approvals.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

@@ -11,6 +11,7 @@ import {
   type RunMcp,
   setPrincipal,
 } from "./principal.js"
+import { registerApprovalRoutes } from "./routes/approvals.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerCostRoutes } from "./routes/costs.js"
@@ -156,6 +157,7 @@ export const makeApp = (deps: AppDeps): Hono => {
 
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
+  registerApprovalRoutes(app, deps.runEffect)
   registerTideRoutes(app, deps.runEffect)
   registerGenericWebhookRoutes(app, deps.runEffect)
   registerGithubWebhookRoutes(app, deps.runEffect, deps.githubWebhookSecret)

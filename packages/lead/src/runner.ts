@@ -7,6 +7,7 @@ import type { IndexerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Cause, Clock, Effect, Exit, Option, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
+import { type ApprovalGate, makeApprovalRunner } from "./approval-request.js"
 import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.js"
 import { chooseExecutor } from "./choose.js"
 import { makeConsume } from "./consume.js"
@@ -28,9 +29,9 @@ import {
   describeFailure,
   INITIAL,
   isNotFound,
-  isSettled,
   type Progress,
   SUMMARY_MAX,
+  settledResult,
   stepIdFor,
   stoppedVerdict,
   verdictFor,
@@ -90,17 +91,18 @@ export interface RunnerDeps {
   readonly tokens: McpTokensShape
   // The repo index, when the composition root has one (the briefing reads code from it).
   readonly indexer?: IndexerShape | undefined
+  // Approvals (T-054), when the composition root has them: a run that needs one is recorded and later resumed.
+  readonly approvals?: ApprovalGate | undefined
 }
 
 // Retries run inside the same runTask call, so the job's lock and heartbeat cover them and the task's time budget
 // is spent once for all rounds. Each run records one executor.finished; only the last one settles the task.
 export const makeRunner = (deps: RunnerDeps) => {
   const { sql, beacon, tasks, bots, tank, executors, tiers, config, control } = deps
-  const { taskEvent, raiseError, transition, abandon, cancelUnstarted, record } = makeLifecycle({
-    beacon,
-    tasks,
-    bots,
-  })
+  const lifecycle = makeLifecycle({ beacon, tasks, bots })
+  const { taskEvent, raiseError, abandon, cancelUnstarted } = lifecycle
+  const approval = makeApprovalRunner({ approvals: deps.approvals, sql, beacon, tank, bots, lifecycle })
+  const { record } = approval
   const consume = makeConsume({ taskEvent, raiseError, tank, tasks })
   const deliver = makeDeliverFor({ tank, gh: deps.gh, raiseError })
   const setup = makeRunSetup({
@@ -127,7 +129,7 @@ export const makeRunner = (deps: RunnerDeps) => {
   ) =>
     Effect.gen(function* () {
       // A resume that failed and runs fresh is the same attempt: only real attempts use up the limit.
-      yield* transition(spec, "running", { bumpAttempts: carry?.fallback !== true })
+      yield* approval.start(spec, carry)
       const { attempts } = yield* tasks.get(spec.id)
       const stepId = carry?.stepId ?? stepIdFor(spec.id, attempts)
       yield* Ref.update(progress, (p) => ({ ...p, stepId, attempt: attempts }))
@@ -256,27 +258,22 @@ export const makeRunner = (deps: RunnerDeps) => {
     Effect.scoped(
       Effect.gen(function* () {
         const record = yield* tasks.get(id)
+        // A task waiting for an approval that was decided continues its session; otherwise it is settled (T-054).
+        const approved = yield* approval.carryFor(record)
+        const settled = approval.settledFor(approved)
         // A job delivered twice (reaped lock, retry of the queue entry) must not run the task again.
-        if (isSettled(record.state)) {
-          return {
-            verdict: record.verdict ?? blockedVerdict(`task is ${record.state}`, "settled"),
-            recorded: true,
-            stopped: false,
-          }
+        if (settled(record.state)) {
+          return settledResult(record)
         }
         // Registered for as long as the scope lives: a stop finds the run, and waits for it to leave.
         const handle = yield* control.track(id, record.spec.botId)
         // The task may have been stopped between the claim and now: a cancelled task is never run again.
         const current = yield* tasks.get(id)
-        if (isSettled(current.state)) {
-          return {
-            verdict: current.verdict ?? blockedVerdict(`task is ${current.state}`, "settled"),
-            recorded: true,
-            stopped: false,
-          }
+        if (settled(current.state)) {
+          return settledResult(current)
         }
         const started = yield* Clock.currentTimeMillis
-        const carry = yield* carryFor({ tank, bots, tasks, beacon, raiseError }, current)
+        const carry = approved ?? (yield* carryFor({ tank, bots, tasks, beacon, raiseError }, current))
         return yield* rounds(record.spec, started, carry, handle)
       }),
     ).pipe(

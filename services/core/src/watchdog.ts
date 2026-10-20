@@ -3,7 +3,7 @@ import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { streamIds, TaskId } from "@shoalwork/contracts"
 import { Jobs } from "@shoalwork/db"
-import { Control, Lead, TASKS_QUEUE, taskTarget } from "@shoalwork/lead"
+import { ApprovalFlow, Control, Lead, TASKS_QUEUE, taskTarget } from "@shoalwork/lead"
 import { trackedProcesses } from "@shoalwork/tank"
 import { Clock, DateTime, Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -128,15 +128,17 @@ const killLongProcesses = (config: WatchdogConfig) =>
     return count
   })
 
-// Approvals arrive with T-054. Until its table exists there is nothing to expire.
+// Pending approvals past their expiry are denied by default (T-054): the task that waits on one is closed blocked.
+// A core booted without the approval flow has nothing to expire.
 const expireApprovals = () =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient
-    const rows = yield* sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'approvals'`
-    if (rows.length > 0) {
-      return yield* Effect.die("approvals table exists: the expiry sweep is defined by T-054")
+    const flow = yield* Effect.serviceOption(ApprovalFlow)
+    if (Option.isNone(flow)) return 0
+    const expired = yield* flow.value.expireDue()
+    if (expired > 0) {
+      yield* recovered(yield* Beacon, "expired_approval", "approvals", `expired ${expired}`)
     }
-    return 0
+    return expired
   })
 
 // Bots marked working with no running task go idle; jobs active on a task that already settled are completed.

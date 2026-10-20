@@ -90,6 +90,10 @@ export const AppConfig = Config.all({
   watchdogStaleMinutes: setting("WATCHDOG_STALE_MINUTES", Config.Int, 20),
   watchdogMaxProcessMinutes: setting("WATCHDOG_MAX_PROCESS_MINUTES", Config.Int, 45),
   // Budget (T-029): a Bot's usage counts against its budget over this rolling window of hours.
+  // How long a request for approval waits for a person before it is denied by default (T-054).
+  approvalTtlMinutes: setting("APPROVAL_TTL_MINUTES", Config.Int, 120).pipe(
+    Config.map((value) => Math.max(1, value)),
+  ),
   budgetBotWindowHours: setting("BUDGET_BOT_WINDOW_HOURS", Config.Int, 24),
   // Plan dispatch (T-050): how many steps of one plan level run at once (default 3; blank takes the default).
   planConcurrency: setting("PLAN_CONCURRENCY", Config.Int, 3).pipe(Config.map((value) => Math.max(1, value))),

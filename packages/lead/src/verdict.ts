@@ -236,6 +236,13 @@ export const blockedVerdict = (summary: string, tag: string): Verdict => ({
   cost: { tokensIn: 0, tokensOut: 0, usd: 0, seconds: 0 },
 })
 
+// What a job delivered for a task that is already settled answers with: nothing runs, nothing is left to record.
+export const settledResult = (record: { readonly state: TaskState; readonly verdict?: Verdict }) => ({
+  verdict: record.verdict ?? blockedVerdict(`task is ${record.state}`, "settled"),
+  recorded: true,
+  stopped: false,
+})
+
 export const stoppedVerdict = (by: string): Verdict => ({
   kind: "blocked",
   summary: `stopped by ${by}`,

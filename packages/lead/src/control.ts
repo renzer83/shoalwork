@@ -8,6 +8,7 @@ import {
   type TaskId,
   TaskId as TaskIdSchema,
 } from "@shoalwork/contracts"
+import type { ApprovalsShape } from "@shoalwork/policy"
 import { Context, Deferred, Duration, Effect, Option, Schema, type Scope } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
@@ -74,6 +75,7 @@ export interface ControlDeps {
   readonly bots: BotRegistryShape
   // How long a stop waits for an interrupted run to finish its cleanup (SIGTERM grace 5 s + SIGKILL grace 5 s).
   readonly stopWaitMs: number
+  readonly approvals?: Pick<ApprovalsShape, "expireForTask"> | undefined
 }
 
 interface Entry {
@@ -169,6 +171,7 @@ export const makeControl = (deps: ControlDeps): ControlShape => {
         }
       }
       yield* closeJobsOf(sql, taskId, `stopped by ${by}`)
+      yield* deps.approvals?.expireForTask(taskId, "system:stop") ?? Effect.void
       return (yield* tasks.get(taskId)).state === "cancelled"
     })
 

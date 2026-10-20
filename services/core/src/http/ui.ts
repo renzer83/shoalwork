@@ -72,7 +72,36 @@ export const html = `<!doctype html>
     body.className = "payload";
     body.textContent = JSON.stringify(event.payload);
     li.append(head, body);
+    if (event.type === "approval.requested") { li.append(approvalCard(event.payload)); }
     return li;
+  }
+
+  // Aprovar / Negar for a pending request. The action text is the agent's: shown as text only, never run.
+  function approvalCard(payload) {
+    var card = document.createElement("div");
+    var what = document.createElement("span");
+    var action = payload.action || {};
+    what.textContent = "aprovação (" + payload.risk + "): " + action.tool + " " + (action.resource || "") + "  ";
+    var state = document.createElement("span");
+    state.className = "meta";
+    function decide(decision) {
+      fetch("/approvals/" + encodeURIComponent(payload.approvalId), {
+        method: "POST", headers: headers(), body: JSON.stringify({ decision: decision, via: "web" })
+      }).then(function (res) {
+        if (!res.ok) { throw new Error("erro " + res.status); }
+        return res.json();
+      }).then(function (body) {
+        state.textContent = body.result === "resolved" ? decision : "já decidida: " + (body.approval ? body.approval.status : "?");
+      }).catch(function (error) { state.textContent = String(error); });
+    }
+    var yes = document.createElement("button");
+    yes.type = "button"; yes.textContent = "Aprovar";
+    yes.addEventListener("click", function () { decide("approved"); });
+    var no = document.createElement("button");
+    no.type = "button"; no.textContent = "Negar";
+    no.addEventListener("click", function () { decide("denied"); });
+    card.append(what, yes, no, state);
+    return card;
   }
 
   function redraw() {

@@ -19,6 +19,7 @@ import {
   tierMappingFrom,
 } from "@shoalwork/executors"
 import {
+  ApprovalFlowLive,
   type ConsolidateHookOptions,
   Conversation,
   ConversationLive,
@@ -32,11 +33,13 @@ import {
   startIndexHook,
   TaskStoreLive,
 } from "@shoalwork/lead"
+import { makeApprovalsLive } from "@shoalwork/policy"
 import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
+import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
 import { TelegramFromSettings, TelegramStatus, telegramSettings } from "./telegram.js"
@@ -113,12 +116,16 @@ export const AppLayer = Layer.unwrap(
     const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
     // Execution tokens (T-167) sit under the Lead, so the Lead can issue and revoke them for each Bot run.
     const withMcpTokens = McpTokensLive.pipe(Layer.provideMerge(withStore))
+    // Approvals (T-054) sit under the Lead, which records a run that needs one and resumes it once decided.
+    const withApprovals = makeApprovalsLive({ ttlMs: config.approvalTtlMinutes * 60_000 }).pipe(
+      Layer.provideMerge(withMcpTokens),
+    )
     const botBudgetWindowMs = config.budgetBotWindowHours * 60 * 60 * 1000
     // No connection to Ollama until a memory is saved or searched, so the core boots without it.
     const withEmbedder = EmbedderOllamaLive({
       baseUrl: config.ollamaUrl,
       model: config.ollamaEmbedModel,
-    }).pipe(Layer.provideMerge(withMcpTokens))
+    }).pipe(Layer.provideMerge(withApprovals))
     const withReef = ReefLive().pipe(Layer.provideMerge(withEmbedder))
     // Code search for the MCP routes (T-167) and the briefing's code block (T-041). Same embedder and database as the Reef.
     // Below the Lead, so the Lead finds the Indexer in its context.
@@ -137,7 +144,10 @@ export const AppLayer = Layer.unwrap(
     const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withTides))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withSessions))
-    const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
+    // The one door for a decision: web, CLI and the Telegram buttons all go through it.
+    const withApprovalFlow = ApprovalFlowLive.pipe(Layer.provideMerge(withConsolidation))
+    const withDecisions = ApprovalDecisionsLive.pipe(Layer.provideMerge(withApprovalFlow))
+    const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withDecisions))
     return ConversationLive(tiers, reflexConfig, {
       botBudgetWindowMs,
       warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },

@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@shoalwork/db": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

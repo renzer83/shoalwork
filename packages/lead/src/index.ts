@@ -3,6 +3,7 @@ import { BotRegistry } from "@shoalwork/bots"
 import type { TaskId } from "@shoalwork/contracts"
 import { GhClient } from "@shoalwork/currents"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
+import { Approvals } from "@shoalwork/policy"
 import { Indexer, Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, Option } from "effect"
@@ -46,8 +47,10 @@ export const LeadLive = (
       const memory = Option.getOrUndefined(yield* Effect.serviceOption(Reef))
       // The repo index feeds the briefing's code block (T-041); without it the briefing carries none.
       const indexer = Option.getOrUndefined(yield* Effect.serviceOption(Indexer))
+      // Approvals (T-054): without them a task that needs one waits, but nothing can decide it.
+      const approvals = Option.getOrUndefined(yield* Effect.serviceOption(Approvals))
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
-      const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs })
+      const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs, approvals })
       const intake = makeIntake({
         sql,
         beacon,
@@ -77,6 +80,7 @@ export const LeadLive = (
         memory,
         tokens,
         indexer,
+        approvals,
       })
       const { abandon } = runner
       // A settled child reports its verdict to its parent's stream (T-046), after every run, whoever started it.
@@ -120,6 +124,13 @@ export const LeadWithStore = (
   SqlClient | Beacon | BotRegistry | Tank | GhClient | ExecutorRegistry
 > => Layer.provide(LeadLive(tiers, overrides, options), Layer.merge(TaskStoreLive, McpTokensLive))
 
+export {
+  ApprovalFlow,
+  ApprovalFlowLive,
+  type ApprovalFlowShape,
+  makeApprovalFlow,
+} from "./approval-flow.js"
+export { approvalCard, startApprovalNotifier } from "./approval-notify.js"
 export {
   type BotFactoryConfig,
   type BotFactoryDeps,

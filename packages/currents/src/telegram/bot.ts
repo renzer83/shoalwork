@@ -8,6 +8,7 @@ import { Cause, Effect, type Context as EffectContext } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Bot as GrammyBot, type Context as GrammyContext } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
+import type { ApprovalPort } from "./approvals.js"
 import { describeError, tagOf } from "./errors.js"
 import { findBotByTopic, findOpenPodByThread } from "./topics.js"
 
@@ -40,6 +41,8 @@ export interface InboundOptions {
   readonly allowedUserIds: ReadonlySet<number>
   // Absent: messages of a Pod's topic take the same path as the others (the lead).
   readonly pods?: PodInboundPort
+  // Approval button presses (T-054). Absent: a press is answered "failed" and nothing is decided.
+  readonly approvals?: ApprovalPort
   // The only group accepted besides DMs. Messages from any other chat are ignored.
   readonly forumChatId: string
   // Services the inbound handler reads (Beacon, BotRegistry, SqlClient), captured by the caller's Layer.

@@ -3,6 +3,7 @@ import { BotRegistry } from "@shoalwork/bots"
 import type { Bot, BotId, Event, TaskId } from "@shoalwork/contracts"
 import { TelegramOut } from "@shoalwork/currents"
 import { ChatSessions, ExecutorRegistry, makeWarmChatPool, type TierConfig } from "@shoalwork/executors"
+import { Approvals } from "@shoalwork/policy"
 import { Reef } from "@shoalwork/reef"
 import { belowThreshold, Reflex, type ReflexConfig } from "@shoalwork/reflex"
 import { Tank } from "@shoalwork/tank"
@@ -12,6 +13,7 @@ import type { BotFactoryDeps } from "./bot-factory.js"
 
 export type { BotFactoryOptions, ConversationOptions } from "./conversation-options.js"
 
+import { startApprovalNotifier } from "./approval-notify.js"
 import { BOT_BUDGET_WINDOW_MS, botOverBudget } from "./budget.js"
 import { ChatFailure, makeChat } from "./chat.js"
 import { Control } from "./control.js"
@@ -78,6 +80,8 @@ export const ConversationLive = (
       const tasks = yield* TaskStore
       const sessions = yield* ChatSessions
       const factorySql = yield* SqlClient
+      // Cards for approvals (T-054); a core booted without Approvals simply has none.
+      const approvals = Option.getOrUndefined(yield* Effect.serviceOption(Approvals))
       const warm =
         options.warm === undefined
           ? undefined
@@ -221,6 +225,9 @@ export const ConversationLive = (
       // the first send to a Bot, so a slow or failing ensureTopic delays nothing).
       const start: ConversationShape["start"] = Effect.gen(function* () {
         const inbound = yield* beacon.subscribe(["message.inbound"])
+        if (approvals !== undefined) {
+          yield* startApprovalNotifier({ beacon, approvals, bots, telegram })
+        }
         yield* startNarrator({
           beacon,
           tasks,

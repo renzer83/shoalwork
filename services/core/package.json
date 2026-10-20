@@ -20,6 +20,7 @@
     "@shoalwork/db": "workspace:*",
     "@shoalwork/executors": "workspace:*",
     "@shoalwork/lead": "workspace:*",
+    "@shoalwork/policy": "workspace:*",
     "@shoalwork/reef": "workspace:*",
     "@shoalwork/reflex": "workspace:*",
     "@shoalwork/tank": "workspace:*",

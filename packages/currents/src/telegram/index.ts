@@ -1,13 +1,22 @@
 import { type RunnerHandle, run } from "@grammyjs/runner"
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import { Duration, Effect, Layer, Redacted } from "effect"
+import { Duration, Effect, Layer, Option, Redacted } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
+import { ApprovalDecisions } from "./approvals.js"
 import { createTelegramBot, installInbound, type PodInboundPort, reportFailure } from "./bot.js"
 import { installCallbacks } from "./callbacks.js"
 import { type TelegramError, telegramError } from "./errors.js"
 import { makeTelegramOut, TelegramOut } from "./out.js"
 
+export {
+  type ApprovalAnswer,
+  type ApprovalDecisionKind,
+  ApprovalDecisions,
+  type ApprovalPort,
+  approvalButtons,
+  parseApprovalCallback,
+} from "./approvals.js"
 export type { PodInboundPort } from "./bot.js"
 export {
   botProposalButtons,
@@ -73,11 +82,14 @@ export const TelegramLive = (
       const bot = createTelegramBot(Redacted.value(config.token), {
         ...(config.apiRoot === undefined ? {} : { apiRoot: config.apiRoot }),
       })
+      // Optional: without the Lead's approval flow in the context, a press is answered "failed".
+      const approvals = Option.getOrUndefined(yield* Effect.serviceOption(ApprovalDecisions))
       const inbound = {
         allowedUserIds: new Set(config.allowedUserIds),
         forumChatId: config.forumChatId,
         context,
         ...(config.pods === undefined ? {} : { pods: config.pods }),
+        ...(approvals === undefined ? {} : { approvals }),
       }
       installInbound(bot, inbound)
       installCallbacks(bot, inbound)
