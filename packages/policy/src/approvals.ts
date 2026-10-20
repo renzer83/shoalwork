@@ -64,6 +64,13 @@ export interface ApprovalsShape {
   // The decision is used once: stamps the approval when the run that follows it starts. False when it was already used
   // (or is not decided), and the run must not start.
   readonly consume: (id: ApprovalId) => Effect.Effect<boolean, SqlError>
+  // Enforcement for a tool layer that waits for the decision inline (T-055): the approved, unused approval of this task
+  // whose action_hash matches tool + input is used up and returned. Anything else (another input, a second use, a
+  // denied or expired request) is None and the call must be asked again.
+  readonly consumeMatching: (
+    taskId: TaskId,
+    call: ToolCall,
+  ) => Effect.Effect<Option.Option<ApprovalRecord>, SqlError>
   // Pending requests of the task end as expired (a stop, or a task that is no longer waiting): one event each.
   readonly expireForTask: (
     taskId: TaskId,
@@ -229,6 +236,19 @@ export const makeApprovals = (
         const rows = yield* sql`UPDATE approvals SET consumed_at = ${at}
           WHERE id = ${id} AND status IN ('approved', 'denied') AND consumed_at IS NULL RETURNING id`
         return rows.length > 0
+      }),
+
+    consumeMatching: (taskId, call) =>
+      Effect.gen(function* () {
+        const at = yield* isoNow
+        // One statement: two concurrent calls cannot both use the same approval.
+        const rows = yield* sql`UPDATE approvals SET consumed_at = ${at}
+          WHERE consumed_at IS NULL AND id = (
+            SELECT id FROM approvals WHERE task_id = ${taskId} AND status = 'approved' AND consumed_at IS NULL
+              AND action_hash = ${actionHashOf(call)} ORDER BY resolved_at, rowid LIMIT 1)
+          RETURNING *`
+        const [used] = yield* toRecords(rows)
+        return Option.fromNullishOr(used)
       }),
 
     expireForTask: expireTask,

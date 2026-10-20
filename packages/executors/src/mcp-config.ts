@@ -20,6 +20,12 @@ export type McpAttachment = {
   readonly bot: string
   // Origin of the core API, http or https.
   readonly api: string
+  // Claude Code only (T-055): the permission bridge server joins the same config. Absent: no bridge.
+  readonly permissionBridge?: {
+    // Built entrypoint (packages/executors/dist/permission-bridge/index.js).
+    readonly serverEntry: string
+    readonly mode?: "inline" | "resume"
+  }
 }
 
 export class McpConfigError extends Data.TaggedError("McpConfigError")<{
@@ -51,6 +57,8 @@ export const validateAttachment = (
   if (!MCP_NAME_PATTERN.test(attachment.bot))
     return invalid(executor, "bot has characters outside the allowlist")
   if (!isHttpUrl(attachment.api)) return invalid(executor, "api must be an http or https URL")
+  if (attachment.permissionBridge !== undefined && !isAbsolute(attachment.permissionBridge.serverEntry))
+    return invalid(executor, "permissionBridge.serverEntry must be an absolute path")
   return Effect.void
 }
 
@@ -65,20 +73,28 @@ const serverArgs = (attachment: McpAttachment): ReadonlyArray<string> => [
 ]
 
 // Claude Code --mcp-config document. `${VAR}` is expanded by the CLI from its own environment at launch.
-export const claudeMcpJson = (attachment: McpAttachment): string =>
-  `${JSON.stringify(
+export const claudeMcpJson = (attachment: McpAttachment): string => {
+  const bridge = attachment.permissionBridge
+  const env = { [MCP_TOKEN_ENV]: `\${${MCP_TOKEN_ENV}}` }
+  return `${JSON.stringify(
     {
       mcpServers: {
-        reef: {
-          command: "node",
-          args: serverArgs(attachment),
-          env: { [MCP_TOKEN_ENV]: `\${${MCP_TOKEN_ENV}}` },
-        },
+        reef: { command: "node", args: serverArgs(attachment), env },
+        ...(bridge === undefined
+          ? {}
+          : {
+              "permission-bridge": {
+                command: "node",
+                args: [bridge.serverEntry, "--api", attachment.api, "--mode", bridge.mode ?? "inline"],
+                env,
+              },
+            }),
       },
     },
     null,
     2,
   )}\n`
+}
 
 const LINK_REFUSED = "link refused"
 

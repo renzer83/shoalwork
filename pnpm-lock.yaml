@@ -224,6 +224,9 @@ importers:
 
   packages/executors:
     dependencies:
+      '@modelcontextprotocol/server':
+        specifier: 'catalog:'
+        version: 2.3.1
       '@shoalwork/beacon':
         specifier: workspace:*
         version: link:../beacon
@@ -239,10 +242,16 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
     devDependencies:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.5(effect@4.0.5)(vitest@5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))
+      '@modelcontextprotocol/client':
+        specifier: 'catalog:'
+        version: 2.3.1
       '@shoalwork/db':
         specifier: workspace:*
         version: link:../db

@@ -9,7 +9,7 @@ import {
 import { Tank } from "@shoalwork/tank"
 import { Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
-import { mcpConfigFor } from "../mcp-config.js"
+import { type McpAttachment, mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
 import { buildArgs, type McpMode, type TierMapping } from "./args.js"
@@ -24,6 +24,9 @@ export type ClaudeCodeOptions = {
   readonly mcp?: McpMode
   // Model and effort per tier. Default: defaultMapTier (config/model-tiers.yaml replaces it, T-026).
   readonly mapTier?: (tier: ModelTier) => TierMapping
+  // Default false (T-055): `auto` tasks ask the permission-bridge MCP server instead of the CLI's own auto mode.
+  // Stays off until the LIVE probe confirms the tool contract (T-166).
+  readonly permissionBridge?: boolean
 }
 
 const DEFAULT_ID = Schema.decodeUnknownSync(ExecutorId)("claude-code")
@@ -42,6 +45,11 @@ export const defaultMapTier = (tier: ModelTier): TierMapping => {
   }
 }
 
+const withoutBridge = (ctx: ExecutorContext, mcp: McpAttachment): ExecutorContext => {
+  const { permissionBridge: _off, ...rest } = mcp
+  return { ...ctx, mcp: rest }
+}
+
 const isTerminal = (event: ExecutorEvent): boolean => event.kind === "done" || event.kind === "error"
 
 export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
@@ -49,6 +57,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
   const bin = opts.bin ?? "claude"
   const mcp: McpMode = opts.mcp ?? "none"
   const mapTier = opts.mapTier ?? defaultMapTier
+  const bridge = opts.permissionBridge === true
   const envOverrides = dropApiKey(opts.envOverrides ?? {})
   const spawnFailed = (cause: unknown) => new ExecutorSpawnError({ executor: id, cause })
 
@@ -60,13 +69,25 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
       Effect.gen(function* () {
         const tank = yield* Tank
         const env = dropApiKey({ ...ctx.env, ...envOverrides })
-        // The reef MCP config is written once per run, into the Bot's home (T-042).
+        // The reef MCP config is written once per run, into the Bot's home (T-042). The bridge server joins it only
+        // when this adapter has the bridge on.
         const mcpConfigFile =
           ctx.mcp === undefined
             ? undefined
-            : yield* mcpConfigFor("claude-code", ctx).pipe(Effect.mapError(spawnFailed))
+            : yield* mcpConfigFor("claude-code", bridge ? ctx : withoutBridge(ctx, ctx.mcp)).pipe(
+                Effect.mapError(spawnFailed),
+              )
         const proc = yield* tank
-          .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, mapTier, mcp, mcpConfigFile)])
+          .spawnStream({ ...ctx, env }, [
+            bin,
+            ...buildArgs(
+              task,
+              mapTier,
+              mcp,
+              mcpConfigFile,
+              bridge && ctx.mcp?.permissionBridge !== undefined,
+            ),
+          ])
           .pipe(Effect.mapError(spawnFailed))
         // The prompt travels in argv. With stdin left open, claude waits 3 s and warns about missing input.
         yield* proc.closeStdin()

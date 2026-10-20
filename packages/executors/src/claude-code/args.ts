@@ -51,6 +51,13 @@ const allowedToolsArgs = (
   return unique.length > 0 ? ["--allowedTools", unique.join(",")] : []
 }
 
+// T-055: the CLI asks the product's Policy through the permission-bridge MCP server instead of auto-deciding.
+// Needs the run's MCP config file (the bridge server lives in it), so it is off without one.
+export const PERMISSION_PROMPT_TOOL = "mcp__permission-bridge__approve"
+
+const usesBridge = (task: ExecutorTask, mcpConfigFile: string | undefined, bridge: boolean): boolean =>
+  bridge && mcpConfigFile !== undefined && task.permissionMode === "auto"
+
 // argv only (never a shell string). The prompt is last, after `--`, so text that starts with "-" (which may come
 // from a third party) is read as a prompt and never as a flag: `-p "--version"` prints the CLI version.
 export const buildArgs = (
@@ -58,15 +65,18 @@ export const buildArgs = (
   mapTier: (tier: ModelTier) => TierMapping,
   mcp: McpMode = "none",
   mcpConfigFile?: string,
+  permissionBridge = false,
 ): ReadonlyArray<string> => {
   const { model, effort } = effectiveMapping(task, mapTier)
+  const bridged = usesBridge(task, mcpConfigFile, permissionBridge)
   return [
     "-p",
     "--output-format",
     "stream-json",
     "--verbose",
     "--permission-mode",
-    PERMISSION_FLAG[task.permissionMode],
+    bridged ? "default" : PERMISSION_FLAG[task.permissionMode],
+    ...(bridged ? ["--permission-prompt-tool", PERMISSION_PROMPT_TOOL] : []),
     "--max-turns",
     String(task.maxTurns),
     "--max-budget-usd",

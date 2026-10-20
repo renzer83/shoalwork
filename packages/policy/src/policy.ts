@@ -74,6 +74,8 @@ export interface PolicyShape {
     context?: EvaluationContext,
   ) => Effect.Effect<PolicyDecision, never>
   readonly riskOf: (call: ToolCall) => Risk
+  // The workspace roots the service was configured with (never taken from a request).
+  readonly workspaceRoots: ReadonlyArray<string>
   readonly reload: () => Effect.Effect<void, ConfigError>
 }
 
@@ -191,6 +193,7 @@ const makePolicy = (deps: {
       return decision
     }),
   riskOf: (call) => riskOf(call, deps.maxInputBytes),
+  workspaceRoots: deps.workspaceRoots,
   // On failure the previous rules stay active; the error is returned to the caller.
   reload: () => deps.load().pipe(Effect.flatMap((set) => Ref.set(deps.state, set))),
 })

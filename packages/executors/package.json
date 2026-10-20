@@ -7,6 +7,9 @@
       "default": "./dist/index.js"
     }
   },
+  "bin": {
+    "app-permission-bridge": "./dist/permission-bridge/index.js"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
@@ -14,14 +17,17 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "catalog:",
     "@shoalwork/beacon": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
     "@shoalwork/tank": "workspace:*",
     "effect": "catalog:",
-    "yaml": "catalog:"
+    "yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "@shoalwork/db": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"

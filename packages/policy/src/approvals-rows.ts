@@ -20,7 +20,7 @@ const INPUT_MAX_CHARS = 2000
 export interface ApprovalRecord extends Approval {
   readonly stepId?: StepId
   readonly sessionId?: SessionId
-  // sha256 of tool + canonical input, taken before redaction. Advisory until the tool layer enforces it (T-055).
+  // sha256 of tool + canonical input, taken before redaction. consumeMatching enforces it for the inline bridge (T-055).
   readonly actionHash: string
   readonly consumedAt?: DateTime.Utc
   readonly chatId?: string
@@ -108,10 +108,12 @@ const canonical = (value: unknown): unknown =>
 const inputText = (input: unknown): string =>
   typeof input === "string" ? input : (JSON.stringify(canonical(input)) ?? "")
 
-// Binds a decision to the action that was asked: tool + canonical input, before any cut or redaction.
+// Binds a decision to the action that was asked: sha256 of the JSON array [tool, canonical input], before any cut or
+// redaction. A JSON array keeps the two parts apart (a tool name holding "\n" cannot be read as an input), and a string
+// input never collides with an object input.
 export const actionHashOf = (call: ToolCall): string =>
   createHash("sha256")
-    .update(`${call.tool}\n${inputText(call.input)}`)
+    .update(JSON.stringify([call.tool, canonical(call.input)]) ?? "")
     .digest("hex")
 
 // What is stored and sent: the resource and the input are redacted and cut. The model's own text is data (R14).

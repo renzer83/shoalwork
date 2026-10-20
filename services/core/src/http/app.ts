@@ -18,6 +18,7 @@ import { registerCostRoutes } from "./routes/costs.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
+import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
 import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
@@ -42,6 +43,9 @@ export interface AppDeps {
   readonly runMemory?: RunMemory | undefined
   // Code search, chunk read and execution-token checks. Without it, execution tokens are refused everywhere.
   readonly runMcp?: RunMcp | undefined
+  // Policy and Approvals for the permission bridge (T-055): POST /policy/evaluate and GET /approvals/:id/wait.
+  // Without it neither route exists and an execution token reaches nothing but the read routes.
+  readonly runPolicy?: RunPolicy | undefined
   // GITHUB_WEBHOOK_SECRET (config.ts). Unset: the GitHub route answers 503 and processes nothing.
   readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
 }
@@ -126,12 +130,14 @@ export const makeApp = (deps: AppDeps): Hono => {
       setPrincipal(c.req.raw, API_PRINCIPAL)
       return next()
     }
-    // An execution token opens only the read routes a Bot's MCP server calls; each of them checks its scope.
+    // An execution token opens only the read routes a Bot's MCP server calls, plus the two routes of the permission
+    // bridge when they are mounted; each of them checks its scope.
     const presented = bearerValue(header)
     if (
       presented !== undefined &&
       deps.runMcp !== undefined &&
-      isExecutionReadPath(c.req.method, c.req.path)
+      (isExecutionReadPath(c.req.method, c.req.path) ||
+        (deps.runPolicy !== undefined && isExecutionPolicyPath(c.req.method, c.req.path)))
     ) {
       const principal = await deps.runMcp(authenticateExecution(presented))
       if (principal !== undefined) {
@@ -171,6 +177,9 @@ export const makeApp = (deps: AppDeps): Hono => {
   }
   if (deps.runMcp !== undefined) {
     registerReefRoutes(app, deps.runMcp)
+  }
+  if (deps.runPolicy !== undefined) {
+    registerPolicyRoutes(app, deps.runPolicy)
   }
 
   return app
