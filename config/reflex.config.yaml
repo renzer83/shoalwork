@@ -1,0 +1,36 @@
+# Reflex v0 rules table (T-023). Keywords are whole words, case-insensitive; a space matches one or more spaces.
+thresholds:
+  default: 0.6
+  perQuestion: {}
+
+# Characters read by the rules / kept in the decision.made payload.
+limits:
+  ruleChars: 8000
+  payloadChars: 2000
+
+intent:
+  code: [implementa, implementar, implement, fix, bug, bugs, refactor, refatorar, test, testar, testes, tests, PR, PRs, issue, issues, deploy]
+  research: [pesquisa, pesquisar, research, compare, quanto custa]
+  app_op: [posta, publicar, publish, envia email, stripe, notion]
+  routine: [todo dia, every day]
+
+verbs: [implementa, implement, fix, corrige, refactor, refatora, test, testa, cria, create, adiciona, add,
+  remove, deleta, delete, escreve, write, edita, edit, deploy, publica, publish, envia, send, pesquisa,
+  research, compara, compare, posta, migra, migrate, atualiza, update, revisa, review, configura, configure,
+  roda, run]
+
+sequence: [e depois, and then]
+
+risk:
+  high: [deploy, prod, delete, deleta, deletar, apaga, apagar, remove, pagar, pagamento, stripe, rm -rf]
+  external: [push, merge, email, post]
+  local: [edit, write]
+
+language:
+  pt: [que, não, para, com]
+  en: [the, and, with]
+  es: [el, la, con, para]
+
+owner:
+  roles: [dev, worker]
+  leadName: lead
