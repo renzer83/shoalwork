@@ -56,7 +56,13 @@ const tokenFor = (botId: BotId, taskId: TaskId): Promise<string> =>
   runEffect(
     Effect.gen(function* () {
       const tokens = yield* McpTokens
-      const issued = yield* tokens.issue({ botId, repo: "shoalwork", taskId, ttl: 60 * 60 * 1000 })
+      const issued = yield* tokens.issue({
+        botId,
+        repo: "shoalwork",
+        taskId,
+        ttl: 60 * 60 * 1000,
+        bridgeMode: "inline",
+      })
       return Redacted.value(issued.token)
     }),
   )

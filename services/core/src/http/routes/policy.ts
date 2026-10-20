@@ -1,4 +1,5 @@
 import { ApprovalId, BotId, NotFound, SchemaViolation, TaskId, type ToolCall } from "@shoalwork/contracts"
+import { ApprovalFlow } from "@shoalwork/lead"
 import { Approvals, Policy } from "@shoalwork/policy"
 import { Clock, Effect, Option, Schema } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
@@ -58,8 +59,16 @@ const subjectOf = (
 
 // deny and allow come from the Policy. On ask, an approved and unused approval of this task for this exact tool and
 // input is spent (allow, once); otherwise a request is opened and the caller waits on it.
+// An execution token reaches these routes only when it was issued for the bridge in inline mode. A reef-only token
+// has no bridge mode, and the resume mode of the bridge is not wired yet: both are refused.
+const requireBridge = (principal: Principal, where: string): Effect.Effect<void, ScopeViolation> =>
+  principal.kind === "execution" && principal.scope.bridgeMode !== "inline"
+    ? Effect.fail(new ScopeViolation({ where }))
+    : Effect.void
+
 const evaluate = (principal: Principal, raw: unknown) =>
   Effect.gen(function* () {
+    yield* requireBridge(principal, "policy.evaluate.bridge")
     const body = yield* Schema.decodeUnknownEffect(EvaluateBody)(raw)
     const { botId, taskId } = yield* subjectOf(principal, body)
     const call: ToolCall = { tool: body.tool, input: body.input }
@@ -73,7 +82,15 @@ const evaluate = (principal: Principal, raw: unknown) =>
         }),
       )
     }
-    const context = principal.kind === "api" && body.cwd !== undefined ? { cwd: body.cwd } : undefined
+    // The root is the run's own worktree, bound to its token by the Lead (T-177); a request never names it.
+    const context =
+      principal.kind === "api"
+        ? body.cwd === undefined
+          ? undefined
+          : { cwd: body.cwd }
+        : principal.scope.cwd === undefined
+          ? undefined
+          : { cwd: principal.scope.cwd }
     const decision = yield* policy.evaluate(botId, call, context)
     if (decision.effect === "deny") {
       const reason = decision.rule?.reason ?? "Denied by policy."
@@ -86,7 +103,15 @@ const evaluate = (principal: Principal, raw: unknown) =>
     if (Option.isSome(used)) {
       return { status: 200, body: { effect: "allow", approvalId: used.value.id } } satisfies RouteResponse
     }
-    const requested = yield* approvals.request({ taskId, botId, action: call, risk: decision.risk })
+    // A bridge run waits inline: the request and the task's waiting_approval are stored together. Without the flow
+    // (a core booted without the Lead) the request is stored all the same and the task state is left alone.
+    const inline = principal.kind === "execution"
+    const input = { taskId, botId, action: call, risk: decision.risk }
+    const flow = yield* Effect.serviceOption(ApprovalFlow)
+    const requested =
+      inline && Option.isSome(flow)
+        ? yield* flow.value.requestInline(input)
+        : yield* approvals.request(inline ? { ...input, mode: "inline" } : input)
     return { status: 200, body: { effect: "ask", approvalId: requested.id } } satisfies RouteResponse
   }).pipe(Effect.catch(failureResponse))
 
@@ -124,6 +149,7 @@ export const waitForDecision = (id: ApprovalId, timeoutMs: number) =>
 
 const wait = (principal: Principal, rawId: string, rawTimeout: string | undefined) =>
   Effect.gen(function* () {
+    yield* requireBridge(principal, "approvals.wait.bridge")
     const id = yield* Schema.decodeUnknownEffect(ApprovalId)(rawId).pipe(
       Effect.mapError(() => new NotFound({ entity: "Approval", id: rawId })),
     )

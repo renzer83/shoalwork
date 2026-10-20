@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { it } from "@effect/vitest"
 import { Beacon, BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
-import { type Bot, NewBot, type TaskId, type TaskSpec } from "@shoalwork/contracts"
+import { type Bot, NewBot, newApprovalId, type TaskId, type TaskSpec } from "@shoalwork/contracts"
 import { GhClientTest } from "@shoalwork/currents"
 import { Jobs } from "@shoalwork/db"
 import { withTempDb } from "@shoalwork/db/testing"
@@ -211,6 +211,27 @@ describe("watchdog", () => {
         expect(exitCode).toBeGreaterThan(0)
         const events = yield* recoveredEvents
         expect(events).toEqual([{ what: "long_process", ref: `pid:${proc.pid}`, action: "killed" }])
+      }),
+    ).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.live("the wait for an inline approval is not part of the age of the process of that run", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const bot = yield* makeBot
+        const spec = yield* intakeTask(bot)
+        const proc = yield* spawnProcess(["sleep", "30"], { cwd: tankRoot, env: { PATH: "/usr/bin:/bin" } })
+        const sql = yield* SqlClient
+        yield* sql`INSERT INTO task_processes (task_id, pgid, started_at) VALUES (${spec.id}, ${proc.pid}, '2999-01-01T00:00:00.000Z')`
+        // Ten minutes of work, then forty waiting for a person: the request began after the process did.
+        yield* sql`INSERT INTO approvals (id, task_id, bot_id, action, action_hash, risk, status, requested_at,
+          expires_at, resolved_at, resolved_by, mode)
+          VALUES (${newApprovalId()}, ${spec.id}, ${bot.id}, '{"tool":"Bash","input":"git push"}', 'h', 'external',
+            'approved', '2999-01-01T00:10:00.000Z', '2999-01-01T02:10:00.000Z', '2999-01-01T00:50:00.000Z',
+            'user:web', 'inline')`
+        yield* sleepMs(50)
+        yield* runWatchdogCycle(IMPATIENT)
+        expect(yield* recoveredEvents).toEqual([])
       }),
     ).pipe(Effect.provide(TestLayer)),
   )

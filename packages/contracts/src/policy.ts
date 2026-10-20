@@ -27,6 +27,11 @@ export type PolicyDecision = typeof PolicyDecision.Type
 export const ApprovalStatus = Schema.Literals(["pending", "approved", "denied", "expired"])
 export type ApprovalStatus = typeof ApprovalStatus.Type
 
+// inline: the CLI is blocked on the tool call until the decision (permission bridge, T-055). resume: the run ended and
+// the Lead continues the session once decided (T-054).
+export const ApprovalMode = Schema.Literals(["inline", "resume"])
+export type ApprovalMode = typeof ApprovalMode.Type
+
 // expiresAt < requestedAt is accepted here; the temporal rule belongs to the policy engine.
 export const Approval = Schema.Struct({
   id: ApprovalId,

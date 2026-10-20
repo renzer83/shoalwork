@@ -1,6 +1,7 @@
 import type { BotRegistryShape } from "@shoalwork/bots"
 import { type TaskId, TaskId as TaskIdSchema } from "@shoalwork/contracts"
 import { nowIso } from "@shoalwork/db"
+import type { ApprovalsShape } from "@shoalwork/policy"
 import { Cause, Effect, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import { TASKS_QUEUE } from "./intake.js"
@@ -41,7 +42,12 @@ export interface RecoveryDeps {
   readonly tasks: TaskStoreShape
   readonly bots: BotRegistryShape
   readonly lifecycle: Lifecycle
+  // Without it an inline approval left by a restart stays pending until it expires.
+  readonly approvals?: Pick<ApprovalsShape, "expireForTask"> | undefined
 }
+
+export const INLINE_RESTART_ACTOR = "system:restart"
+export const INLINE_RESTART_REASON = "process restarted during an inline approval"
 
 // Boot step. A task still `planning` is closed as failed (blocked verdict): the plan, if the model had answered, was
 // never stored, so nothing is lost and the task can be submitted again.
@@ -50,9 +56,33 @@ export interface RecoveryDeps {
 // (the runner continues it); otherwise it fails. The job's attempts are kept, so a task that keeps killing the
 // process runs out of attempts. One task's trouble never stops the others.
 export const makeRecovery =
-  ({ sql, tasks, bots, lifecycle }: RecoveryDeps) =>
+  ({ sql, tasks, bots, lifecycle, approvals }: RecoveryDeps) =>
   (): Effect.Effect<RecoveryReport> =>
     Effect.gen(function* () {
+      // The CLI that waited on an inline approval died with the process, so nobody will read the answer: the request
+      // ends and the task is recovered like a running one. Its session resumes and asks again (a decision is used once).
+      const inlineRows =
+        yield* sql`SELECT DISTINCT t.id AS id FROM tasks t JOIN approvals a ON a.task_id = t.id
+        WHERE t.state = 'waiting_approval' AND a.status = 'pending' AND a.mode = 'inline'`.pipe(Effect.orDie)
+      const inlineIds = (yield* Schema.decodeUnknownEffect(Schema.Array(IdRow))(inlineRows).pipe(
+        Effect.orDie,
+      )).map((row) => row.id)
+      for (const id of inlineIds) {
+        yield* Effect.gen(function* () {
+          yield* approvals?.expireForTask(id, INLINE_RESTART_ACTOR) ?? Effect.void
+          const { spec } = yield* tasks.get(id)
+          yield* lifecycle.transition(spec, "running", {}, INLINE_RESTART_REASON)
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.interrupt
+              : Effect.logError(
+                  "could not end an inline approval after a restart",
+                  describeFailure(Cause.squash(cause)).tag,
+                ),
+          ),
+        )
+      }
       const rows = yield* sql`SELECT id FROM tasks WHERE state = 'running'`.pipe(Effect.orDie)
       const ids = (yield* Schema.decodeUnknownEffect(Schema.Array(IdRow))(rows).pipe(Effect.orDie)).map(
         (row) => row.id,

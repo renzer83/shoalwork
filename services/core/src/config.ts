@@ -55,6 +55,13 @@ export const coreApiOrigin = (appUrl: string, port: number): string =>
 export const reefMcpEntryFrom = (configured: string): string =>
   resolveRepoPath(configured.trim() === "" ? "packages/reef/dist/mcp.js" : configured.trim())
 
+// Built entrypoint of the permission bridge server: PERMISSION_BRIDGE_ENTRY when set (relative paths anchor to the
+// repo root), else the default build output of packages/executors (T-177).
+export const permissionBridgeEntryFrom = (configured: string): string =>
+  resolveRepoPath(
+    configured.trim() === "" ? "packages/executors/dist/permission-bridge/index.js" : configured.trim(),
+  )
+
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const
 
 export const AppConfig = Config.all({
@@ -122,6 +129,16 @@ export const AppConfig = Config.all({
   // Reef MCP server (T-168): the core origin the Bot's server calls (blank: loopback on PORT) and the built entrypoint.
   appUrl: setting("APP_URL", Config.String, ""),
   reefMcpEntry: setting("REEF_MCP_ENTRY", Config.String, "").pipe(Config.map(reefMcpEntryFrom)),
+  // Permission bridge (T-177): off until the LIVE probe (T-166) passes. On, a claude-code run asks the Policy of the
+  // product through the bridge server instead of a static permission mode; blank counts as off.
+  permissionBridge: setting("PERMISSION_BRIDGE", Config.Boolean, false),
+  permissionBridgeEntry: setting("PERMISSION_BRIDGE_ENTRY", Config.String, "").pipe(
+    Config.map(permissionBridgeEntryFrom),
+  ),
+  // Policy files, one `<name>.yaml` per policy (T-053). Relative paths resolve against the repo root.
+  policyDir: setting("POLICY_DIR", Config.String, "config/policies").pipe(
+    Config.map((configured) => resolveRepoPath(configured)),
+  ),
   // Briefing context budgets (T-041). Relative paths resolve against the repo root.
   contextConfigPath: setting("CONTEXT_CONFIG_PATH", Config.String, "config/context.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),

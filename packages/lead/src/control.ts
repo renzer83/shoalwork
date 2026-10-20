@@ -293,7 +293,7 @@ export const makeControl = (deps: ControlDeps): ControlShape => {
       ),
     )
 
-  const recoverOrphans = makeRecovery({ sql, tasks, bots, lifecycle })
+  const recoverOrphans = makeRecovery({ sql, tasks, bots, lifecycle, approvals: deps.approvals })
 
   return { stop, pause, resume, status, recoverOrphans, track }
 }

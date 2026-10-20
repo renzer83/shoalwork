@@ -1,7 +1,7 @@
 import { accessSync, constants } from "node:fs"
 import { join } from "node:path"
 import { BeaconLive } from "@shoalwork/beacon"
-import { BotRegistryLive } from "@shoalwork/bots"
+import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { ExecutorId } from "@shoalwork/contracts"
 import { GhClientLive } from "@shoalwork/currents"
 import { makeDbLayer } from "@shoalwork/db"
@@ -36,7 +36,7 @@ import {
   startIndexHook,
   TaskStoreLive,
 } from "@shoalwork/lead"
-import { makeApprovalsLive } from "@shoalwork/policy"
+import { makeApprovalsLive, makePolicyLive, UNRESOLVED_POLICY } from "@shoalwork/policy"
 import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
@@ -86,7 +86,10 @@ const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<
       ]
     : []
   return [
-    makeClaudeCode({ mapTier: tierMappingFrom(tiers, CLAUDE_CODE_ID, defaultMapTier) }),
+    makeClaudeCode({
+      mapTier: tierMappingFrom(tiers, CLAUDE_CODE_ID, defaultMapTier),
+      permissionBridge: config.permissionBridge,
+    }),
     makeClaudeCodeChat({ mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) }),
     ...codex,
   ]
@@ -94,6 +97,23 @@ const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<
 
 // What a Bot created by conversation may be given: the most it can spend, the one policy and the one Tank of the host.
 const BOT_FACTORY_CEILING = { tokens: 1_000_000, seconds: 3600, usd: 10 } as const
+
+// The Policy of the product (T-053): a Bot's rules are the file its definition names. A Bot that cannot be read gets a
+// name no file has, so every call of it is asked. The only workspace root is the run's own worktree, which the Lead
+// binds to the run's token (T-177); there is no standing root.
+const PolicyFromBots = (config: AppConfigShape) =>
+  Layer.unwrap(
+    Effect.map(BotRegistry, (bots) =>
+      makePolicyLive({
+        policyDir: config.policyDir,
+        policyOf: (botId) =>
+          bots.get(botId).pipe(
+            Effect.map((bot): string | undefined => bot.policy),
+            Effect.orElseSucceed(() => UNRESOLVED_POLICY),
+          ),
+      }),
+    ),
+  )
 
 const DbFromConfig = Layer.unwrap(Effect.map(AppConfig, (config) => makeDbLayer(config.databasePath)))
 
@@ -129,18 +149,27 @@ export const AppLayer = Layer.unwrap(
     const withApprovals = makeApprovalsLive({ ttlMs: config.approvalTtlMinutes * 60_000 }).pipe(
       Layer.provideMerge(withMcpTokens),
     )
+    // The permission bridge asks this Policy (POST /policy/evaluate); it sits under the Lead like the Approvals.
+    const withPolicy = PolicyFromBots(config).pipe(Layer.provideMerge(withApprovals))
     const botBudgetWindowMs = config.budgetBotWindowHours * 60 * 60 * 1000
     // No connection to Ollama until a memory is saved or searched, so the core boots without it.
     const withEmbedder = EmbedderOllamaLive({
       baseUrl: config.ollamaUrl,
       model: config.ollamaEmbedModel,
-    }).pipe(Layer.provideMerge(withApprovals))
+    }).pipe(Layer.provideMerge(withPolicy))
     const withReef = ReefLive().pipe(Layer.provideMerge(withEmbedder))
     // Code search for the MCP routes (T-167) and the briefing's code block (T-041). Same embedder and database as the Reef.
     // Below the Lead, so the Lead finds the Indexer in its context.
     const withIndexer = IndexerLive().pipe(Layer.provideMerge(withReef))
     // The reef MCP server of a Bot run: its entrypoint and the origin of this core (T-168).
-    const mcp = { serverEntry: config.reefMcpEntry, api: coreApiOrigin(config.appUrl, config.port) }
+    // With PERMISSION_BRIDGE on, a claude-code run also gets the bridge server (inline: the CLI waits for the person).
+    const mcp = {
+      serverEntry: config.reefMcpEntry,
+      api: coreApiOrigin(config.appUrl, config.port),
+      ...(config.permissionBridge
+        ? { permissionBridge: { serverEntry: config.permissionBridgeEntry, mode: "inline" as const } }
+        : {}),
+    }
     // gh opens the PR of a delivered code task (T-045). Host calls get an allowlisted env, never the core's full one.
     const withGh = GhClientLive({ baseEnv: hostEnvSnapshot() })
     const withLead = LeadLive(

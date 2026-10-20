@@ -7,11 +7,13 @@ import {
   Approvals,
   type ApprovalsShape,
   type Decision,
+  type RequestInput,
   type ResolveResult,
 } from "@shoalwork/policy"
 import { Context, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
+import { extendTokens, pauseForInline, resumeIfIdle } from "./inline-wait.js"
 import { TASKS_QUEUE } from "./intake.js"
 import { makeLifecycle } from "./lifecycle.js"
 import { TaskStore, type TaskStoreShape } from "./tasks.js"
@@ -28,6 +30,10 @@ export interface ApprovalFlowShape {
   // Requests past their expiry are denied by default: the task that waits on one is closed with a blocked verdict.
   // Resolves with how many approvals expired.
   readonly expireDue: () => Effect.Effect<number, SqlError>
+  // The permission bridge asks while its CLI is blocked on the call (T-177): the request is stored as inline and a
+  // running task goes to waiting_approval in the same transaction. A decision (or the expiry) puts it back to running;
+  // nothing is queued, the run that asked is still alive and reads the answer.
+  readonly requestInline: (input: RequestInput) => Effect.Effect<ApprovalRecord, NotFound | SqlError>
 }
 
 export class ApprovalFlow extends Context.Service<ApprovalFlow, ApprovalFlowShape>()(
@@ -38,7 +44,7 @@ export interface ApprovalFlowDeps {
   readonly sql: SqlClient
   readonly approvals: ApprovalsShape
   readonly tasks: TaskStoreShape
-  readonly lifecycle: Pick<ReturnType<typeof makeLifecycle>, "transition" | "recordOutcomes">
+  readonly lifecycle: Pick<ReturnType<typeof makeLifecycle>, "transition" | "recordOutcomes" | "taskEvent">
 }
 
 // Who ends a pending request whose task is no longer waiting for it.
@@ -54,6 +60,9 @@ export const makeApprovalFlow = (deps: ApprovalFlowDeps): ApprovalFlowShape => {
       if (Option.isNone(found) || found.value.state !== "waiting_approval") {
         return
       }
+      if (approval.mode === "inline") {
+        return yield* backToRunning(approval)
+      }
       const { spec } = found.value
       const verdict = blockedVerdict("approval expired without an answer", "approval expired")
       // A task that vanished meanwhile has nothing to close.
@@ -63,12 +72,45 @@ export const makeApprovalFlow = (deps: ApprovalFlowDeps): ApprovalFlowShape => {
       yield* lifecycle.recordOutcomes(spec, "failed")
     })
 
+  // An inline approval ended: the CLI that asked is alive and reads the answer (denied, expired or approved), so the
+  // task goes back to running, in one statement and only when no request of it is still pending (a stopped task and a
+  // task waiting for a newer request are left alone).
+  const backToRunning = (approval: ApprovalRecord) =>
+    resumeIfIdle(sql, lifecycle, approval.taskId, "inline approval decided").pipe(Effect.asVoid)
+
+  const requestInline: ApprovalFlowShape["requestInline"] = (input) =>
+    sql.withTransaction(
+      Effect.gen(function* () {
+        const task = yield* tasks.get(input.taskId)
+        const request = yield* approvals.request({ ...input, mode: "inline" })
+        if (task.state === "running") {
+          yield* pauseForInline(sql, lifecycle, task.spec.id, "waiting for inline approval")
+          // The wait is not part of the token's life: it can last as long as the request lives.
+          yield* extendTokens(
+            sql,
+            task.spec.id,
+            request.expiresAt.epochMilliseconds - request.requestedAt.epochMilliseconds,
+          )
+        }
+        return request
+      }),
+    )
+
   const decide: ApprovalFlowShape["decide"] = (id, decision, by) =>
     // Decision and job in one transaction: either the task is queued to continue, or the approval stays pending.
     sql.withTransaction(
       Effect.gen(function* () {
         const current = yield* approvals.get(id)
         const task = yield* tasks.get(current.taskId)
+        // Inline: the run that asked is blocked on the call and picks the answer up. No resume job, and no expiry
+        // because of the task state: the task is waiting only for this request.
+        if (current.mode === "inline") {
+          const decided = yield* approvals.resolve(id, decision, by)
+          if (decided._tag === "Resolved" || decided.approval.status === "expired") {
+            yield* backToRunning(decided.approval)
+          }
+          return decided
+        }
         // A task that is no longer waiting (stopped, closed) cannot continue: the request ends, nothing resumes.
         if (current.status === "pending" && task.state !== "waiting_approval") {
           yield* approvals.expireForTask(current.taskId, TASK_CLOSED_ACTOR)
@@ -94,7 +136,7 @@ export const makeApprovalFlow = (deps: ApprovalFlowDeps): ApprovalFlowShape => {
       return expired.length
     })
 
-  return { decide, expireDue }
+  return { decide, expireDue, requestInline }
 }
 
 export const ApprovalFlowLive: Layer.Layer<

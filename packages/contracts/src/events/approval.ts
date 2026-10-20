@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { Risk } from "../enums.js"
 import { ToolCall } from "../executor.js"
 import { ApprovalId, BotId, TaskId } from "../ids.js"
+import { ApprovalMode } from "../policy.js"
 
 export const ApprovalRequestedPayload = Schema.Struct({
   approvalId: ApprovalId,
@@ -10,6 +11,8 @@ export const ApprovalRequestedPayload = Schema.Struct({
   action: ToolCall,
   risk: Risk,
   expiresAt: Schema.DateTimeUtcFromString,
+  // Absent on events written before the permission bridge: those approvals are resume.
+  mode: Schema.optional(ApprovalMode),
 })
 
 export const ApprovalResolvedPayload = Schema.Struct({

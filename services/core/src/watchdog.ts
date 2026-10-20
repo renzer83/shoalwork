@@ -112,15 +112,37 @@ const reapJobs = () =>
     return requeuedJobs.length + failed.length
   })
 
+// Time a Tank process spent with its run blocked on an inline approval (T-177): the CLI is alive and idle on purpose
+// until the person answers, so that time is not part of its age. The process is matched by its pid (the group the Lead
+// recorded for the run), and only the waits that began after it started count. A pending request counts up to now
+// or its expiry.
+const inlineWaitsByPid = (nowMs: number) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient
+    const rows = yield* sql`SELECT p.pgid AS pid, a.requested_at, a.resolved_at, a.expires_at
+      FROM task_processes p JOIN approvals a ON a.task_id = p.task_id AND a.mode = 'inline'`
+    return (proc: { readonly pid: number; readonly startedAt: number }): number =>
+      rows.reduce((total, row) => {
+        const requested = Date.parse(String(row.requested_at))
+        if (Number(row.pid) !== proc.pid || requested < proc.startedAt) return total
+        const end =
+          row.resolved_at === null
+            ? Math.min(nowMs, Date.parse(String(row.expires_at)))
+            : Date.parse(String(row.resolved_at))
+        return total + Math.max(0, end - requested)
+      }, 0)
+  })
+
 // Tank processes alive for longer than the limit: process group killed, then recorded.
 const killLongProcesses = (config: WatchdogConfig) =>
   Effect.gen(function* () {
     const beacon = yield* Beacon
     const now = yield* Clock.currentTimeMillis
     const limitMs = config.maxProcessMinutes * 60_000
+    const waited = yield* inlineWaitsByPid(now)
     let count = 0
     for (const proc of trackedProcesses()) {
-      if (now - proc.startedAt <= limitMs) continue
+      if (now - proc.startedAt - waited(proc) <= limitMs) continue
       yield* proc.terminate
       yield* recovered(beacon, "long_process", `pid:${proc.pid}`, "killed")
       count++
@@ -149,7 +171,9 @@ const reconcile = (config: WatchdogConfig) =>
     const bots = yield* BotRegistry
     const now = yield* Clock.currentTimeMillis
     let count = 0
-    const runningRows = yield* sql`SELECT DISTINCT bot_id FROM tasks WHERE state = 'running'`
+    // A task blocked on an inline approval is waiting_approval but its Bot is still working (T-177).
+    const runningRows = yield* sql`SELECT DISTINCT bot_id FROM tasks WHERE state = 'running'
+      OR (state = 'waiting_approval' AND id IN (SELECT task_id FROM approvals WHERE status = 'pending' AND mode = 'inline'))`
     const runningBots = new Set(runningRows.map((row) => String(row.bot_id)))
     for (const bot of yield* bots.list()) {
       if (bot.state !== "working" || runningBots.has(bot.id)) continue

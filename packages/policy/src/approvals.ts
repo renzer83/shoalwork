@@ -1,6 +1,7 @@
 import { Beacon, type BeaconShape } from "@shoalwork/beacon"
 import {
   type ApprovalId,
+  type ApprovalMode,
   type ApprovalStatus,
   type BotId,
   NotFound,
@@ -31,6 +32,8 @@ export interface RequestInput {
   readonly stepId?: StepId | undefined
   readonly sessionId?: SessionId | undefined
   readonly ttlMs?: number | undefined
+  // Default "resume" (the T-054 pause). "inline": the CLI is blocked on the call, nothing is resumed (T-177).
+  readonly mode?: ApprovalMode | undefined
 }
 
 export interface ApprovalsOptions {
@@ -73,6 +76,11 @@ export interface ApprovalsShape {
   ) => Effect.Effect<Option.Option<ApprovalRecord>, SqlError>
   // Pending requests of the task end as expired (a stop, or a task that is no longer waiting): one event each.
   readonly expireForTask: (
+    taskId: TaskId,
+    by: string,
+  ) => Effect.Effect<ReadonlyArray<ApprovalRecord>, SqlError>
+  // Pending inline requests of the task end as expired (the CLI that waited on them is gone): one event each.
+  readonly expireInline: (
     taskId: TaskId,
     by: string,
   ) => Effect.Effect<ReadonlyArray<ApprovalRecord>, SqlError>
@@ -129,13 +137,14 @@ export const makeApprovals = (
       return expired
     })
 
-  const expireTask = (taskId: TaskId, by: string) =>
+  const expireTask = (taskId: TaskId, by: string, inlineOnly = false) =>
     sql.withTransaction(
       Effect.gen(function* () {
         const at = yield* isoNow
         const rows =
           yield* sql`UPDATE approvals SET status = 'expired', resolved_at = ${at}, resolved_by = ${by}
-          WHERE status = 'pending' AND task_id = ${taskId} RETURNING *`
+          WHERE status = 'pending' AND task_id = ${taskId} AND (${inlineOnly ? 1 : 0} = 0 OR mode = 'inline')
+          RETURNING *`
         const expired = yield* toRecords(rows)
         yield* Effect.forEach(expired, (approval) => emitResolved(approval, "expired", by), { discard: true })
         return expired
@@ -158,10 +167,12 @@ export const makeApprovals = (
           const action = boundedAction(input.action)
           const requestedAt = new Date(now).toISOString()
           const expiresAt = new Date(now + (input.ttlMs ?? options.ttlMs ?? APPROVAL_TTL_MS)).toISOString()
+          const mode = input.mode ?? "resume"
           yield* sql`INSERT INTO approvals (id, task_id, bot_id, step_id, session_id, action, action_hash, risk,
-            status, requested_at, expires_at)
+            status, requested_at, expires_at, mode)
             VALUES (${id}, ${input.taskId}, ${input.botId}, ${input.stepId ?? null}, ${input.sessionId ?? null},
-              ${JSON.stringify(action)}, ${actionHashOf(input.action)}, ${input.risk}, 'pending', ${requestedAt}, ${expiresAt})`
+              ${JSON.stringify(action)}, ${actionHashOf(input.action)}, ${input.risk}, 'pending', ${requestedAt},
+              ${expiresAt}, ${mode})`
           const created = yield* get(id).pipe(Effect.orDie)
           yield* beacon
             .append({
@@ -174,6 +185,7 @@ export const makeApprovals = (
                 action,
                 risk: input.risk,
                 expiresAt,
+                mode,
               },
               actor: `bot:${input.botId}`,
               correlationId: input.taskId,
@@ -251,7 +263,9 @@ export const makeApprovals = (
         return Option.fromNullishOr(used)
       }),
 
-    expireForTask: expireTask,
+    expireForTask: (taskId, by) => expireTask(taskId, by),
+
+    expireInline: (taskId, by) => expireTask(taskId, by, true),
 
     attachMessage: (id, ref) =>
       sql`UPDATE approvals SET chat_id = ${ref.chatId}, thread_id = ${ref.threadId ?? null},

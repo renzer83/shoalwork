@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import {
   type Approval,
   ApprovalId,
+  ApprovalMode,
   ApprovalStatus,
   BotId,
   Risk,
@@ -22,6 +23,8 @@ export interface ApprovalRecord extends Approval {
   readonly sessionId?: SessionId
   // sha256 of tool + canonical input, taken before redaction. consumeMatching enforces it for the inline bridge (T-055).
   readonly actionHash: string
+  // inline: the CLI waits on the tool call for the decision; resume: the Lead continues the session after it.
+  readonly mode: ApprovalMode
   readonly consumedAt?: DateTime.Utc
   readonly chatId?: string
   readonly threadId?: number
@@ -49,6 +52,7 @@ const Row = Schema.Struct({
   resolved_at: Schema.NullOr(Schema.String),
   resolved_by: Schema.NullOr(Schema.String),
   consumed_at: Schema.NullOr(Schema.String),
+  mode: ApprovalMode,
   chat_id: Schema.NullOr(Schema.String),
   thread_id: Schema.NullOr(Schema.Int),
   message_id: Schema.NullOr(Schema.Int),
@@ -73,6 +77,7 @@ const toRecord = (row: Row): Effect.Effect<ApprovalRecord> =>
       botId: row.bot_id,
       action,
       actionHash: row.action_hash,
+      mode: row.mode,
       risk: row.risk,
       status: row.status,
       requestedAt: utc(row.requested_at),

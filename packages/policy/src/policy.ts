@@ -83,7 +83,8 @@ export class Policy extends Context.Service<Policy, PolicyShape>()("@shoalwork/P
 
 export interface PolicyOptions {
   // Policy name for a bot (its `policy:` field). Undefined means "default". An unknown name asks for every call.
-  readonly policyOf: (botId: BotId) => string | undefined
+  // May look the Bot up (an Effect that never fails: a Bot that cannot be read answers UNRESOLVED_POLICY).
+  readonly policyOf: (botId: BotId) => string | undefined | Effect.Effect<string | undefined>
   // Workspace roots for writes, fixed for the service. Empty: only relative paths without ".." are placed.
   readonly workspaceRoots?: ReadonlyArray<string>
   // Cap in UTF-8 bytes per Bash command, resource or path-like field. Over it the call is asked at once.
@@ -93,6 +94,9 @@ export interface PolicyOptions {
 export interface PolicyLiveOptions extends PolicyOptions {
   readonly policyDir: string
 }
+
+// A policy name no file has: every call of a Bot whose policy could not be read is asked.
+export const UNRESOLVED_POLICY = "<unresolved>"
 
 const askFallback = (call: ToolCall): PolicyDecision => ({ effect: "ask", risk: riskOf(call) })
 
@@ -109,18 +113,34 @@ const evaluateSafely = (
   maxBytes: number,
 ): Effect.Effect<PolicyDecision> =>
   Effect.try({
-    try: (): PolicyDecision | undefined => {
-      const name = policyOf(botId) ?? DEFAULT_POLICY
-      const rules = set.rulesOf(name)
-      return rules === undefined ? undefined : decide(rules, botId, call, roots, maxBytes)
-    },
+    try: (): string | undefined | Effect.Effect<string | undefined> => policyOf(botId),
     catch: (cause): unknown => cause,
   }).pipe(
+    Effect.flatMap((named) =>
+      typeof named === "string" || named === undefined ? Effect.succeed(named) : named,
+    ),
+    Effect.flatMap((chosen) => evaluateNamed(set, chosen ?? DEFAULT_POLICY, botId, call, roots, maxBytes)),
     Effect.catch((cause) => failClosed(call, cause instanceof Error ? cause.message : "evaluation error")),
     Effect.flatMap((decision) =>
       decision === undefined ? failClosed(call, "unknown policy name") : Effect.succeed(decision),
     ),
   )
+
+const evaluateNamed = (
+  set: PolicySet,
+  name: string,
+  botId: BotId,
+  call: ToolCall,
+  roots: ReadonlyArray<string>,
+  maxBytes: number,
+): Effect.Effect<PolicyDecision | undefined, unknown> =>
+  Effect.try({
+    try: (): PolicyDecision | undefined => {
+      const rules = set.rulesOf(name)
+      return rules === undefined ? undefined : decide(rules, botId, call, roots, maxBytes)
+    },
+    catch: (cause): unknown => cause,
+  })
 
 const RESOURCE_MAX_CHARS = 200
 const SECRET_PAIR =

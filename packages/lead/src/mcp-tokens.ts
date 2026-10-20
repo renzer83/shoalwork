@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
-import { BotId, SchemaViolation, TaskId } from "@shoalwork/contracts"
+import { ApprovalMode, BotId, SchemaViolation, TaskId } from "@shoalwork/contracts"
 import { Context, Data, Effect, Layer, Redacted, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
@@ -16,6 +16,10 @@ export interface McpScope {
   readonly botId: BotId
   readonly repo: string
   readonly taskId: TaskId
+  // The run's worktree, bound once its Tank context exists (T-177): the Policy treats it as the workspace of the run.
+  readonly cwd?: string
+  // Set when the token was issued for the permission bridge: how a Policy `ask` of this run is handled.
+  readonly bridgeMode?: ApprovalMode
 }
 
 export interface IssueMcpToken {
@@ -24,6 +28,8 @@ export interface IssueMcpToken {
   readonly taskId: TaskId
   // Lifetime in milliseconds, 1 .. MAX_MCP_TOKEN_TTL_MS.
   readonly ttl: number
+  // The run has the permission bridge: its Policy asks are handled in this mode (T-177).
+  readonly bridgeMode?: ApprovalMode
 }
 
 export interface IssuedMcpToken {
@@ -42,6 +48,8 @@ const TokenRow = Schema.Struct({
   task_id: TaskId,
   expires_at: Schema.String,
   revoked_at: Schema.NullOr(Schema.String),
+  cwd: Schema.NullOr(Schema.String),
+  bridge_mode: Schema.NullOr(ApprovalMode),
 })
 
 const RowsOf = Schema.Array(TokenRow)
@@ -50,6 +58,8 @@ export interface McpTokensShape {
   readonly issue: (input: IssueMcpToken) => Effect.Effect<IssuedMcpToken, SchemaViolation | SqlError>
   // Only a usable token answers its scope; every other case fails with McpTokenRejected.
   readonly verify: (token: string) => Effect.Effect<McpScope, McpTokenRejected | SqlError>
+  // Binds the run's worktree to the task's live tokens (T-177). Idempotent; no live token: nothing changes.
+  readonly bindWorkspace: (taskId: TaskId, cwd: string) => Effect.Effect<void, SqlError>
   // Ends every token of the task. Idempotent.
   readonly revoke: (taskId: TaskId) => Effect.Effect<void, SqlError>
   // Boot: ends every token whose task is not running (a leftover of a run the restart interrupted). Idempotent.
@@ -76,9 +86,9 @@ export const makeMcpTokens = (sql: SqlClient, clock: () => Date = () => new Date
       const token = `${MCP_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`
       const issuedAt = clock()
       const expiresAt = new Date(issuedAt.getTime() + input.ttl).toISOString()
-      yield* sql`INSERT INTO mcp_tokens (token_hash, bot_id, repo, task_id, issued_at, expires_at)
+      yield* sql`INSERT INTO mcp_tokens (token_hash, bot_id, repo, task_id, issued_at, expires_at, bridge_mode)
         VALUES (${hashMcpToken(token)}, ${input.botId}, ${input.repo}, ${input.taskId},
-          ${issuedAt.toISOString()}, ${expiresAt})`
+          ${issuedAt.toISOString()}, ${expiresAt}, ${input.bridgeMode ?? null})`
       return { token: Redacted.make(token), expiresAt }
     }),
 
@@ -87,7 +97,7 @@ export const makeMcpTokens = (sql: SqlClient, clock: () => Date = () => new Date
       if (!TOKEN_PATTERN.test(token)) {
         return yield* Effect.fail(new McpTokenRejected({ reason: "unknown" }))
       }
-      const rows = yield* sql`SELECT bot_id, repo, task_id, expires_at, revoked_at
+      const rows = yield* sql`SELECT bot_id, repo, task_id, expires_at, revoked_at, cwd, bridge_mode
         FROM mcp_tokens WHERE token_hash = ${hashMcpToken(token)}`
       const [row] = yield* Schema.decodeUnknownEffect(RowsOf)(rows).pipe(Effect.orDie)
       if (row === undefined) {
@@ -99,8 +109,19 @@ export const makeMcpTokens = (sql: SqlClient, clock: () => Date = () => new Date
       if (Date.parse(row.expires_at) <= clock().getTime()) {
         return yield* Effect.fail(new McpTokenRejected({ reason: "expired" }))
       }
-      return { botId: row.bot_id, repo: row.repo, taskId: row.task_id }
+      return {
+        botId: row.bot_id,
+        repo: row.repo,
+        taskId: row.task_id,
+        ...(row.cwd === null ? {} : { cwd: row.cwd }),
+        ...(row.bridge_mode === null ? {} : { bridgeMode: row.bridge_mode }),
+      }
     }),
+
+  bindWorkspace: (taskId, cwd) =>
+    sql`UPDATE mcp_tokens SET cwd = ${cwd} WHERE task_id = ${taskId} AND revoked_at IS NULL`.pipe(
+      Effect.asVoid,
+    ),
 
   revoke: (taskId) =>
     Effect.gen(function* () {

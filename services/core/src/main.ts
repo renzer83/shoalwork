@@ -1,8 +1,10 @@
+import { access } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { NodeRuntime } from "@effect/platform-node"
 import { BotRegistry } from "@shoalwork/bots"
 import { runMigrations } from "@shoalwork/db"
 import { Control } from "@shoalwork/lead"
+import { loadPolicySet } from "@shoalwork/policy"
 import { loadReflexConfig } from "@shoalwork/reflex"
 import { Tides } from "@shoalwork/tides"
 import { Data, Effect, Fiber, type LogLevel, type Redacted, References } from "effect"
@@ -85,6 +87,9 @@ const serveUntilInterrupted = (
     | "telegramAllowedUserIds"
     | "telegramForumChatId"
     | "githubWebhookSecret"
+    | "policyDir"
+    | "permissionBridge"
+    | "permissionBridgeEntry"
   >,
   watchdog: WatchdogConfig,
 ) =>
@@ -102,6 +107,17 @@ const serveUntilInterrupted = (
     yield* loadReflexConfig(settings.reflexConfigPath).pipe(
       Effect.mapError((cause) => new BootError({ step: "reflex-config", cause })),
     )
+    // A broken policy file stops the boot here, under its own step name (the file is read again when the layer builds).
+    yield* loadPolicySet(settings.policyDir).pipe(
+      Effect.mapError((cause) => new BootError({ step: "policy", cause })),
+    )
+    // The bridge is one setting for the adapter and the Lead; on, the server it points at must exist.
+    if (settings.permissionBridge) {
+      yield* Effect.tryPromise({
+        try: () => access(settings.permissionBridgeEntry),
+        catch: (cause) => new BootError({ step: "permission-bridge", cause }),
+      })
+    }
     const telegram = yield* telegramSettings(settings).pipe(
       Effect.mapError((cause) => new BootError({ step: "telegram", cause })),
     )
@@ -160,6 +176,7 @@ const serveUntilInterrupted = (
         runEffect,
         runMemory: runEffect,
         runMcp: runEffect,
+        runPolicy: runEffect,
         githubWebhookSecret: settings.githubWebhookSecret,
       }),
       port,

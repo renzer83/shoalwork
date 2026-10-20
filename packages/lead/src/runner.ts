@@ -14,13 +14,14 @@ import { makeConsume } from "./consume.js"
 import type { ContextConfig } from "./context/config.js"
 import type { BriefingMemory } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
+import { waitedSince } from "./inline-wait.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
 import type { PodNotesShape } from "./pod-notes.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
-import { executorTaskFor, type McpServerConfig, makeRunSetup } from "./run-setup.js"
+import { executorTaskFor, type McpServerConfig, makeRunSetup, withBridgeMode } from "./run-setup.js"
 import { crashResult } from "./runner-crash.js"
 import { makeDeliverFor } from "./step-delivery.js"
 import { raceWithStop } from "./stoppable.js"
@@ -167,7 +168,13 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             cwd: ctx.cwd,
           })
-          const delivered = yield* setup.inject(ctx, { spec, bot, task, executor: executor.id, carry })
+          const delivered = yield* setup.inject(ctx, {
+            spec,
+            bot,
+            task: withBridgeMode(task, context),
+            executor: executor.id,
+            carry,
+          })
           yield* consume(
             spec,
             bot,
@@ -186,7 +193,8 @@ export const makeRunner = (deps: RunnerDeps) => {
         use,
       )
       // A stop interrupts the run: its finalizers (Tank processes, worktree release) finish before this resolves.
-      return yield* raceWithStop(run, handle, budgetLeftMs, progress, watch.breached)
+      const waited = waitedSince(sql, spec.id)
+      return yield* raceWithStop(run, handle, budgetLeftMs, progress, watch.breached, waited)
     })
 
   // One run of the task, with what its verdict and the retry decision need. Never fails.
@@ -200,6 +208,8 @@ export const makeRunner = (deps: RunnerDeps) => {
       const progress = yield* Ref.make<Progress>({ ...INITIAL, usage: carry?.usage ?? ZERO_USAGE })
       const started = yield* Clock.currentTimeMillis
       const exit = yield* Effect.exit(execute(spec, progress, carry, budgetLeftMs, handle))
+      // Whoever waited on an inline approval of this run is gone now.
+      yield* approval.endInline(spec)
       let worktree: RoundResult["worktree"]
       if (Exit.isSuccess(exit)) {
         worktree = Option.getOrUndefined(exit.value)?.worktree
@@ -234,10 +244,13 @@ export const makeRunner = (deps: RunnerDeps) => {
       }
       const budgetMs = spec.budget.seconds * 1000
       const roundStart = yield* Clock.currentTimeMillis
+      // Time spent waiting for a person (inline approvals) does not use up the task's time budget.
+      const waited = waitedSince(sql, spec.id)
       const noted = deps.notes === undefined ? carry : yield* deps.notes.attach(spec.id, carry)
-      const round = yield* runRound(spec, noted, budgetMs - (roundStart - started), handle)
+      const roundBudget = budgetMs - (roundStart - started) + (yield* waited(started))
+      const round = yield* runRound(spec, noted, roundBudget, handle)
       const now = yield* Clock.currentTimeMillis
-      const budgetLeftMs = budgetMs - (now - started)
+      const budgetLeftMs = budgetMs - (now - started) + (yield* waited(started))
       const verdict = verdictFor(round.progress, Math.round((now - started) / 1000))
       const decision = decideRetry(round, carry, budgetLeftMs, config.minRetryBudgetMs)
       if (decision._tag === "Retry") {

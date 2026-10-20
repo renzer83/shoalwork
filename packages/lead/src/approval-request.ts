@@ -12,13 +12,14 @@ import type { ApprovalRecord, ApprovalsShape } from "@shoalwork/policy"
 import type { TankShape } from "@shoalwork/tank"
 import { Cause, Effect, Option, Schema, Stream } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
+import { resumeIfIdle } from "./inline-wait.js"
 import type { Lifecycle } from "./lifecycle.js"
 import { reusableWorktree } from "./resume.js"
 import { type ApprovalResume, type Carry, resumeCarry } from "./retry.js"
 import type { TaskRecord } from "./tasks.js"
 import { describeFailure, isSettled, stepIdFor } from "./verdict.js"
 
-export type ApprovalGate = Pick<ApprovalsShape, "request" | "latestForTask" | "consume">
+export type ApprovalGate = Pick<ApprovalsShape, "request" | "latestForTask" | "consume" | "expireInline">
 
 export interface ApprovalRunnerDeps {
   readonly approvals: ApprovalGate | undefined
@@ -26,7 +27,7 @@ export interface ApprovalRunnerDeps {
   readonly beacon: BeaconShape
   readonly tank: TankShape
   readonly bots: BotRegistryShape
-  readonly lifecycle: Pick<Lifecycle, "raiseError" | "transition" | "finish" | "record">
+  readonly lifecycle: Pick<Lifecycle, "raiseError" | "transition" | "finish" | "record" | "taskEvent">
 }
 
 type Decided = ApprovalRecord & { readonly status: Exclude<Approval["status"], "pending" | "expired"> }
@@ -158,9 +159,29 @@ export const makeApprovalRunner = (deps: ApprovalRunnerDeps) => {
       })
     })
 
+  // The run is over, however it ended (done, failed, budget, stop, crash, retry): whoever waited on an inline request
+  // is gone, so the requests end as expired and the task is running again before anything else is decided about it.
+  const endInline = (spec: TaskRecord["spec"]) =>
+    approvals === undefined
+      ? Effect.void
+      : approvals.expireInline(spec.id, "system:run-ended").pipe(
+          Effect.andThen(resumeIfIdle(sql, lifecycle, spec.id, "run ended during an inline approval")),
+          Effect.asVoid,
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.interrupt
+              : lifecycle.raiseError(
+                  spec,
+                  "lead.approval",
+                  describeFailure(Cause.squash(cause)).tag,
+                  "could not end the inline approval",
+                ),
+          ),
+        )
+
   // A waiting task is settled (a job for it has nothing to run) unless its approval was decided and not used.
   const settledFor = (approved: Carry | undefined) => (state: TaskRecord["state"]) =>
     isSettled(state) && !(approved !== undefined && state === "waiting_approval")
 
-  return { record, start, carryFor, settledFor }
+  return { record, start, carryFor, settledFor, endInline }
 }
