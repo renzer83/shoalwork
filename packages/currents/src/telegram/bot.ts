@@ -3,13 +3,13 @@ import { autoRetry } from "@grammyjs/auto-retry"
 import { sequentialize } from "@grammyjs/runner"
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry, type BotRegistryShape } from "@shoalwork/bots"
-import { type BotId, streamIds } from "@shoalwork/contracts"
+import { type BotId, type PodId, streamIds } from "@shoalwork/contracts"
 import { Cause, Effect, type Context as EffectContext } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Bot as GrammyBot, type Context as GrammyContext } from "grammy"
 import type { UserFromGetMe } from "grammy/types"
 import { describeError, tagOf } from "./errors.js"
-import { findBotByTopic } from "./topics.js"
+import { findBotByTopic, findOpenPodByThread } from "./topics.js"
 
 // Name of the Bot that answers everything without a topic (DMs, General). Fixed by the bots/ definitions.
 const LEAD_NAME = "lead"
@@ -31,8 +31,15 @@ export const createTelegramBot = (token: string, options: BotOptions = {}): Gram
   return bot
 }
 
+// Where a human message in a Pod's topic goes (pods.ts onHumanMessage, bound by the composition root). The Pod decides.
+export interface PodInboundPort {
+  readonly onHumanMessage: (podId: PodId, text: string) => Effect.Effect<unknown, unknown>
+}
+
 export interface InboundOptions {
   readonly allowedUserIds: ReadonlySet<number>
+  // Absent: messages of a Pod's topic take the same path as the others (the lead).
+  readonly pods?: PodInboundPort
   // The only group accepted besides DMs. Messages from any other chat are ignored.
   readonly forumChatId: string
   // Services the inbound handler reads (Beacon, BotRegistry, SqlClient), captured by the caller's Layer.
@@ -79,12 +86,22 @@ export const reportBotError = (error: unknown) =>
     yield* reportFailure("telegram.handler")(error)
   })
 
-// Topic messages go to the Bot that owns the topic; anything else goes to the lead.
-export const recordInbound = (message: InboundMessage) =>
+// Topic messages go to the Bot that owns the topic; anything else goes to the lead. A message in an open Pod's
+// topic goes to the Pod and is not an inbound message of the lead: the lead would answer it as a conversation.
+export const recordInbound = (message: InboundMessage, pods?: PodInboundPort) =>
   Effect.gen(function* () {
     const beacon = yield* Beacon
     const sql = yield* SqlClient
     const registry = yield* BotRegistry
+    if (pods !== undefined && message.threadId !== undefined) {
+      const podId = yield* findOpenPodByThread(sql, message.threadId)
+      if (podId !== undefined) {
+        yield* pods
+          .onHumanMessage(podId, message.text)
+          .pipe(Effect.catchCause((cause) => reportFailure("telegram.pod")(Cause.squash(cause))))
+        return
+      }
+    }
     const topicBot =
       message.threadId === undefined
         ? undefined
@@ -136,12 +153,15 @@ export const installInbound = (bot: GrammyBot, options: InboundOptions): void =>
       return Promise.resolve()
     }
     return Effect.runPromiseWith(options.context)(
-      recordInbound({
-        chatId: String(chatId),
-        threadId: ctx.message.message_thread_id,
-        userId: String(userId),
-        text: ctx.message.text,
-      }),
+      recordInbound(
+        {
+          chatId: String(chatId),
+          threadId: ctx.message.message_thread_id,
+          userId: String(userId),
+          text: ctx.message.text,
+        },
+        options.pods,
+      ),
     )
   })
   // Errors thrown by any middleware land here (grammY routes them here on the runner path).

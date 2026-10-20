@@ -55,6 +55,8 @@ interface TaskNarration {
   lastSentMs: number | undefined
   // Whether the task was asked on Telegram (full narration) or came from elsewhere (start and end only).
   fromTelegram: boolean | undefined
+  // Whether the task is a step of a plan (its lines go to the Pod's topic, pods.ts, never to the Bot's topic).
+  podStep: boolean | undefined
 }
 
 // Summaries being shortened at the same time; the others wait without holding up the event loop.
@@ -73,13 +75,36 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
       if (known !== undefined) {
         return known
       }
-      const created: TaskNarration = { runs: 0, lastSentMs: undefined, fromTelegram: undefined }
+      const created: TaskNarration = {
+        runs: 0,
+        lastSentMs: undefined,
+        fromTelegram: undefined,
+        podStep: undefined,
+      }
       states.set(taskId, created)
       return created
     }
 
+    const inPod = (taskId: TaskId) =>
+      Effect.gen(function* () {
+        const state = stateOf(taskId)
+        if (state.podStep === undefined) {
+          const found = yield* deps.tasks.get(taskId).pipe(Effect.option)
+          if (Option.isNone(found)) {
+            return false
+          }
+          const parent = found.value.spec.parent
+          state.podStep = parent !== undefined && "planId" in parent
+        }
+        return state.podStep
+      })
+
     const say = (taskId: TaskId, botId: BotId, text: string, urgent: boolean) =>
       Effect.gen(function* () {
+        // A plan's step is narrated once, in its Pod's topic: the Bot's topic gets nothing for it.
+        if (yield* inPod(taskId)) {
+          return
+        }
         const state = stateOf(taskId)
         const now = yield* Clock.currentTimeMillis
         if (!mayNarrate(now, state.lastSentMs, urgent)) {

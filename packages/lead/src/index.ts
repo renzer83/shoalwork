@@ -200,6 +200,7 @@ export {
 } from "./plan/planner.js"
 export { buildPlanPrompt } from "./plan/prompt.js"
 export { PlanDraft, planJsonSchema } from "./plan/schema-json.js"
+export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
 export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

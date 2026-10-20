@@ -1,4 +1,4 @@
-import { type Bot, BotId } from "@shoalwork/contracts"
+import { type Bot, BotId, PodId } from "@shoalwork/contracts"
 import { nowIso } from "@shoalwork/db"
 import { Effect, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
@@ -50,6 +50,9 @@ const decodeTopicRows = (rows: ReadonlyArray<unknown>) =>
   Schema.decodeUnknownEffect(TopicRows)(rows).pipe(Effect.orDie)
 const decodeBotIdRows = (rows: ReadonlyArray<unknown>) =>
   Schema.decodeUnknownEffect(BotIdRows)(rows).pipe(Effect.orDie)
+const PodIdRows = Schema.Array(Schema.Struct({ id: PodId }))
+const decodePodIdRows = (rows: ReadonlyArray<unknown>) =>
+  Schema.decodeUnknownEffect(PodIdRows)(rows).pipe(Effect.orDie)
 
 const readRow = (sql: SqlClient, botId: BotId) =>
   Effect.gen(function* () {
@@ -123,6 +126,17 @@ export const findBotByTopic = (
     const [row] = yield* decodeBotIdRows(rows)
     return row?.bot_id
   }).pipe(Effect.mapError(telegramError("topic.lookup")))
+
+// Inbound side: the open Pod whose topic is this thread (pods.thread_id). undefined when no open Pod uses it.
+export const findOpenPodByThread = (
+  sql: SqlClient,
+  threadId: number,
+): Effect.Effect<PodId | undefined, TelegramError> =>
+  Effect.gen(function* () {
+    const rows = yield* sql`SELECT id FROM pods WHERE thread_id = ${threadId} AND state = 'open'`
+    const [row] = yield* decodePodIdRows(rows)
+    return row?.id
+  }).pipe(Effect.mapError(telegramError("pod.lookup")))
 
 // Pod topics (T-049): one forum topic per plan, named after the first 6 characters of the task's id.
 // The Pod keeps the thread id itself (pods.thread_id), so nothing about Pods is cached in telegram_topics.

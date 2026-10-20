@@ -3,11 +3,12 @@ import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { Duration, Effect, Layer, Redacted } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import { createTelegramBot, installInbound, reportFailure } from "./bot.js"
+import { createTelegramBot, installInbound, type PodInboundPort, reportFailure } from "./bot.js"
 import { installCallbacks } from "./callbacks.js"
 import { type TelegramError, telegramError } from "./errors.js"
 import { makeTelegramOut, TelegramOut } from "./out.js"
 
+export type { PodInboundPort } from "./bot.js"
 export {
   botProposalButtons,
   memoryButtons,
@@ -19,6 +20,7 @@ export { TelegramError } from "./errors.js"
 export { escapeHtml } from "./format.js"
 export { type SendFlags, TelegramOut, type TelegramOutShape } from "./out.js"
 export type { MessageRef, TopicRef } from "./topics.js"
+export { createPodTopic, podTopicName, postToTopic } from "./topics.js"
 
 export interface TelegramConfig {
   readonly token: Redacted.Redacted<string>
@@ -26,6 +28,8 @@ export interface TelegramConfig {
   readonly forumChatId: string
   // Bot API root for a self-hosted server or a local fake in tests. Default: api.telegram.org.
   readonly apiRoot?: string
+  // Human messages in open Pods' topics (pods.ts). Absent: they are handled like any other topic message.
+  readonly pods?: PodInboundPort
 }
 
 // Menu texts shown to Renan, in Portuguese. /status, /help and /start are answered by the conversation (T-024); the rest by T-028.
@@ -73,6 +77,7 @@ export const TelegramLive = (
         allowedUserIds: new Set(config.allowedUserIds),
         forumChatId: config.forumChatId,
         context,
+        ...(config.pods === undefined ? {} : { pods: config.pods }),
       }
       installInbound(bot, inbound)
       installCallbacks(bot, inbound)

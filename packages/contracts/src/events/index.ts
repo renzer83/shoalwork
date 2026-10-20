@@ -31,6 +31,7 @@ import {
   ErrorRaisedPayload,
   WatchdogRecoveredPayload,
 } from "./ops.js"
+import { PodClosedPayload, PodOpenedPayload } from "./pod.js"
 import { TaskPlannedPayload, TaskReceivedPayload, TaskStateChangedPayload } from "./task.js"
 import { TideFiredPayload, TideSkippedPayload } from "./tide.js"
 
@@ -70,6 +71,8 @@ export const EventType = Schema.Literals([
   "github.workflow_run",
   "github.check_suite",
   "github.push",
+  "pod.opened",
+  "pod.closed",
 ])
 export type EventType = typeof EventType.Type
 
@@ -109,6 +112,8 @@ export const EventPayloads = {
   "github.workflow_run": GithubWorkflowRunPayload,
   "github.check_suite": GithubCheckSuitePayload,
   "github.push": GithubPushPayload,
+  "pod.opened": PodOpenedPayload,
+  "pod.closed": PodClosedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

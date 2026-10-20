@@ -14,6 +14,7 @@ const PLAN = "plan_1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e"
 const STEP = "step_2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f"
 const EVT = "evt_4a5b6c7d-8e9f-4a0b-8c1d-2e3f4a5b6c7d"
 const APR = "apr_5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e"
+const POD = "pod_7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f0a"
 const TIDE = "tide_6c7d8e9f-0a1b-4c2d-9e3f-4a5b6c7d8e9f"
 const ISO = "2026-10-19T12:00:00.000Z"
 const BUDGET = { tokens: 50000, seconds: 900, usd: 0.5 }
@@ -56,6 +57,8 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "github.workflow_run",
   "github.check_suite",
   "github.push",
+  "pod.opened",
+  "pod.closed",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -109,6 +112,12 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     used: { tokens: 60000, seconds: 100, usd: 0.4 },
   },
   "error.raised": { where: "tank.exec", tag: "TankError", message: "exit 1", taskId: TASK },
+  "pod.opened": { podId: POD, taskId: TASK, threadId: 101, botIds: [BOT] },
+  "pod.closed": {
+    podId: POD,
+    taskId: TASK,
+    summary: "2 passo(s) auxiliar(es): 2 concluído(s), 0 falhou(aram).",
+  },
   "memory.added": { id: "mem_1", scope: "bot", ownerId: BOT, kind: "semantic", source: "chat" },
   "memory.superseded": { id: "mem_1", supersededBy: "mem_2", scope: "bot", ownerId: BOT },
   "memory.forgotten": { id: "mem_1", scope: "global", ownerId: "global" },
@@ -211,6 +220,8 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "github.workflow_run": "deliveryId",
   "github.check_suite": "repo",
   "github.push": "ref",
+  "pod.opened": "podId",
+  "pod.closed": "summary",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -231,8 +242,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 34 types", () => {
-    expect(EVENT_TYPES).toHaveLength(34)
+  it("EventType is exactly the 36 types", () => {
+    expect(EVENT_TYPES).toHaveLength(36)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

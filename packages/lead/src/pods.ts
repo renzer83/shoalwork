@@ -18,7 +18,13 @@ import { nowIso } from "@shoalwork/db"
 import { Effect, Option, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
-import { type AuxiliaryDeps, type AuxiliaryFailed, archiveAuxiliary, createAuxiliary } from "./auxiliary.js"
+import {
+  type AuxiliaryDeps,
+  type AuxiliaryFailed,
+  archiveAuxiliary,
+  createAuxiliary,
+  withOwners,
+} from "./auxiliary.js"
 import { podClosedPhrase, podHeaderPhrase, safeLine } from "./narrator.js"
 import { isTerminal } from "./outcomes.js"
 import {
@@ -143,8 +149,20 @@ export const makePods = (deps: PodsDeps) => {
         }
         const botIds = [...new Set(assignments.values())]
         const podId = newPodId()
-        yield* sql`INSERT INTO pods (id, task_id, bot_ids, thread_id, state, created_at)
-          VALUES (${podId}, ${plan.taskId}, ${JSON.stringify(botIds)}, ${threadId}, 'open', ${nowIso()})`
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`UPDATE plans SET plan = ${JSON.stringify(withOwners(plan, assignments))} WHERE id = ${plan.id}`
+            yield* sql`INSERT INTO pods (id, task_id, bot_ids, thread_id, state, created_at)
+              VALUES (${podId}, ${plan.taskId}, ${JSON.stringify(botIds)}, ${threadId}, 'open', ${nowIso()})`
+            yield* emit(beacon, {
+              streamId: streamIds.task(plan.taskId),
+              type: "pod.opened",
+              payload: { podId, taskId: plan.taskId, threadId, botIds },
+              actor: "lead:pods",
+              correlationId: randomUUID(),
+            })
+          }),
+        )
         return { id: podId, taskId: plan.taskId, botIds, threadId, state: "open" as const }
       })
       const pod = yield* build.pipe(
@@ -258,7 +276,18 @@ export const makePods = (deps: PodsDeps) => {
       for (const botId of auxiliaries) {
         yield* archiveAuxiliary(bots, botId, pod.taskId)
       }
-      yield* sql`UPDATE pods SET state = 'closed', closed_at = ${nowIso()} WHERE id = ${podId}`
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`UPDATE pods SET state = 'closed', closed_at = ${nowIso()} WHERE id = ${podId}`
+          yield* emit(beacon, {
+            streamId: streamIds.task(pod.taskId),
+            type: "pod.closed",
+            payload: { podId, taskId: pod.taskId, summary },
+            actor: "lead:pods",
+            correlationId: randomUUID(),
+          })
+        }),
+      )
       yield* post(pod, podClosedPhrase(summary))
     })
 

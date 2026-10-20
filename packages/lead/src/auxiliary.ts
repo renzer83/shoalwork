@@ -1,5 +1,5 @@
 import type { BotRegistryShape } from "@shoalwork/bots"
-import type { Bot, BotId, NewBot, Step, TaskId } from "@shoalwork/contracts"
+import type { Bot, BotId, NewBot, Plan, Step, StepId, TaskId } from "@shoalwork/contracts"
 import { Data, Effect } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import type { ChatFailure } from "./chat.js"
@@ -81,6 +81,24 @@ export const auxiliaryDef = (input: AuxiliaryInput, instructions: string): NewBo
   memory: { scope: "pod" },
 })
 
+// The first place at or after `index` whose name no archived Bot holds: an archived Bot cannot be scheduled, so its
+// name is not reused (the upsert by name would hand it back).
+export const freeAuxiliaryIndex = (
+  bots: BotRegistryShape,
+  taskId: TaskId,
+  index: number,
+): Effect.Effect<number, SqlError> =>
+  Effect.gen(function* () {
+    const archived = new Set(
+      (yield* bots.list()).filter((bot) => bot.state === "archived").map((bot) => bot.name),
+    )
+    let next = index
+    while (archived.has(auxiliaryName(taskId, next))) {
+      next += 1
+    }
+    return next
+  })
+
 // Creates the auxiliary Bot for one step (upsert by name; no source_path, so no yaml on disk).
 export const createAuxiliary = (
   deps: AuxiliaryDeps,
@@ -88,8 +106,9 @@ export const createAuxiliary = (
 ): Effect.Effect<Bot, AuxiliaryFailed | SqlError> =>
   Effect.gen(function* () {
     const instructions = yield* instructionsFor(deps, input.lead, input.step)
+    const index = yield* freeAuxiliaryIndex(deps.bots, input.taskId, input.index)
     return yield* deps.bots
-      .upsert(auxiliaryDef(input, instructions), "lead:pods")
+      .upsert(auxiliaryDef({ ...input, index }, instructions), "lead:pods")
       .pipe(Effect.catchTag("Conflict", (conflict) => Effect.die(conflict)))
   })
 
@@ -99,3 +118,12 @@ export const archiveAuxiliary = (
   botId: BotId,
   taskId: TaskId,
 ): Effect.Effect<void, SqlError> => bots.setState(botId, "archived", taskId)
+
+// The plan as stored after opening: each step carries the Bot that runs it (assignedBot), owners included.
+export const withOwners = (plan: Plan, assignments: ReadonlyMap<StepId, BotId>): Plan => ({
+  ...plan,
+  steps: plan.steps.map((step) => {
+    const owner = assignments.get(step.id)
+    return owner === undefined ? step : { ...step, assignedBot: owner }
+  }),
+})
