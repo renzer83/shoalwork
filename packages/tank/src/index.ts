@@ -21,6 +21,15 @@ export {
   worktreeRemove,
 } from "./git.js"
 export {
+  changedFiles,
+  fetchRebase,
+  type GitExec,
+  type GitIdentity,
+  type GitOutcome,
+  type IntegrateResult,
+  mergeNoFf,
+} from "./git-integrate.js"
+export {
   type BaseEnv,
   buildBotEnv,
   makeBotTank,

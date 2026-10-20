@@ -216,15 +216,18 @@ export const makeBotTank = (
     removeWorktree,
     exec: (ctx, cmd, opts) =>
       opsOf(ctx.botName).pipe(
-        Effect.flatMap((ops) =>
-          ops.run(cmd, {
+        Effect.flatMap((ops) => {
+          const run = ops.run(cmd, {
             cwd: ctx.cwd,
             env: ctx.env,
             passEnv: ctx.stepEnv ?? {},
             ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
             ...(opts?.stdin === undefined ? {} : { stdin: opts.stdin }),
-          }),
-        ),
+          })
+          return opts?.lockRepo === true && ctx.worktree !== undefined
+            ? lockFor(ctx.worktree.repoDir).withPermits(1)(run)
+            : run
+        }),
       ),
     spawnStream: (ctx, cmd) =>
       opsOf(ctx.botName).pipe(

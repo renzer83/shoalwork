@@ -13,6 +13,7 @@ const STEP_TIMEOUT_MS = 300_000
 export class DeliveryFailed extends Data.TaggedError("DeliveryFailed")<{
   readonly step: DeliveryStep
   readonly message: string
+  readonly files?: ReadonlyArray<string>
 }> {}
 
 export interface DeliveryInput {
@@ -36,7 +37,7 @@ const redact = (text: string): string => text.replace(/:\/\/[^@/\s]+@/g, "://***
 
 const firstLine = (text: string): string => clip(redact(text.trim().split("\n")[0] ?? ""), EVIDENCE_MAX)
 
-const exitMessage = (argv: ReadonlyArray<string>, result: ExecResult): string => {
+export const exitMessage = (argv: ReadonlyArray<string>, result: ExecResult): string => {
   // Identity options (-c key=value) are not part of the program name in the message.
   const program = argv
     .filter((arg) => arg !== "-c" && !arg.startsWith("user."))
@@ -49,7 +50,7 @@ const exitMessage = (argv: ReadonlyArray<string>, result: ExecResult): string =>
     : `${program} exited ${result.exitCode}: ${detail}`
 }
 
-const execStep = (
+export const execStep = (
   tank: TankShape,
   ctx: TankContext,
   step: DeliveryStep,
@@ -59,7 +60,7 @@ const execStep = (
     .exec(ctx, argv, { timeoutMs: STEP_TIMEOUT_MS })
     .pipe(Effect.mapError((error) => new DeliveryFailed({ step, message: describeFailure(error).message })))
 
-const mustSucceed = (
+export const mustSucceed = (
   tank: TankShape,
   ctx: TankContext,
   step: DeliveryStep,

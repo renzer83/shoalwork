@@ -11,6 +11,8 @@ import { blockedVerdict, describeFailure, INITIAL } from "./verdict.js"
 
 export const RESTART_REASON = "process restarted"
 export const RESUME_REASON = "process restarted, resuming"
+// A task caught in `planning` by a restart: planning calls a model and holds no job, so it is not continued.
+export const PLANNING_RESTART_REASON = "process restarted during planning"
 
 // The task's open jobs are closed for good, without a retry: attempts = max_attempts.
 export const closeJobsOf = (sql: SqlClient, taskId: TaskId, error: string) =>
@@ -41,7 +43,9 @@ export interface RecoveryDeps {
   readonly lifecycle: Lifecycle
 }
 
-// Boot step. A task still `running` in the database belonged to a process that died. Its leftover Tank processes
+// Boot step. A task still `planning` is closed as failed (blocked verdict): the plan, if the model had answered, was
+// never stored, so nothing is lost and the task can be submitted again.
+// A task still `running` in the database belonged to a process that died. Its leftover Tank processes
 // are killed; then, while its job has attempts left, the job goes back to the queue and the task stays running
 // (the runner continues it); otherwise it fails. The job's attempts are kept, so a task that keeps killing the
 // process runs out of attempts. One task's trouble never stops the others.
@@ -53,11 +57,28 @@ export const makeRecovery =
       const ids = (yield* Schema.decodeUnknownEffect(Schema.Array(IdRow))(rows).pipe(Effect.orDie)).map(
         (row) => row.id,
       )
+      const planningRows = yield* sql`SELECT id FROM tasks WHERE state = 'planning'`.pipe(Effect.orDie)
+      const planningIds = (yield* Schema.decodeUnknownEffect(Schema.Array(IdRow))(planningRows).pipe(
+        Effect.orDie,
+      )).map((row) => row.id)
       const resumed: Array<TaskId> = []
       const failed: Array<TaskId> = []
 
-      const recover = (id: TaskId) =>
+      const failPlanning = (id: TaskId) =>
         Effect.gen(function* () {
+          const { spec } = yield* tasks.get(id)
+          const verdict = blockedVerdict(PLANNING_RESTART_REASON, PLANNING_RESTART_REASON)
+          yield* lifecycle.transition(spec, "failed", { verdict }, PLANNING_RESTART_REASON)
+          yield* lifecycle.recordOutcomes(spec, "failed")
+          yield* closeJobsOf(sql, id, PLANNING_RESTART_REASON)
+          failed.push(id)
+        })
+
+      const recover = (id: TaskId, planning = false) =>
+        Effect.gen(function* () {
+          if (planning) {
+            return yield* failPlanning(id)
+          }
           const { spec } = yield* tasks.get(id)
           yield* killOrphanGroups(sql, id)
           const jobs = yield* sql`SELECT id, state, attempts, max_attempts FROM jobs
@@ -107,6 +128,7 @@ export const makeRecovery =
           Effect.annotateLogs({ taskId: id }),
         )
 
-      yield* Effect.forEach(ids, recover, { discard: true })
+      yield* Effect.forEach(ids, (id) => recover(id), { discard: true })
+      yield* Effect.forEach(planningIds, (id) => recover(id, true), { discard: true })
       return { resumed, failed }
     })

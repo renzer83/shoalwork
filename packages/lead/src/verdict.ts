@@ -18,6 +18,8 @@ import {
 } from "@shoalwork/contracts"
 import { Schema } from "effect"
 
+// One evidence entry per file of a delivery conflict.
+export const CONFLICT_FILE_PREFIX = "conflict file: "
 export const REAPED_EVIDENCE = "reaped: max attempts"
 export const ACTOR = "system:lead"
 export const SUMMARY_MAX = 2000
@@ -43,7 +45,8 @@ export const buildPrompt = (spec: Pick<TaskSpec, "prompt" | "acceptance">): stri
     : `${spec.prompt}\n\nAcceptance:\n${spec.acceptance.map((line) => `- ${line}`).join("\n")}`
 
 // Git/gh steps the Lead runs after an ok run of a code task (git-delivery.ts).
-export type DeliveryStep = "commit" | "push" | "pr"
+// "conflict": the step branch no longer rebases onto its base (plan steps, step-delivery.ts).
+export type DeliveryStep = "commit" | "push" | "pr" | "conflict"
 
 // What the executor stream (or the machinery around it) ended with.
 export type Outcome =
@@ -63,7 +66,13 @@ export type Outcome =
     }
   // A person (or the watchdog) stopped the task: `by` says who.
   | { readonly _tag: "Stopped"; readonly by: string }
-  | { readonly _tag: "Delivery"; readonly step: DeliveryStep; readonly message: string }
+  | {
+      readonly _tag: "Delivery"
+      readonly step: DeliveryStep
+      readonly message: string
+      // Files a conflict names, already sanitized (step-delivery.ts); they travel as verdict evidence.
+      readonly files?: ReadonlyArray<string>
+    }
   // No executor serves the task's tier (override, table and alternatives all unavailable).
   | { readonly _tag: "NoExecutor"; readonly tier: ModelTier }
 
@@ -124,7 +133,10 @@ export const verdictFor = (progress: Progress, seconds: number): Verdict => {
       return {
         kind: "failed",
         summary: clip(`delivery failed at ${outcome.step}: ${outcome.message}`, SUMMARY_MAX),
-        evidence: [`delivery: ${outcome.step}`],
+        evidence: [
+          `delivery: ${outcome.step}`,
+          ...(outcome.files ?? []).map((file) => clip(`${CONFLICT_FILE_PREFIX}${file}`, EVIDENCE_MAX)),
+        ],
         ...base,
       }
     case "ExecutorError": {
@@ -230,5 +242,9 @@ export const stoppedVerdict = (by: string): Verdict => ({
   evidence: [`stopped by ${by}`],
   cost: { tokensIn: 0, tokensOut: 0, usd: 0, seconds: 0 },
 })
+
+// The verdict of a task a stop ended before or during its run (stoppedVerdict).
+export const isStoppedVerdict = (verdict: Verdict): boolean =>
+  verdict.kind === "blocked" && verdict.evidence.some((line) => line.startsWith("stopped by "))
 
 export const isNotFound = (u: unknown): boolean => isTagged(u) && u._tag === "NotFound"

@@ -20,7 +20,13 @@ export type ExecResult = {
   readonly timedOut: boolean
 }
 
-export type ExecOptions = { readonly timeoutMs?: number; readonly stdin?: string }
+export type ExecOptions = {
+  readonly timeoutMs?: number
+  readonly stdin?: string
+  // Run under the lock of the Bot's clone that owns ctx.worktree (the one prepare/release/worktree-add take), so a
+  // fetch or rebase never races with them. Ignored for a context without a worktree.
+  readonly lockRepo?: boolean
+}
 
 export type RunningProcess = {
   readonly pid: number

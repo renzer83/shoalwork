@@ -13,13 +13,13 @@ import { makeConsume } from "./consume.js"
 import type { ContextConfig } from "./context/config.js"
 import type { BriefingMemory } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
-import { makeDeliver } from "./deliver.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
 import { executorTaskFor, type McpServerConfig, makeRunSetup } from "./run-setup.js"
+import { makeDeliverFor } from "./step-delivery.js"
 import { raceWithStop } from "./stoppable.js"
 import type { TaskStoreShape } from "./tasks.js"
 import {
@@ -102,7 +102,7 @@ export const makeRunner = (deps: RunnerDeps) => {
     bots,
   })
   const consume = makeConsume({ taskEvent, raiseError, tank, tasks })
-  const deliver = makeDeliver({ tank, gh: deps.gh, raiseError })
+  const deliver = makeDeliverFor({ tank, gh: deps.gh, raiseError })
   const setup = makeRunSetup({
     sql,
     bots,

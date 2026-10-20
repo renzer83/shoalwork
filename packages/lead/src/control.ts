@@ -59,7 +59,7 @@ export interface ControlShape {
   readonly pause: (target: ScopeTarget, by: string) => Effect.Effect<void, NotFound | SqlError>
   readonly resume: (target: ScopeTarget, by: string) => Effect.Effect<void, NotFound | SqlError>
   readonly status: () => Effect.Effect<ControlStatus, SqlError>
-  // Boot step: tasks still `running` in the database belong to a process that no longer exists (control-recovery.ts).
+  // Boot step: tasks still `running` or `planning` in the database belong to a process that no longer exists (control-recovery.ts).
   readonly recoverOrphans: () => Effect.Effect<RecoveryReport>
   // Registers a run of a task while the scope lives; the runner reads its stop signal from the handle.
   readonly track: (taskId: TaskId, botId: BotId) => Effect.Effect<RunHandle, never, Scope.Scope>

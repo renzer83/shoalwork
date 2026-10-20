@@ -67,6 +67,13 @@ describe("setting: unset and blank take the default", () => {
     expect(config.budgetBotWindowHours).toBe(24)
   })
 
+  it("PLAN_CONCURRENCY defaults to 3 when unset or blank, is parsed otherwise and never drops below 1", () => {
+    expect(parseEnv({}).planConcurrency).toBe(3)
+    expect(parseEnv({ PLAN_CONCURRENCY: " " }).planConcurrency).toBe(3)
+    expect(parseEnv({ PLAN_CONCURRENCY: "5" }).planConcurrency).toBe(5)
+    expect(parseEnv({ PLAN_CONCURRENCY: "0" }).planConcurrency).toBe(1)
+  })
+
   it("a non-blank Int is parsed", () => {
     expect(parseEnv({ PORT: "3000" }).port).toBe(3000)
   })

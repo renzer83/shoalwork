@@ -90,6 +90,8 @@ export const AppConfig = Config.all({
   watchdogMaxProcessMinutes: setting("WATCHDOG_MAX_PROCESS_MINUTES", Config.Int, 45),
   // Budget (T-029): a Bot's usage counts against its budget over this rolling window of hours.
   budgetBotWindowHours: setting("BUDGET_BOT_WINDOW_HOURS", Config.Int, 24),
+  // Plan dispatch (T-050): how many steps of one plan level run at once (default 3; blank takes the default).
+  planConcurrency: setting("PLAN_CONCURRENCY", Config.Int, 3).pipe(Config.map((value) => Math.max(1, value))),
   // Telegram (T-024): the connector starts only when a token is set. A blank value counts as unset (.env.example).
   telegramBotToken: optionalSetting("TELEGRAM_BOT_TOKEN", Config.Redacted),
   telegramAllowedUserIds: setting("TELEGRAM_ALLOWED_USER_IDS", Config.String, ""),
