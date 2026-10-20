@@ -1,0 +1,1 @@
+{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":300,"num_turns":1,"errors":["Not logged in · Please run /login"],"session_id":"5b1f0c2e-7d7a-4c1e-9a52-0e3f2a6d8c11","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}

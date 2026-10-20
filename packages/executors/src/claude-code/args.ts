@@ -3,6 +3,12 @@ import type { Effort } from "../executor.js"
 
 export type TierMapping = { readonly model: string; readonly effort?: Effort }
 
+// "none": the CLI ignores the claude.ai connectors and plugins of the account (~145k cache tokens per turn otherwise).
+// "inherit": no MCP flags; reserved for T-042 (the Bot's own MCP servers).
+export type McpMode = "none" | "inherit"
+
+const NO_MCP_ARGS: ReadonlyArray<string> = ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']
+
 // Abstract permission level -> the CLI's --permission-mode value.
 const PERMISSION_FLAG: Record<PermissionMode, string> = {
   readonly: "plan",
@@ -16,6 +22,7 @@ const PERMISSION_FLAG: Record<PermissionMode, string> = {
 export const buildArgs = (
   task: ExecutorTask,
   mapTier: (tier: ModelTier) => TierMapping,
+  mcp: McpMode = "none",
 ): ReadonlyArray<string> => {
   const { model, effort } = mapTier(task.tier)
   return [
@@ -35,6 +42,7 @@ export const buildArgs = (
     ...(task.allowedTools.length > 0 ? ["--allowedTools", task.allowedTools.join(",")] : []),
     ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
     ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
+    ...(mcp === "none" ? NO_MCP_ARGS : []),
     "--",
     task.prompt,
   ]

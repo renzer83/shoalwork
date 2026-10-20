@@ -56,9 +56,29 @@ describe("buildArgs", () => {
       "sess-123",
       "--append-system-prompt",
       "Be brief.",
+      "--strict-mcp-config",
+      "--mcp-config",
+      '{"mcpServers":{}}',
       "--",
       "say hi",
     ])
+  })
+
+  it("passes the MCP off flags as one argv entry each, before --, by default", () => {
+    const args = buildArgs(baseTask(), mapTier)
+    const separator = args.indexOf("--")
+    expect(args.slice(separator - 3, separator)).toEqual([
+      "--strict-mcp-config",
+      "--mcp-config",
+      '{"mcpServers":{}}',
+    ])
+    expect(args.filter((arg) => arg === "--strict-mcp-config")).toHaveLength(1)
+  })
+
+  it("adds no MCP flags for mcp inherit, reserved for T-042", () => {
+    const args = buildArgs(baseTask(), mapTier, "inherit")
+    expect(args).not.toContain("--strict-mcp-config")
+    expect(args).not.toContain("--mcp-config")
   })
 
   it.each([

@@ -200,16 +200,39 @@ describe("toExecutorEvents", () => {
     }),
   )
 
-  it.effect("maps a success result flagged is_error to error{unknown} with its text as message", () =>
+  it.effect("maps an is_error result that says not logged in to error{auth}", () =>
     Effect.gen(function* () {
       const events = yield* mapLines(
         result({ subtype: "success", is_error: true, result: "Not logged in · Please run /login" }),
       )
-      expect(events.at(-1)).toEqual({
-        kind: "error",
-        code: "unknown",
-        message: "Not logged in · Please run /login",
-      })
+      expect(events.at(-1)).toEqual({ kind: "error", code: "auth", message: "claude CLI is not logged in" })
+    }),
+  )
+
+  it.effect("maps an is_error result whose error text names authentication to error{auth}", () =>
+    Effect.gen(function* () {
+      const events = yield* mapLines(
+        result({ subtype: "error_during_execution", is_error: true, errors: ["authentication_error: 401"] }),
+      )
+      expect(events.at(-1)).toMatchObject({ kind: "error", code: "auth" })
+    }),
+  )
+
+  it.effect("maps a success result that is not logged in (is_error false, CLI 2.1.304) to error{auth}", () =>
+    Effect.gen(function* () {
+      const events = yield* mapLines(
+        result({ subtype: "success", is_error: false, result: "Not logged in · Please run /login" }),
+      )
+      expect(events.at(-1)).toEqual({ kind: "error", code: "auth", message: "claude CLI is not logged in" })
+    }),
+  )
+
+  it.effect("keeps a successful answer that only mentions authentication as done", () =>
+    Effect.gen(function* () {
+      const events = yield* mapLines(
+        result({ subtype: "success", is_error: false, result: "Use OAuth authentication for the API." }),
+      )
+      expect(events.at(-1)).toMatchObject({ kind: "done", result: "Use OAuth authentication for the API." })
     }),
   )
 

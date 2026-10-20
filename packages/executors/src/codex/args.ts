@@ -45,9 +45,17 @@ export const buildRunArgs = (task: ExecutorTask, cwd: string, target: CodexTarge
   task.prompt,
 ]
 
-export const buildResumeArgs = (sessionId: SessionId, prompt: string): ReadonlyArray<string> => [
+// Resume refuses to run outside a git repo without --skip-git-repo-check (06-research §1). Without -m the resumed turn
+// takes the model of the Bot's config.toml, which a ChatGPT account may refuse, so the tier model is passed the same way as in buildRunArgs.
+export const buildResumeArgs = (
+  sessionId: SessionId,
+  prompt: string,
+  target: CodexTarget,
+): ReadonlyArray<string> => [
   "exec",
   "resume",
+  "--skip-git-repo-check",
+  ...(target.model === CODEX_DEFAULT_MODEL ? [] : ["-m", target.model]),
   sessionId,
   "--json",
   "--",

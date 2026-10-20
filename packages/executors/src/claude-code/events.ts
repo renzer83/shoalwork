@@ -171,11 +171,26 @@ const errorMessageOf = (fields: typeof ResultFields.Type): string =>
     (text) => text !== undefined && text !== "",
   ) ?? "unknown"
 
+// Missing login. CLI 2.1.304 reports it as a success result (is_error false) whose text starts with "Not logged in",
+// so that shape only matches at the start of the text; with is_error true any mention of it counts.
+const NOT_LOGGED_IN_TEXT = /^\s*not logged in\b/i
+const AUTH_ERROR_TEXT = /not logged in|authentication/i
+
+const isAuthFailure = (fields: typeof ResultFields.Type): boolean => {
+  const texts = [fields.result ?? "", ...(fields.errors ?? [])]
+  return fields.is_error === true
+    ? texts.some((text) => AUTH_ERROR_TEXT.test(text))
+    : texts.some((text) => NOT_LOGGED_IN_TEXT.test(text))
+}
+
 // `result` is always the last line: usage first, then the terminal event.
 const resultEvents = (line: ClaudeStreamLine, state: MapperState) =>
   decodeLine(ResultFields, line, state).pipe(
     Effect.map((fields): ReadonlyArray<ExecutorEvent> => {
       const usage: ExecutorEvent = { kind: "usage", usage: usageOf(fields) }
+      if (isAuthFailure(fields)) {
+        return [usage, { kind: "error", code: "auth", message: "claude CLI is not logged in" }]
+      }
       if (fields.subtype === "success" && fields.is_error !== true) {
         const sessionId = fields.session_id ?? state.sessionId
         const done: ExecutorEvent = {

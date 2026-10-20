@@ -24,11 +24,14 @@ const fixture = (name: string): ReadonlyArray<string> =>
 
 type SpawnCall = { readonly ctx: TankContext; readonly cmd: ReadonlyArray<string> }
 
-// A Tank whose spawnStream replays the given stdout lines. Records the spawn and the stdin closes.
+type FakeProcessOptions = { readonly stderr?: ReadonlyArray<string>; readonly exitCode?: number }
+
+// A Tank whose spawnStream replays the given stdout and stderr lines. Records the spawn and the stdin closes.
 const fakeTank = (
   stdout: ReadonlyArray<string>,
   calls: Array<SpawnCall>,
   closes: { count: number },
+  options: FakeProcessOptions = {},
 ): TankShape => ({
   mode: "local",
   prepare: () => Effect.die("tank not used by this test"),
@@ -38,8 +41,8 @@ const fakeTank = (
     const process: RunningProcess = {
       pid: 1,
       stdout: Stream.fromIterable(stdout),
-      stderr: Stream.empty,
-      exitCode: Effect.succeed(0),
+      stderr: Stream.fromIterable(options.stderr ?? []),
+      exitCode: Effect.succeed(options.exitCode ?? 0),
       writeStdin: () => Effect.void,
       closeStdin: () =>
         Effect.sync(() => {
@@ -84,6 +87,20 @@ const collect = (executor: ReturnType<typeof makeClaudeCode>, stdout: ReadonlyAr
     Effect.scoped,
     Effect.provideService(Tank, fakeTank(stdout, calls, closes)),
     Effect.map((events) => ({ events, calls, closes: closes.count })),
+  )
+}
+
+// Like collect, with stderr lines and an exit code on the fake process.
+const runWith = (
+  executor: ReturnType<typeof makeClaudeCode>,
+  stdout: ReadonlyArray<string>,
+  options: FakeProcessOptions,
+) => {
+  const calls: Array<SpawnCall> = []
+  return Stream.runCollect(executor.run(task, ctx)).pipe(
+    Effect.scoped,
+    Effect.provideService(Tank, fakeTank(stdout, calls, { count: 0 }, options)),
+    Effect.map((events) => ({ events, calls })),
   )
 }
 
@@ -164,13 +181,110 @@ describe("makeClaudeCode mapTier", () => {
   const executor = makeClaudeCode()
 
   it.each([
-    ["chat", { model: "haiku", effort: "low" }],
-    ["decision", { model: "haiku", effort: "low" }],
-    ["light", { model: "haiku", effort: "high" }],
-    ["heavy", { model: "opus", effort: "high" }],
-  ] as const)("maps tier %s to %j", (tier, expected) => {
+    ["chat", { model: "claude-haiku-5-5", effort: "low" }],
+    ["decision", { model: "claude-haiku-5-5", effort: "low" }],
+    ["light", { model: "claude-haiku-5-5", effort: "high" }],
+    ["heavy", { model: "claude-opus-5-5", effort: "high" }],
+  ] as const)("maps tier %s to %j with a full model id, never an alias", (tier, expected) => {
     expect(executor.mapTier(tier)).toEqual(expected)
   })
+})
+
+describe("makeClaudeCode mcp", () => {
+  const modelFlag = (argv: ReadonlyArray<string>) => argv[argv.indexOf("--model") + 1]
+
+  it.effect("runs with the MCP connectors off by default", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* collect(makeClaudeCode(), fixture("success.ndjson"))
+      expect(calls[0]?.cmd).toContain("--strict-mcp-config")
+      expect(calls[0]?.cmd.at(-2)).toBe("--")
+    }),
+  )
+
+  it.effect("drops the MCP flags with mcp inherit (reserved for T-042)", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* collect(makeClaudeCode({ mcp: "inherit" }), fixture("success.ndjson"))
+      expect(calls[0]?.cmd).not.toContain("--strict-mcp-config")
+      expect(calls[0]?.cmd).not.toContain("--mcp-config")
+    }),
+  )
+
+  it.effect("passes the chat tier as the full model id on the wire, never the haiku alias", () =>
+    Effect.gen(function* () {
+      const { calls } = yield* collect(makeClaudeCode(), fixture("success.ndjson"))
+      expect(modelFlag(calls[0]?.cmd ?? [])).toBe("claude-haiku-5-5")
+    }),
+  )
+})
+
+describe("makeClaudeCode auth and stderr", () => {
+  it.effect(
+    "a run whose result says not logged in ends with error{auth} from the not-logged-in fixture",
+    () =>
+      Effect.gen(function* () {
+        const { events } = yield* collect(makeClaudeCode(), fixture("not-logged-in.ndjson"))
+        expect(events.at(-1)).toEqual({ kind: "error", code: "auth", message: "claude CLI is not logged in" })
+      }),
+  )
+
+  it.effect("an is_error not-logged-in fixture also ends with error{auth}", () =>
+    Effect.gen(function* () {
+      const { events } = yield* collect(makeClaudeCode(), fixture("not-logged-in-error.ndjson"))
+      expect(events.at(-1)).toMatchObject({ kind: "error", code: "auth" })
+    }),
+  )
+
+  it.effect("a process that exits 1 without a result carries the redacted stderr tail", () =>
+    Effect.gen(function* () {
+      const stderr = [
+        "Error: unknown option '--bogus'",
+        "api token=abc123 leaked",
+        "clone https://user:hunter2@example.test/repo",
+      ]
+      const { events } = yield* runWith(makeClaudeCode(), [], { stderr, exitCode: 1 })
+      expect(events).toEqual([
+        {
+          kind: "error",
+          code: "unknown",
+          message: [
+            "claude exited with code 1 without a result; stderr: Error: unknown option '--bogus'",
+            "[redacted]",
+            "clone https://***@example.test/repo",
+          ].join("\n"),
+        },
+      ])
+    }),
+  )
+
+  it.effect("a silent exit 0 without a result still reports the stderr tail", () =>
+    Effect.gen(function* () {
+      const { events } = yield* runWith(makeClaudeCode(), [], { stderr: ["warning: slow start"] })
+      expect(events).toEqual([
+        {
+          kind: "error",
+          code: "protocol",
+          message: "claude ended without a result; stderr: warning: slow start",
+        },
+      ])
+    }),
+  )
+
+  it.effect("a silent exit 0 with an empty stderr reports no tail", () =>
+    Effect.gen(function* () {
+      const { events } = yield* runWith(makeClaudeCode(), [], {})
+      expect(events).toEqual([{ kind: "error", code: "protocol", message: "claude ended without a result" }])
+    }),
+  )
+
+  it.effect("stderr output on a run that reaches its result is not reported", () =>
+    Effect.gen(function* () {
+      const { events } = yield* runWith(makeClaudeCode(), fixture("success.ndjson"), {
+        stderr: ["no stdin data received in 3s"],
+      })
+      expect(events.at(-1)).toMatchObject({ kind: "done", result: "pong" })
+      expect(events.some((event) => event.kind === "error")).toBe(false)
+    }),
+  )
 })
 
 describe("makeClaudeCode env", () => {
@@ -206,10 +320,11 @@ describe("makeClaudeCode through the registry", () => {
         Effect.scoped,
         Effect.provideService(Tank, fakeTank(truncated, [], { count: 0 })),
       )
+      // The adapter reports the cut itself (with the stderr tail when there is one); the registry guard is the fallback.
       expect(events.at(-1)).toEqual({
         kind: "error",
         code: "protocol",
-        message: "executor stream ended without a terminal event",
+        message: "claude ended without a result",
       })
     }).pipe(Effect.provide(makeRegistry([makeClaudeCode()]))),
   )

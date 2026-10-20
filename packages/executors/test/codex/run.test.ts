@@ -45,17 +45,18 @@ const task = (overrides: Partial<ExecutorTask> = {}): ExecutorTask => ({
   ...overrides,
 })
 
-// A process whose stdout is the given lines and whose exit code is fixed. `killed` counts kill calls.
+// A process whose stdout and stderr are the given lines and whose exit code is fixed. `killed` counts kill calls.
 const fakeProcess = (options: {
   readonly lines?: ReadonlyArray<string>
   readonly stdout?: Stream.Stream<string, TankError>
+  readonly stderr?: ReadonlyArray<string>
   readonly exitCode?: number
 }) => {
   const state = { killed: 0, stdinClosed: false }
   const proc: RunningProcess = {
     pid: 4242,
     stdout: options.stdout ?? Stream.fromIterable(options.lines ?? []),
-    stderr: Stream.empty,
+    stderr: Stream.fromIterable(options.stderr ?? []),
     exitCode: Effect.succeed(options.exitCode ?? 0),
     writeStdin: () => Effect.void,
     closeStdin: () =>
@@ -150,7 +151,37 @@ describe("codex run", () => {
       const { shape, argvs } = recordingTank(proc)
       const sessionId = Schema.decodeUnknownSync(SessionId)("thread-7")
       yield* collect(executor(), task({ resumeSessionId: sessionId, prompt: "continue" }), shape)
-      expect(argvs).toEqual([["codex", "exec", "resume", "thread-7", "--json", "--", "continue"]])
+      expect(argvs).toEqual([
+        ["codex", "exec", "resume", "--skip-git-repo-check", "thread-7", "--json", "--", "continue"],
+      ])
+    }),
+  )
+
+  it.effect("passes -m on the resume argv when the tier has a configured model", () =>
+    Effect.gen(function* () {
+      const { proc } = fakeProcess({ lines: fixture("success.ndjson") })
+      const { shape, argvs } = recordingTank(proc)
+      const sessionId = Schema.decodeUnknownSync(SessionId)("thread-8")
+      const codex = makeCodexExecutor({
+        quotaWindowSeconds: 3600,
+        quotaSoftLimitTokens: 1_000_000,
+        models: { heavy: "gpt-5.6-luna" },
+      })
+      yield* collect(codex, task({ resumeSessionId: sessionId, prompt: "continue" }), shape)
+      expect(argvs).toEqual([
+        [
+          "codex",
+          "exec",
+          "resume",
+          "--skip-git-repo-check",
+          "-m",
+          "gpt-5.6-luna",
+          "thread-8",
+          "--json",
+          "--",
+          "continue",
+        ],
+      ])
     }),
   )
 
@@ -237,6 +268,44 @@ describe("codex run", () => {
       const events = yield* collect(executor(), task(), shape)
       expect(events).toEqual([
         { kind: "error", code: "unknown", message: "codex exited with code 2 without a result" },
+      ])
+    }),
+  )
+
+  it.effect("a process that exits 1 without a result carries the redacted stderr tail", () =>
+    Effect.gen(function* () {
+      const { proc } = fakeProcess({
+        lines: [],
+        exitCode: 1,
+        stderr: ["Error: no rollout found", "auth token=xyz", "proxy http://u:p@proxy.test:3128"],
+      })
+      const { shape } = recordingTank(proc)
+      const events = yield* collect(executor(), task(), shape)
+      expect(events).toEqual([
+        {
+          kind: "error",
+          code: "unknown",
+          message: [
+            "codex exited with code 1 without a result; stderr: Error: no rollout found",
+            "[redacted]",
+            "proxy http://***@proxy.test:3128",
+          ].join("\n"),
+        },
+      ])
+    }),
+  )
+
+  it.effect("a silent exit 0 without a result ends with error protocol, not an empty stream", () =>
+    Effect.gen(function* () {
+      const { proc } = fakeProcess({ lines: [], stderr: ["warning: stdin closed"] })
+      const { shape } = recordingTank(proc)
+      const events = yield* collect(executor(), task(), shape)
+      expect(events).toEqual([
+        {
+          kind: "error",
+          code: "protocol",
+          message: "codex ended without a result; stderr: warning: stdin closed",
+        },
       ])
     }),
   )

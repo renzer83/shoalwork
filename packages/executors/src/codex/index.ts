@@ -10,6 +10,7 @@ import { Duration, Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor } from "../executor.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { makeQuotaCounter, type QuotaCounter } from "../quota.js"
+import { captureStderr, endedWithoutResult } from "../stderr.js"
 import { buildResumeArgs, buildRunArgs, type CodexModels, type CodexTarget, makeMapTier } from "./args.js"
 import { CodexEvent, makeCodexMapper } from "./events.js"
 
@@ -42,10 +43,11 @@ const runCodex = (
       const argv =
         task.resumeSessionId === undefined
           ? buildRunArgs(task, ctx.cwd, target(task.tier))
-          : buildResumeArgs(task.resumeSessionId, task.prompt)
+          : buildResumeArgs(task.resumeSessionId, task.prompt, target(task.tier))
       const proc = yield* tank.spawnStream(ctx, ["codex", ...argv]).pipe(Effect.mapError(spawnFailure))
       // codex exec reads extra input from stdin until it closes; the prompt is the only input.
       yield* proc.closeStdin()
+      const stderrTail = yield* captureStderr(proc.stderr.pipe(Stream.mapError(spawnFailure)))
 
       const mapper = makeCodexMapper(task.budget)
       let secondsExpired = false
@@ -58,8 +60,8 @@ const runCodex = (
         ),
         Effect.andThen(proc.kill()),
       )
-      // Runs only when no terminal event was emitted: budget cut, non-zero exit, or silent exit 0 (the registry
-      // reports that last case as a protocol error).
+      // Runs only when no terminal event was emitted: budget cut, or the process ended without a result (non-zero
+      // exit or silent exit 0). The last case carries the redacted stderr tail, like any other ended-without-result.
       const tail: Stream.Stream<ExecutorEvent> = Stream.unwrap(
         Effect.suspend((): Effect.Effect<Stream.Stream<ExecutorEvent>> => {
           if (mapper.finished()) return Effect.succeed(Stream.empty)
@@ -72,17 +74,9 @@ const runCodex = (
               }),
             )
           }
-          return proc.exitCode.pipe(
-            Effect.map(
-              (code): Stream.Stream<ExecutorEvent> =>
-                code === 0
-                  ? Stream.empty
-                  : one({
-                      kind: "error",
-                      code: "unknown",
-                      message: `codex exited with code ${code} without a result`,
-                    }),
-            ),
+          return Effect.map(
+            Effect.all({ code: proc.exitCode, text: stderrTail }),
+            ({ code, text }): Stream.Stream<ExecutorEvent> => one(endedWithoutResult("codex", code, text)),
           )
         }),
       )

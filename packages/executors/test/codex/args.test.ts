@@ -97,18 +97,33 @@ describe("codex args", () => {
     expect(argv.slice(-2)).toEqual(["--", "-x reply pong"])
   })
 
-  it("builds the resume argv from the session id and prompt, with -- before the prompt", () => {
-    expect(buildResumeArgs(Schema.decodeUnknownSync(SessionId)("sess_abc"), "continue")).toEqual([
+  it("builds the resume argv with --skip-git-repo-check before the session id, and -- before the prompt", () => {
+    const sessionId = Schema.decodeUnknownSync(SessionId)("sess_abc")
+    expect(buildResumeArgs(sessionId, "continue", makeMapTier()("heavy"))).toEqual([
       "exec",
       "resume",
+      "--skip-git-repo-check",
       "sess_abc",
       "--json",
       "--",
       "continue",
     ])
-    expect(buildResumeArgs(Schema.decodeUnknownSync(SessionId)("sess_abc"), "-x go").slice(-2)).toEqual([
+    expect(buildResumeArgs(sessionId, "-x go", makeMapTier()("heavy")).slice(-2)).toEqual(["--", "-x go"])
+  })
+
+  it("passes -m before the session id on resume when the tier has a model, and omits it otherwise", () => {
+    const sessionId = Schema.decodeUnknownSync(SessionId)("sess_abc")
+    expect(buildResumeArgs(sessionId, "continue", { model: "gpt-5.6-luna" })).toEqual([
+      "exec",
+      "resume",
+      "--skip-git-repo-check",
+      "-m",
+      "gpt-5.6-luna",
+      "sess_abc",
+      "--json",
       "--",
-      "-x go",
+      "continue",
     ])
+    expect(buildResumeArgs(sessionId, "continue", { model: CODEX_DEFAULT_MODEL })).not.toContain("-m")
   })
 })
