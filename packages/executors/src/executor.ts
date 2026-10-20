@@ -35,7 +35,9 @@ export class ExecutorRegistry extends Context.Service<
   }
 >()("@shoalwork/ExecutorRegistry") {}
 
-const isTerminal = (event: ExecutorEvent): boolean => event.kind === "done" || event.kind === "error"
+// approval_needed ends a run too: the Lead pauses the task there and a later run continues it.
+const isTerminal = (event: ExecutorEvent): boolean =>
+  event.kind === "done" || event.kind === "error" || event.kind === "approval_needed"
 
 // Adapters must end with done|error; if one ends silently, the registry reports it as a protocol error.
 const ensureTerminal = (

@@ -224,6 +224,9 @@ importers:
 
   packages/executors:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 1.9.0
+        version: 1.9.0(zod@4.6.7)
       '@modelcontextprotocol/server':
         specifier: 'catalog:'
         version: 2.3.1
@@ -255,6 +258,9 @@ importers:
       '@shoalwork/db':
         specifier: workspace:*
         version: link:../db
+      '@shoalwork/policy':
+        specifier: workspace:*
+        version: link:../policy
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -516,6 +522,11 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
 packages:
+
+  '@agentclientprotocol/sdk@1.9.0':
+    resolution: {integrity: sha512-saCOTPYBK1iqWqJFAYHXbg3+zCoFXyZZFoqQAwdTWkbrZZPpAETr80QOnYr2l+dzPwL0jpNhn3eDY8MoEIDbUA==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@biomejs/biome@2.5.15':
     resolution: {integrity: sha512-WZTW4slm/pdkh92K6t/3aEN++44JD1PQ7squ7RCMLI1flHGl43DVOIGXvCjHiZgBMO1V4uYxoFNtqrIA4qGuIQ==}
@@ -1503,6 +1514,10 @@ packages:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
+
+  '@agentclientprotocol/sdk@1.9.0(zod@4.6.7)':
+    dependencies:
+      zod: 4.6.7
 
   '@biomejs/biome@2.5.15':
     optionalDependencies:

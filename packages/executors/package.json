@@ -17,6 +17,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
     "@modelcontextprotocol/server": "catalog:",
     "@shoalwork/beacon": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
@@ -29,6 +30,7 @@
     "@effect/vitest": "catalog:",
     "@modelcontextprotocol/client": "catalog:",
     "@shoalwork/db": "workspace:*",
+    "@shoalwork/policy": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
