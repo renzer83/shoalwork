@@ -1,0 +1,46 @@
+import { Schema } from "effect"
+
+// GitHub events (T-045): minimal fields only. The webhook cuts and redacts titles and branch names before they get
+// here, and no issue or PR body is ever stored. Third-party text is data (R14): nothing here is an instruction.
+// botAuthored marks the Bot's own work (a PR or push from a Bot branch) so a Tide can filter it out.
+export const GithubCommonFields = {
+  deliveryId: Schema.String,
+  repo: Schema.String,
+  action: Schema.String,
+  sender: Schema.String,
+  url: Schema.String,
+  botAuthored: Schema.Boolean,
+}
+
+export const GithubIssuesPayload = Schema.Struct({
+  ...GithubCommonFields,
+  number: Schema.Int,
+  title: Schema.String,
+  state: Schema.optional(Schema.String),
+})
+
+export const GithubPullRequestPayload = Schema.Struct({
+  ...GithubCommonFields,
+  number: Schema.Int,
+  title: Schema.String,
+  state: Schema.optional(Schema.String),
+  headBranch: Schema.optional(Schema.String),
+})
+
+export const GithubWorkflowRunPayload = Schema.Struct({
+  ...GithubCommonFields,
+  title: Schema.optional(Schema.String),
+  headBranch: Schema.optional(Schema.String),
+  conclusion: Schema.optional(Schema.String),
+})
+
+export const GithubCheckSuitePayload = Schema.Struct({
+  ...GithubCommonFields,
+  headBranch: Schema.optional(Schema.String),
+  conclusion: Schema.optional(Schema.String),
+})
+
+export const GithubPushPayload = Schema.Struct({
+  ...GithubCommonFields,
+  ref: Schema.String,
+})

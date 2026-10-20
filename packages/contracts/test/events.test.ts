@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { it } from "@effect/vitest"
 import { Effect, Schema } from "effect"
 import { describe, expect } from "vitest"
-import { decodeNewEvent, Event, EventType, NewEvent, streamIds } from "../src/events.js"
+import { decodeNewEvent, Event, EventPayloads, EventType, NewEvent, streamIds } from "../src/events/index.js"
 import { BotId, TaskId } from "../src/ids.js"
 
 const fixture = (name: string): unknown =>
@@ -39,6 +39,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "message.inbound",
   "message.outbound",
   "tide.fired",
+  "tide.skipped",
   "watchdog.recovered",
   "budget.exceeded",
   "error.raised",
@@ -99,6 +100,7 @@ const VALID: Record<EventType, Record<string, unknown>> = {
   "message.inbound": { channel: "telegram", chatId: "-100123", threadId: "42", userId: "7", text: "oi" },
   "message.outbound": { channel: "telegram", botId: BOT, text: "pronto", latencyMs: 350, inReplyTo: EVT },
   "tide.fired": { tideId: TIDE, botId: BOT, trigger: "cron", taskId: TASK },
+  "tide.skipped": { tideId: TIDE, botId: BOT, reason: "cooldown" },
   "watchdog.recovered": { what: "stale_task", ref: TASK, action: "requeued" },
   "budget.exceeded": {
     scope: "task",
@@ -192,6 +194,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "message.inbound": "text",
   "message.outbound": "botId",
   "tide.fired": "trigger",
+  "tide.skipped": "reason",
   "watchdog.recovered": "action",
   "budget.exceeded": "refId",
   "error.raised": "message",
@@ -228,8 +231,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 33 types", () => {
-    expect(EVENT_TYPES).toHaveLength(33)
+  it("EventType is exactly the 34 types", () => {
+    expect(EVENT_TYPES).toHaveLength(34)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)
@@ -357,5 +360,25 @@ describe("events", () => {
 
   it("streamIds.system is the literal system", () => {
     expect(streamIds.system).toBe("system")
+  })
+})
+
+describe("tide firing and skip payloads", () => {
+  const firedBase = { tideId: TIDE, botId: BOT, taskId: TASK }
+
+  it("tide.fired accepts the manual trigger next to cron and event, and rejects any other", () => {
+    const fired = EventPayloads["tide.fired"]
+    for (const trigger of ["cron", "event", "manual"]) {
+      expect(Schema.decodeUnknownSync(fired)({ ...firedBase, trigger }).trigger).toBe(trigger)
+    }
+    expect(() => Schema.decodeUnknownSync(fired)({ ...firedBase, trigger: "webhook" })).toThrow()
+  })
+
+  it("tide.skipped accepts the four reasons and rejects any other", () => {
+    const skipped = EventPayloads["tide.skipped"]
+    for (const reason of ["cooldown", "cap", "disabled", "feedback"]) {
+      expect(Schema.decodeUnknownSync(skipped)({ tideId: TIDE, botId: BOT, reason }).reason).toBe(reason)
+    }
+    expect(() => Schema.decodeUnknownSync(skipped)({ tideId: TIDE, botId: BOT, reason: "paused" })).toThrow()
   })
 })

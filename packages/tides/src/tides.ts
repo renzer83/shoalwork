@@ -14,7 +14,14 @@ import { Lead, type LeadShape } from "@shoalwork/lead"
 import { Context, Data, Effect, Layer, Option, type Scope } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
-import { type FireOutcome, fireTide, fireTideWith, type SkipReason, type TideDeps } from "./fire.js"
+import {
+  appendOncePerHour,
+  type FireOutcome,
+  fireTideWith,
+  type SkipReason,
+  type TideDeps,
+  tideSkippedEvent,
+} from "./fire.js"
 import { decodeTideRows, type TideRow, tideFromRow } from "./row.js"
 import { checkSchedule, makeScheduler, nextRunAfter } from "./scheduler.js"
 import { startEventTriggers } from "./triggers.js"
@@ -196,7 +203,8 @@ export const makeTides = (deps: TideDeps): TidesShape => {
       const tide = yield* tideFromRow(row).pipe(
         Effect.mapError((broken) => new SchemaViolation({ where: `tide:${id}`, issue: broken.reason })),
       )
-      const outcome = yield* sql.withTransaction(fireTide(deps, tide))
+      // The API's run-now is the manual trigger; a cron window or an event never goes through here.
+      const outcome = yield* sql.withTransaction(fireTideWith(deps, tide, { trigger: "manual", root: {} }))
       if (outcome._tag === "skipped") {
         return yield* Effect.fail(new TideSkipped({ tideId: id, reason: outcome.reason }))
       }
@@ -220,6 +228,11 @@ export const makeTides = (deps: TideDeps): TidesShape => {
     Effect.gen(function* () {
       const row = yield* findById(id)
       if (row.enabled !== 1) {
+        // A firing asked of a disabled Tide is held back too: recorded once per hour, then refused as NotFound.
+        yield* appendOncePerHour(deps, id, tideSkippedEvent({ id, botId: row.bot_id }, "disabled"), [
+          "reason",
+          "disabled",
+        ])
         return yield* Effect.fail(new NotFound({ entity: "Tide", id }))
       }
       const tide = yield* tideFromRow(row).pipe(

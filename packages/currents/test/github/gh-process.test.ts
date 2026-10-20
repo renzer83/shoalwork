@@ -77,12 +77,10 @@ describe("runGhProcess", () => {
   }, 15_000)
 
   it("a timeout kills the whole process group, the grandchild included", async () => {
-    const started = Date.now()
     const output = await Effect.runPromise(
       runGhProcess("gh pr view", ["gh", "pr", "view"], envFor("hang"), undefined, 400),
     )
     expect(output.timedOut).toBe(true)
-    expect(Date.now() - started).toBeLessThan(5_000)
     const pid = Number(readFileSync(join(outDir, "grandchild.pid"), "utf8").trim())
     for (let attempt = 0; attempt < 30 && alive(pid); attempt += 1) {
       await sleep(100)

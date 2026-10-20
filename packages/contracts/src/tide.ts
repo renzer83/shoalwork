@@ -1,7 +1,7 @@
 import { Effect, Schema, Struct } from "effect"
 import { Budget } from "./budget.js"
 import { ModelTier, TaskKind } from "./enums.js"
-import { EventType } from "./events.js"
+import { EventType } from "./events/index.js"
 import { BotId, TideId } from "./ids.js"
 import { RepoRef } from "./task.js"
 

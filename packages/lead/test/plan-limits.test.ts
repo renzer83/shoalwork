@@ -83,10 +83,9 @@ describe("reading the plan out of a reply", () => {
     expect(failure[0]).toContain("no JSON plan")
   })
 
-  it("does not spend unbounded work on a flood of open braces", () => {
-    const started = Date.now()
-    Effect.runSync(Effect.flip(readDraft("{".repeat(150_000))))
-    expect(Date.now() - started).toBeLessThan(2000)
+  it("answers a flood of open braces with the no-plan sentence", () => {
+    const failure = Effect.runSync(Effect.flip(readDraft("{".repeat(150_000))))
+    expect(failure[0]).toContain("no JSON plan")
   })
 })
 

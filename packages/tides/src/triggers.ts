@@ -1,6 +1,6 @@
 import type { Event, Tide } from "@shoalwork/contracts"
 import { Cause, Effect, type Scope, Stream } from "effect"
-import { fireTide, handleTideFailure, type TideDeps } from "./fire.js"
+import { appendEvent, fireTide, handleTideFailure, type TideDeps, tideSkippedEvent } from "./fire.js"
 import { lookupPath, tideMatches } from "./render.js"
 import { BrokenTide, decodeTideRows, type TideRow, tideFromRow } from "./row.js"
 
@@ -20,10 +20,16 @@ export const optsInToBotOwn = (tide: Pick<Tide, "eventFilter">, event: Event): b
   !isBotOwnEvent(event) || tide.eventFilter?.["payload.botAuthored"] === true
 
 // One tide of one event. Its own failures are isolated: a broken tide is disabled and the next one still runs.
+// Feedback never fires a tide: the Bot's own work fires only the tides that opt in. Any other held-back match is recorded
+// as tide.skipped (reason feedback), so the skip is visible instead of silent.
 const fireOnEvent = (deps: TideDeps, row: TideRow, event: Event): Effect.Effect<void> =>
   Effect.gen(function* () {
     const tide = yield* tideFromRow(row)
-    if (!tideMatches(tide, event) || !optsInToBotOwn(tide, event)) {
+    if (!tideMatches(tide, event)) {
+      return
+    }
+    if (isFeedback(event) && !(isBotOwnEvent(event) && optsInToBotOwn(tide, event))) {
+      yield* appendEvent(deps.beacon, tideSkippedEvent(tide, "feedback"))
       return
     }
     yield* deps.sql.withTransaction(fireTide(deps, tide, event))
@@ -41,9 +47,10 @@ const fireOnEvent = (deps: TideDeps, row: TideRow, event: Event): Effect.Effect<
   )
 
 // Each enabled event Tide of this event's type is checked against its filter. The event types are in memory
-// (eventTypes), so an event nobody listens to costs no query. Never fails.
+// (eventTypes), so an event nobody listens to costs no query. Never fails. A tide.skipped is never answered: a Tide that
+// listens to it would otherwise write the next one forever.
 export const handleEvent = (deps: TideDeps, event: Event): Effect.Effect<void> => {
-  if (!deps.eventTypes.has(event.type) || (isFeedback(event) && !isBotOwnEvent(event))) {
+  if (!deps.eventTypes.has(event.type) || event.type === "tide.skipped") {
     return Effect.void
   }
   return Effect.gen(function* () {

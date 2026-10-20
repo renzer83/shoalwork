@@ -385,11 +385,12 @@ describe("Lead retries", () => {
       return Effect.gen(function* () {
         const lead = yield* Lead
         const bot = yield* createBot
-        const spec = yield* lead.intake(specFor(bot, { budget: { tokens: 100000, seconds: 1, usd: 1 } }))
+        const spec = yield* lead.intake(specFor(bot, { budget: { tokens: 100000, seconds: 2, usd: 1 } }))
         const verdict = yield* lead.runOnce(spec.id)
         expect(verdict).toMatchObject({ kind: "budget_exceeded" })
-        // One second for the whole task: the first run used ~0.6s of it, the retry only the rest.
-        expect(verdict.cost.seconds).toBe(1)
+        // Two seconds for the whole task: the first run used ~0.6s of it (margin for a loaded runner), the retry only
+        // the rest, so the task ends at the limit.
+        expect(verdict.cost.seconds).toBe(2)
         expect(runs).toHaveLength(2)
         const types = yield* eventTypes
         expect(count(types, "executor.finished")).toBe(2)

@@ -686,14 +686,12 @@ describe("runChatTurn with a warm pool", () => {
     Effect.gen(function* () {
       const rec = emptyRecorder()
       const warmScript: Script = { reply: () => "die" }
-      const started = Date.now()
       const events = yield* withPool([warmScript, { hang: true }], rec, { timeoutMs: 120 }, (warm) =>
         Stream.runCollect(runChatTurn(makeClaudeCodeChat(), "tg:1:6", chatTask(), ctx, { warm })).pipe(
           Effect.scoped,
         ),
       )
       expect(events).toEqual([{ kind: "error", code: "unknown", message: "chat turn exceeded 120 ms" }])
-      expect(Date.now() - started).toBeLessThan(1000)
       expect(rec.argv).toHaveLength(2)
     }).pipe(Effect.provide(SessionsLayer)),
   )

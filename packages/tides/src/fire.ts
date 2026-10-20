@@ -64,6 +64,18 @@ export const appendEvent = (beacon: BeaconShape, event: NewEvent) =>
     Effect.asVoid,
   )
 
+// Why a Tide was held back without a task (tide.skipped). Paused and budget keep their own events (error.raised,
+// budget.exceeded), so they are not in this list.
+export type SkipEventReason = "cooldown" | "cap" | "disabled" | "feedback"
+
+export const tideSkippedEvent = (tide: Pick<Tide, "id" | "botId">, reason: SkipEventReason): NewEvent => ({
+  streamId: streamIds.bot(tide.botId),
+  type: "tide.skipped",
+  payload: { tideId: tide.id, botId: tide.botId, reason },
+  actor: "system:tides",
+  correlationId: tide.id,
+})
+
 // Control pauses a Bot with a flag (its own or the global one). Same rule the claim of the task queue applies.
 const isPaused = (deps: TideDeps, botId: BotId): Effect.Effect<boolean, SqlError> =>
   deps.sql<{ readonly n: number }>`SELECT 1 AS n FROM control_flags
@@ -118,8 +130,32 @@ const skipOf = (deps: TideDeps, tide: Tide, bot: Bot, now: Date): Effect.Effect<
     return undefined
   })
 
+// Appends `event` unless this tide already got one like it in the last hour. `match` names the payload field that tells
+// the kinds apart (tag for error.raised, reason for tide.skipped); without it, any event of that type counts.
+// Its events carry actor system:tides, which the event path never takes as a trigger (triggers.ts).
+export const appendOncePerHour = (
+  deps: TideDeps,
+  tideId: TideId,
+  event: NewEvent,
+  match?: readonly [field: string, value: string],
+): Effect.Effect<void, SqlError> =>
+  Effect.gen(function* () {
+    const since = new Date(deps.clock().getTime() - HOUR_MS).toISOString()
+    const seen =
+      match === undefined
+        ? yield* deps.sql<{ readonly n: number }>`SELECT COUNT(*) AS n FROM events
+            WHERE actor = 'system:tides' AND correlation_id = ${tideId} AND type = ${event.type}
+              AND occurred_at >= ${since}`
+        : yield* deps.sql<{ readonly n: number }>`SELECT COUNT(*) AS n FROM events
+            WHERE actor = 'system:tides' AND correlation_id = ${tideId} AND type = ${event.type}
+              AND occurred_at >= ${since} AND json_extract(payload, ${`$.${match[0]}`}) = ${match[1]}`
+    if ((seen[0]?.n ?? 0) === 0) {
+      yield* appendEvent(deps.beacon, event)
+    }
+  })
+
 // A skip is recorded once per tide, per kind, per hour: a tide that keeps being refused writes one line, not one per
-// attempt. Its events carry actor system:tides, which the event path never takes as a trigger (triggers.ts).
+// attempt. The cooldown and the hourly cap also get their tide.skipped (reason cooldown, cap).
 const recordSkip = (deps: TideDeps, tide: Tide, skip: Skip): Effect.Effect<void, SqlError> => {
   const base = { streamId: streamIds.bot(tide.botId), actor: "system:tides", correlationId: tide.id }
   const raised = (tag: string, message: string): NewEvent => ({
@@ -143,13 +179,12 @@ const recordSkip = (deps: TideDeps, tide: Tide, skip: Skip): Effect.Effect<void,
             )
           : raised(SKIP_TAG.rate, `tide ${tide.name} not fired: over ${skip.limit} fires in an hour`)
   const tag = skip._tag === "budget" ? null : SKIP_TAG[skip._tag]
+  const reason: SkipEventReason | undefined =
+    skip._tag === "cooldown" ? "cooldown" : skip._tag === "rate" ? "cap" : undefined
   return Effect.gen(function* () {
-    const since = new Date(deps.clock().getTime() - HOUR_MS).toISOString()
-    const seen = yield* deps.sql<{ readonly n: number }>`SELECT COUNT(*) AS n FROM events
-      WHERE actor = 'system:tides' AND correlation_id = ${tide.id} AND type = ${event.type}
-        AND occurred_at >= ${since} AND (${tag} IS NULL OR json_extract(payload, '$.tag') = ${tag})`
-    if ((seen[0]?.n ?? 0) === 0) {
-      yield* appendEvent(deps.beacon, event)
+    yield* appendOncePerHour(deps, tide.id, event, tag === null ? undefined : ["tag", tag])
+    if (reason !== undefined) {
+      yield* appendOncePerHour(deps, tide.id, tideSkippedEvent(tide, reason), ["reason", reason])
     }
   })
 }
@@ -157,7 +192,7 @@ const recordSkip = (deps: TideDeps, tide: Tide, skip: Skip): Effect.Effect<void,
 // What one firing carries: the root the {{x.y}} placeholders read, the trigger recorded on tide.fired, and the
 // correlation of the task (the source event's, when there is one).
 export interface Firing {
-  readonly trigger: "cron" | "event"
+  readonly trigger: "cron" | "event" | "manual"
   readonly root: unknown
   readonly correlationId?: string
 }

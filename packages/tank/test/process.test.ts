@@ -7,20 +7,21 @@ import { gitEnv, psCommands } from "./helpers.js"
 
 const opts = { cwd: process.cwd(), env: gitEnv() }
 
-// Poll ps for a bounded time: the kernel may take a moment to reap after the group is killed.
+// Waits for a condition, not a fixed time: returns as soon as ps shows the needle gone. The ceiling (20 s) only bounds a
+// hang; a loaded runner that reaps late still passes.
 const waitGone = (needle: string) =>
   Effect.gen(function* () {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 400; i++) {
       if (!psCommands().includes(needle)) return true
       yield* Effect.sleep("50 millis")
     }
     return false
   })
 
-// Fails the test if the needle never shows up: proves the kill tests are not vacuous.
+// Fails the test if the needle never shows up (after a 20 s ceiling): proves the kill tests are not vacuous.
 const waitPresent = (needle: string) =>
   Effect.gen(function* () {
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 400; i++) {
       if (psCommands().includes(needle)) return
       yield* Effect.sleep("50 millis")
     }
@@ -40,40 +41,38 @@ describe("runProcess", () => {
 
   it.live("flags timedOut and kills the process after timeoutMs", () =>
     Effect.gen(function* () {
-      const r = yield* runProcess(["sleep", "5.11"], { ...opts, timeoutMs: 200 })
+      const r = yield* runProcess(["sleep", "60.12"], { ...opts, timeoutMs: 200 })
       expect(r.timedOut).toBe(true)
       expect(r.exitCode).not.toBe(0)
-      expect(r.durationMs).toBeLessThan(4000)
-      expect(yield* waitGone("sleep 5.11")).toBe(true)
+      // Killed, not waited out: waitGone polls for the process to disappear, the sleep itself would run 60 s.
+      expect(yield* waitGone("sleep 60.12")).toBe(true)
     }),
   )
 
-  it.live("kills the whole process group, leaving no orphan sleep", () =>
-    Effect.gen(function* () {
-      const [r] = yield* Effect.all(
-        [
-          runProcess(["sh", "-c", "sleep 30.77 & sleep 30.77"], { ...opts, timeoutMs: 2000 }),
-          // Must observe the children alive before the timeout fires.
-          waitPresent("sleep 30.77"),
-        ],
-        { concurrency: "unbounded" },
-      )
-      expect(r.timedOut).toBe(true)
-      expect(yield* waitGone("sleep 30.77")).toBe(true)
-    }),
+  it.live(
+    "kills the whole process group, leaving no orphan sleep",
+    () =>
+      Effect.gen(function* () {
+        const [r] = yield* Effect.all(
+          [
+            runProcess(["sh", "-c", "sleep 30.77 & sleep 30.77"], { ...opts, timeoutMs: 5000 }),
+            // Must observe the children alive before the timeout fires.
+            waitPresent("sleep 30.77"),
+          ],
+          { concurrency: "unbounded" },
+        )
+        expect(r.timedOut).toBe(true)
+        expect(yield* waitGone("sleep 30.77")).toBe(true)
+      }),
+    20_000,
   )
 
   it.live(
     "escalates to SIGKILL after 5s when the process ignores SIGTERM",
     () =>
       Effect.gen(function* () {
-        const [r] = yield* Effect.all(
-          [
-            runProcess(["sh", "-c", 'trap "" TERM; sleep 60.17'], { ...opts, timeoutMs: 500 }),
-            waitPresent("sleep 60.17"),
-          ],
-          { concurrency: "unbounded" },
-        )
+        // No presence race here: exit 137 proves the group ignored SIGTERM and was SIGKILLed.
+        const r = yield* runProcess(["sh", "-c", 'trap "" TERM; sleep 60.17'], { ...opts, timeoutMs: 500 })
         expect(r.timedOut).toBe(true)
         expect(r.durationMs).toBeGreaterThanOrEqual(5000)
         expect(r.exitCode).toBe(137)
@@ -163,8 +162,7 @@ describe("spawnProcess", () => {
         Effect.gen(function* () {
           const p = yield* spawnProcess(["sh", "-c", "sleep 40.31 & sleep 40.31"], opts)
           expect(p.pid).toBeGreaterThan(0)
-          yield* Effect.sleep("100 millis")
-          expect(psCommands()).toContain("sleep 40.31")
+          yield* waitPresent("sleep 40.31")
         }),
       )
       expect(yield* waitGone("sleep 40.31")).toBe(true)

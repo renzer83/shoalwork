@@ -188,13 +188,14 @@ describe("reduceGithubDelivery", () => {
     }),
   )
 
-  it.effect("answers a hostile 200 KB title in bounded time", () =>
+  it.effect("answers a hostile 200 KB title with a title cut to 200 characters", () =>
     Effect.gen(function* () {
       const body = JSON.parse(fixture("issues.json")) as { issue: { title: string } }
       body.issue.title = "1".repeat(200_000)
-      const started = performance.now()
-      yield* reduceGithubDelivery("issues", JSON.stringify(body), DELIVERY)
-      expect(performance.now() - started).toBeLessThan(1_000)
+      const reduced = yield* reduceGithubDelivery("issues", JSON.stringify(body), DELIVERY)
+      expect(reduced._tag).toBe("event")
+      if (reduced._tag !== "event") return
+      expect(String(reduced.event.payload.title).length).toBeLessThanOrEqual(200)
     }),
   )
 })

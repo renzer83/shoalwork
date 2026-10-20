@@ -219,27 +219,30 @@ describe("Tides", () => {
     }).pipe(Effect.provide(env))
   })
 
-  it.effect("runNow returns the task of the template with origin tide and records tide.fired", () => {
-    const intakes: Array<Intake> = []
-    const env = tidesEnv(withTempDb(), intakes, { botBudgetWindowMs: DAY_MS })
-    return Effect.gen(function* () {
-      const bot = yield* registerBot
-      const tides = yield* Tides
-      const tide = yield* tides.upsert(cronTide(bot.id))
-      const spec = yield* tides.runNow(tide.id)
-      expect(spec.origin).toBe("tide")
-      expect(spec.title).toBe(TEMPLATE.title)
-      expect(intakes).toHaveLength(1)
-      const fired = yield* eventsOf("tide.fired")
-      expect(fired).toHaveLength(1)
-      expect(fired[0]?.payload).toMatchObject({
-        tideId: tide.id,
-        botId: bot.id,
-        trigger: "cron",
-        taskId: spec.id,
-      })
-    }).pipe(Effect.provide(env))
-  })
+  it.effect(
+    "runNow returns the task of the template with origin tide and records tide.fired with trigger manual",
+    () => {
+      const intakes: Array<Intake> = []
+      const env = tidesEnv(withTempDb(), intakes, { botBudgetWindowMs: DAY_MS })
+      return Effect.gen(function* () {
+        const bot = yield* registerBot
+        const tides = yield* Tides
+        const tide = yield* tides.upsert(cronTide(bot.id))
+        const spec = yield* tides.runNow(tide.id)
+        expect(spec.origin).toBe("tide")
+        expect(spec.title).toBe(TEMPLATE.title)
+        expect(intakes).toHaveLength(1)
+        const fired = yield* eventsOf("tide.fired")
+        expect(fired).toHaveLength(1)
+        expect(fired[0]?.payload).toMatchObject({
+          tideId: tide.id,
+          botId: bot.id,
+          trigger: "manual",
+          taskId: spec.id,
+        })
+      }).pipe(Effect.provide(env))
+    },
+  )
 
   it.live("an event tide fires on a matching event only; the test waits on tide.fired, not on time", () => {
     const intakes: Array<Intake> = []

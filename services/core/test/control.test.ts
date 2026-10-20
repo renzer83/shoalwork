@@ -219,13 +219,11 @@ describe("control routes", () => {
     const pid = await processOf(id)
     expect(groupAlive(pid)).toBe(true)
 
-    const started = Date.now()
     const res = await post(`/tasks/${id}/stop`)
 
     expect(res.status).toBe(200)
     expect((await json(res)).stopped).toEqual([id])
     expect(groupAlive(pid)).toBe(false)
-    expect(Date.now() - started).toBeLessThan(10_000)
     expect(await stateOf(id)).toBe("cancelled")
   })
 

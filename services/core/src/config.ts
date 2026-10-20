@@ -1,9 +1,31 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Config, Redacted, Schema } from "effect"
+import { Config, Option, Redacted, Schema } from "effect"
 
-const orDefault = (fallback: string) => (value: string) => (value.trim() === "" ? fallback : value.trim())
+// The one rule for every setting: unset and blank (`NAME=` in .env, .env.example) both take the default.
+// `read` parses the value only when it is not blank, so a blank Int or Literal never reaches the parser.
+export const setting = <A>(
+  name: string,
+  read: (name: string) => Config.Config<A>,
+  fallback: A,
+): Config.Config<A> =>
+  Config.String(name).pipe(
+    Config.withDefault(""),
+    Config.flatMap((value) => (value.trim() === "" ? Config.succeed(fallback) : read(name))),
+  )
+
+// Same blank rule for settings that are simply absent when blank (Telegram off, GitHub webhook 503).
+export const optionalSetting = <A>(
+  name: string,
+  read: (name: string) => Config.Config<A>,
+): Config.Config<Option.Option<A>> =>
+  Config.String(name).pipe(
+    Config.withDefault(""),
+    Config.flatMap((value) =>
+      value.trim() === "" ? Config.succeed(Option.none<A>()) : read(name).pipe(Config.map(Option.some)),
+    ),
+  )
 
 // src/ and dist/ sit at the same depth, so the same relative path reaches the repo root from both.
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url))
@@ -32,70 +54,70 @@ export const coreApiOrigin = (appUrl: string, port: number): string =>
 export const reefMcpEntryFrom = (configured: string): string =>
   resolveRepoPath(configured.trim() === "" ? "packages/reef/dist/mcp.js" : configured.trim())
 
+const LOG_LEVELS = ["debug", "info", "warn", "error"] as const
+
 export const AppConfig = Config.all({
-  port: Config.Int("PORT").pipe(Config.withDefault(28900)),
-  apiToken: Config.Redacted("API_TOKEN"),
-  databasePath: Config.String("DATABASE_PATH").pipe(
-    Config.withDefault("./data/shoalwork.db"),
+  port: setting("PORT", Config.Int, 28900),
+  // Fail-closed: the core does not start without a token. Unset and blank both fail with the variable name in the error.
+  apiToken: Config.schema(
+    Schema.String.pipe(
+      Schema.check(Schema.makeFilter((value) => value.trim() !== "" || "API_TOKEN must not be blank")),
+    ),
+    "API_TOKEN",
+  ).pipe(Config.map((value) => Redacted.make(value))),
+  databasePath: setting("DATABASE_PATH", Config.String, "./data/shoalwork.db").pipe(
     Config.map((configured) => resolveDatabasePath(configured)),
   ),
-  logLevel: Config.Literals(["debug", "info", "warn", "error"], "LOG_LEVEL").pipe(Config.withDefault("info")),
-  tankRoot: Config.String("TANK_ROOT").pipe(
-    Config.withDefault("data/tank"),
+  logLevel: setting<(typeof LOG_LEVELS)[number]>(
+    "LOG_LEVEL",
+    (name) => Config.Literals(LOG_LEVELS, name),
+    "info",
+  ),
+  tankRoot: setting("TANK_ROOT", Config.String, "data/tank").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
   // Only "1" turns on server mode (sudo to the Bot users); anything else is local mode.
-  tankSudo: Config.String("TANK_SUDO").pipe(
-    Config.withDefault(""),
-    Config.map((value) => value === "1"),
-  ),
+  tankSudo: setting("TANK_SUDO", Config.String, "").pipe(Config.map((value) => value === "1")),
   // Codex quota is a local fixed-window counter. These defaults are provisional until T-026 sets real limits.
-  codexQuotaWindowSeconds: Config.Int("CODEX_QUOTA_WINDOW_SECONDS").pipe(Config.withDefault(18000)),
-  codexQuotaSoftLimitTokens: Config.Int("CODEX_QUOTA_SOFT_LIMIT_TOKENS").pipe(Config.withDefault(5000000)),
+  codexQuotaWindowSeconds: setting("CODEX_QUOTA_WINDOW_SECONDS", Config.Int, 18000),
+  codexQuotaSoftLimitTokens: setting("CODEX_QUOTA_SOFT_LIMIT_TOKENS", Config.Int, 5000000),
   // Until T-026 the same model serves all four codex tiers; blank means codex keeps its own default.
-  codexModel: Config.String("CODEX_MODEL").pipe(
-    Config.withDefault(""),
+  codexModel: setting("CODEX_MODEL", Config.String, "").pipe(
     Config.map((value) => (value.trim() === "" ? undefined : value.trim())),
   ),
   // Watchdog (T-030): a running task silent this long is stale; a Tank process alive this long is killed.
-  watchdogStaleMinutes: Config.Int("WATCHDOG_STALE_MINUTES").pipe(Config.withDefault(20)),
-  watchdogMaxProcessMinutes: Config.Int("WATCHDOG_MAX_PROCESS_MINUTES").pipe(Config.withDefault(45)),
+  watchdogStaleMinutes: setting("WATCHDOG_STALE_MINUTES", Config.Int, 20),
+  watchdogMaxProcessMinutes: setting("WATCHDOG_MAX_PROCESS_MINUTES", Config.Int, 45),
   // Budget (T-029): a Bot's usage counts against its budget over this rolling window of hours.
-  budgetBotWindowHours: Config.Int("BUDGET_BOT_WINDOW_HOURS").pipe(Config.withDefault(24)),
+  budgetBotWindowHours: setting("BUDGET_BOT_WINDOW_HOURS", Config.Int, 24),
   // Telegram (T-024): the connector starts only when a token is set. A blank value counts as unset (.env.example).
-  telegramBotToken: Config.Redacted("TELEGRAM_BOT_TOKEN").pipe(Config.option),
-  telegramAllowedUserIds: Config.String("TELEGRAM_ALLOWED_USER_IDS").pipe(Config.withDefault("")),
-  telegramForumChatId: Config.String("TELEGRAM_FORUM_CHAT_ID").pipe(Config.withDefault("")),
+  telegramBotToken: optionalSetting("TELEGRAM_BOT_TOKEN", Config.Redacted),
+  telegramAllowedUserIds: setting("TELEGRAM_ALLOWED_USER_IDS", Config.String, ""),
+  telegramForumChatId: setting("TELEGRAM_FORUM_CHAT_ID", Config.String, ""),
   // Reflex rules and thresholds (T-023). Relative paths resolve against the repo root.
-  reflexConfigPath: Config.String("REFLEX_CONFIG_PATH").pipe(
-    Config.withDefault("config/reflex.config.yaml"),
+  reflexConfigPath: setting("REFLEX_CONFIG_PATH", Config.String, "config/reflex.config.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
   // Embeddings for the Reef (T-034). Nothing connects until a memory is saved or searched.
-  ollamaUrl: Config.String("OLLAMA_URL").pipe(
-    Config.withDefault(""),
-    Config.map(orDefault("http://127.0.0.1:11434")),
+  ollamaUrl: setting("OLLAMA_URL", Config.String, "http://127.0.0.1:11434").pipe(
+    Config.map((value) => value.trim()),
   ),
-  ollamaEmbedModel: Config.String("OLLAMA_EMBED_MODEL").pipe(
-    Config.withDefault(""),
-    Config.map(orDefault("bge-m3")),
+  ollamaEmbedModel: setting("OLLAMA_EMBED_MODEL", Config.String, "bge-m3").pipe(
+    Config.map((value) => value.trim()),
   ),
   // Reef MCP server (T-168): the core origin the Bot's server calls (blank: loopback on PORT) and the built entrypoint.
-  appUrl: Config.String("APP_URL").pipe(Config.withDefault("")),
-  reefMcpEntry: Config.String("REEF_MCP_ENTRY").pipe(Config.withDefault(""), Config.map(reefMcpEntryFrom)),
+  appUrl: setting("APP_URL", Config.String, ""),
+  reefMcpEntry: setting("REEF_MCP_ENTRY", Config.String, "").pipe(Config.map(reefMcpEntryFrom)),
   // Briefing context budgets (T-041). Relative paths resolve against the repo root.
-  contextConfigPath: Config.String("CONTEXT_CONFIG_PATH").pipe(
-    Config.withDefault("config/context.yaml"),
+  contextConfigPath: setting("CONTEXT_CONFIG_PATH", Config.String, "config/context.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
   // GitHub webhook (T-045): the route answers 503 until a secret is set. A blank value counts as unset.
-  githubWebhookSecret: Config.String("GITHUB_WEBHOOK_SECRET").pipe(
-    Config.withDefault(""),
+  githubWebhookSecret: setting("GITHUB_WEBHOOK_SECRET", Config.String, "").pipe(
     Config.map((value) => (value.trim() === "" ? undefined : Redacted.make(value.trim()))),
   ),
   // Model tier table (T-164). Relative paths resolve against the repo root.
-  modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(
-    Config.withDefault("config/model-tiers.yaml"),
+  modelTiersPath: setting("MODEL_TIERS_PATH", Config.String, "config/model-tiers.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
 })
