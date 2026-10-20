@@ -87,6 +87,21 @@ describe("executor contracts", () => {
     expect(roundTrip(ExecutorTask, minimal)).toEqual(minimal)
   })
 
+  it("ExecutorTask round-trips with the effective model and effort", () => {
+    const withModel = { ...TASK_SPEC, model: "claude-opus-5-5", effort: "high" }
+    expect(roundTrip(ExecutorTask, withModel)).toEqual(withModel)
+  })
+
+  it("ExecutorTask round-trips with only the model (effort left to the adapter)", () => {
+    const { effort: _e, ...modelOnly } = { ...TASK_SPEC, model: "gpt-5.6-luna", effort: "low" }
+    expect(roundTrip(ExecutorTask, modelOnly)).toEqual(modelOnly)
+  })
+
+  it("ExecutorTask rejects an effort outside the levels and an empty model", () => {
+    expect(() => Schema.decodeUnknownSync(ExecutorTask)({ ...TASK_SPEC, effort: "extreme" })).toThrow()
+    expect(() => Schema.decodeUnknownSync(ExecutorTask)({ ...TASK_SPEC, model: "" })).toThrow()
+  })
+
   it("ExecutorTask rejects a permissionMode outside the abstract modes", () => {
     expect(() => Schema.decodeUnknownSync(ExecutorTask)({ ...TASK_SPEC, permissionMode: "root" })).toThrow()
   })

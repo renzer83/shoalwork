@@ -6,6 +6,7 @@ import { Data, Effect, Fiber, type LogLevel, type Redacted, References } from "e
 import { AppConfig, REPO_ROOT } from "./config.js"
 import { makeApp } from "./http/app.js"
 import { serve } from "./http/serve.js"
+import { loadModelTiers } from "./model-tiers.js"
 import { disposeRuntime, runEffect, startLeadWorker } from "./runtime.js"
 
 class BootError extends Data.TaggedError("BootError")<{
@@ -42,12 +43,16 @@ const syncBots = Effect.gen(function* () {
 })
 
 // Finalizers run in reverse order: the HTTP server closes first, then the Lead worker, then the database runtime.
-const serveUntilInterrupted = (port: number, apiToken: Redacted.Redacted<string>) =>
+const serveUntilInterrupted = (port: number, apiToken: Redacted.Redacted<string>, modelTiersPath: string) =>
   Effect.gen(function* () {
     yield* Effect.addFinalizer(() =>
       Effect.promise(() => disposeRuntime()).pipe(
         Effect.andThen(Effect.logInfo("shutdown: database closed")),
       ),
+    )
+    // A broken tier table stops the boot here, under its own step name (the file is read again when the layer builds).
+    yield* loadModelTiers(modelTiersPath).pipe(
+      Effect.mapError((cause) => new BootError({ step: "model-tiers", cause })),
     )
     const applied = yield* Effect.tryPromise({
       try: () => runEffect(runMigrations),
@@ -70,7 +75,7 @@ const serveUntilInterrupted = (port: number, apiToken: Redacted.Redacted<string>
 
 const main = Effect.gen(function* () {
   const config = yield* AppConfig
-  return yield* serveUntilInterrupted(config.port, config.apiToken).pipe(
+  return yield* serveUntilInterrupted(config.port, config.apiToken, config.modelTiersPath).pipe(
     Effect.provideService(References.MinimumLogLevel, LOG_LEVELS[config.logLevel]),
   )
 })

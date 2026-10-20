@@ -17,6 +17,18 @@ const PERMISSION_FLAG: Record<PermissionMode, string> = {
   bypass: "bypassPermissions",
 }
 
+// The task's own model and effort (set by the Lead from the tier table and the Bot override) win; the adapter's
+// mapTier fills what the task leaves open.
+export const effectiveMapping = (
+  task: ExecutorTask,
+  mapTier: (tier: ModelTier) => TierMapping,
+): TierMapping => {
+  const mapped = mapTier(task.tier)
+  const model = task.model ?? mapped.model
+  const effort = task.effort ?? mapped.effort
+  return effort === undefined ? { model } : { model, effort }
+}
+
 // argv only (never a shell string). The prompt is last, after `--`, so text that starts with "-" (which may come
 // from a third party) is read as a prompt and never as a flag: `-p "--version"` prints the CLI version.
 export const buildArgs = (
@@ -24,7 +36,7 @@ export const buildArgs = (
   mapTier: (tier: ModelTier) => TierMapping,
   mcp: McpMode = "none",
 ): ReadonlyArray<string> => {
-  const { model, effort } = mapTier(task.tier)
+  const { model, effort } = effectiveMapping(task, mapTier)
   return [
     "-p",
     "--output-format",
@@ -64,7 +76,7 @@ export const buildChatArgs = (
   task: ExecutorTask,
   mapTier: (tier: ModelTier) => TierMapping = defaultChatMapTier,
 ): ReadonlyArray<string> => {
-  const { model, effort } = mapTier(task.tier)
+  const { model, effort } = effectiveMapping(task, mapTier)
   return [
     "-p",
     "--output-format",
@@ -95,7 +107,7 @@ export const buildWarmChatArgs = (
   task: ExecutorTask,
   mapTier: (tier: ModelTier) => TierMapping = defaultChatMapTier,
 ): ReadonlyArray<string> => {
-  const { model, effort } = mapTier(task.tier)
+  const { model, effort } = effectiveMapping(task, mapTier)
   return [
     "-p",
     "--input-format",

@@ -145,6 +145,21 @@ describe("codex run", () => {
     }),
   )
 
+  it.effect("the task's own model replaces the tier model on the run argv", () =>
+    Effect.gen(function* () {
+      const { proc } = fakeProcess({ lines: fixture("success.ndjson") })
+      const { shape, argvs } = recordingTank(proc)
+      const codex = makeCodexExecutor({
+        quotaWindowSeconds: 3600,
+        quotaSoftLimitTokens: 1_000_000,
+        models: { heavy: "gpt-5.6-luna" },
+      })
+      yield* collect(codex, task({ tier: "heavy", model: "gpt-task-model" }), shape)
+      const argv = argvs[0] ?? []
+      expect(argv[argv.indexOf("-m") + 1]).toBe("gpt-task-model")
+    }),
+  )
+
   it.effect("spawns the resume argv when the task carries a session id", () =>
     Effect.gen(function* () {
       const { proc } = fakeProcess({ lines: fixture("success.ndjson") })

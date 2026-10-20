@@ -1,0 +1,5 @@
+# Wrong shape on purpose: only one tier, no heavy/light/decision, no routing table.
+model_tiers:
+  chat:
+    executor: claude-code@chat
+    model: claude-haiku-5-5

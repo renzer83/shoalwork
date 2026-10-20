@@ -46,6 +46,11 @@ export const AppConfig = Config.all({
     Config.withDefault(""),
     Config.map((value) => (value.trim() === "" ? undefined : value.trim())),
   ),
+  // Model tier table (T-164). Relative paths resolve against the repo root.
+  modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(
+    Config.withDefault("config/model-tiers.yaml"),
+    Config.map((configured) => resolveRepoPath(configured)),
+  ),
 })
 
 export type AppConfigShape = Config.Success<typeof AppConfig>

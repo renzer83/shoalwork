@@ -12,6 +12,7 @@ import { Effect, Layer, ManagedRuntime, Redacted, Schema } from "effect"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { makeApp } from "../src/http/app.js"
 import type { RunEffect } from "../src/http/routes/respond.js"
+import { DEFAULT_TIERS } from "../src/model-tiers.js"
 
 const TOKEN = "test-token"
 const AUTH = { authorization: `Bearer ${TOKEN}` }
@@ -49,7 +50,7 @@ const json = async <T>(res: Response): Promise<T> => (await res.json()) as T
 
 // Same wiring as the production AppLayer (Lead with its store, Beacon, bots, Tank, executors), minus the worker.
 const tankRoot = mkdtempSync(join(tmpdir(), "shoalwork-tasks-tank-"))
-const TestLayer = LeadWithStore().pipe(
+const TestLayer = LeadWithStore(DEFAULT_TIERS).pipe(
   Layer.provideMerge(
     Layer.mergeAll(BotRegistryLive, TankLocalLive({ root: tankRoot, baseEnv: {} }), makeRegistry([])),
   ),

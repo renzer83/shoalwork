@@ -2,18 +2,25 @@ import { accessSync, constants } from "node:fs"
 import { join } from "node:path"
 import { BeaconLive } from "@shoalwork/beacon"
 import { BotRegistryLive } from "@shoalwork/bots"
+import { ExecutorId } from "@shoalwork/contracts"
 import { makeDbLayer } from "@shoalwork/db"
 import {
+  CHAT_ID,
+  defaultChatMapTier,
+  defaultMapTier,
   type Executor,
   makeClaudeCode,
   makeClaudeCodeChat,
   makeCodexExecutor,
   makeRegistry,
+  type TierConfig,
+  tierMappingFrom,
 } from "@shoalwork/executors"
 import { Lead, LeadWithStore } from "@shoalwork/lead"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { AppConfig, type AppConfigShape, hostEnvSnapshot } from "./config.js"
+import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
 
 // `which` without a shell: walks PATH and checks the execute bit. A lookup failure just means "not installed".
 const isExecutable = (path: string): boolean => {
@@ -31,11 +38,12 @@ const findOnPath = (name: string, pathValue: string | undefined): boolean =>
     .filter((dir) => dir !== "")
     .some((dir) => isExecutable(join(dir, name)))
 
-// codex is registered only when the binary exists on this host (ADR-011: no API keys for any executor).
-const executorsFor = (config: AppConfigShape): ReadonlyArray<Executor> => {
-  const model = config.codexModel
-  const models =
-    model === undefined ? undefined : { chat: model, decision: model, light: model, heavy: model }
+const CLAUDE_CODE_ID = Schema.decodeUnknownSync(ExecutorId)("claude-code")
+
+// Each adapter takes its model per tier from the tier table; tiers served by another executor keep the adapter's
+// built-in mapping. codex is registered only when the binary exists on this host (ADR-011: no API keys).
+const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<Executor> => {
+  const models = codexModelsFrom(tiers, config.codexModel)
   const codex = findOnPath("codex", hostEnvSnapshot().PATH)
     ? [
         makeCodexExecutor({
@@ -45,7 +53,11 @@ const executorsFor = (config: AppConfigShape): ReadonlyArray<Executor> => {
         }),
       ]
     : []
-  return [makeClaudeCode(), makeClaudeCodeChat(), ...codex]
+  return [
+    makeClaudeCode({ mapTier: tierMappingFrom(tiers, CLAUDE_CODE_ID, defaultMapTier) }),
+    makeClaudeCodeChat({ mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) }),
+    ...codex,
+  ]
 }
 
 const DbFromConfig = Layer.unwrap(Effect.map(AppConfig, (config) => makeDbLayer(config.databasePath)))
@@ -60,16 +72,21 @@ const TankFromConfig = Layer.unwrap(
   ),
 )
 
-const ExecutorsFromConfig = Layer.unwrap(
-  Effect.map(AppConfig, (config) => makeRegistry(executorsFor(config))),
-)
+const DomainLive = (config: AppConfigShape, tiers: TierConfig) =>
+  Layer.mergeAll(BotRegistryLive, TankFromConfig, makeRegistry(executorsFor(config, tiers))).pipe(
+    Layer.provideMerge(PersistenceLive),
+  )
 
-const DomainLive = Layer.mergeAll(BotRegistryLive, TankFromConfig, ExecutorsFromConfig).pipe(
-  Layer.provideMerge(PersistenceLive),
-)
-
+// The tier table is read once per boot and feeds both the adapters and the Lead. A broken file fails this layer,
+// so the core does not boot; the failure is a ConfigError naming the file.
 // Everything the HTTP handlers and the Lead worker can reach. Outputs include SqlClient, Beacon, Lead and the rest.
-export const AppLayer = LeadWithStore().pipe(Layer.provideMerge(DomainLive))
+export const AppLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* AppConfig
+    const tiers = yield* loadModelTiers(config.modelTiersPath)
+    return LeadWithStore(tiers).pipe(Layer.provideMerge(DomainLive(config, tiers)))
+  }),
+)
 export type AppServices = Layer.Success<typeof AppLayer>
 
 // Built lazily on first use, so env is read only after main() has loaded .env.

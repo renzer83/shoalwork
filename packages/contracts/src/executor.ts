@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { Effort } from "./bot.js"
 import { Budget, Usage } from "./budget.js"
 import { ModelTier, Risk } from "./enums.js"
 import type { ExecutorProtocolError, ExecutorSpawnError } from "./errors.js"
@@ -23,6 +24,10 @@ export const ExecutorTask = Schema.Struct({
   prompt: Schema.String,
   systemAppend: Schema.optional(Schema.String),
   tier: ModelTier,
+  // Effective model and effort chosen by the Lead (tier table + Bot override). When absent, the adapter's
+  // mapTier(tier) decides.
+  model: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
+  effort: Schema.optional(Effort),
   allowedTools: Schema.Array(Schema.String),
   permissionMode: PermissionMode,
   maxTurns: Schema.Int,

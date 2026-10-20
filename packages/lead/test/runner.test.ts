@@ -68,7 +68,7 @@ describe("Lead.runOnce", () => {
       expect(started?.payload).toMatchObject({
         botId: bot.id,
         executor: "claude-code",
-        model: "fake-model",
+        model: "claude-haiku-5-5", // effective model from the tier table (light)
         cwd: "/work/cwd",
       })
 

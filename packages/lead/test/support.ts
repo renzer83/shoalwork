@@ -12,7 +12,7 @@ import {
   WorktreeConflict,
 } from "@shoalwork/contracts"
 import { withTempDb } from "@shoalwork/db/testing"
-import { type Executor, ExecutorRegistry, makeRegistry } from "@shoalwork/executors"
+import { type Executor, ExecutorRegistry, makeRegistry, TierConfig } from "@shoalwork/executors"
 import { type ExecResult, Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -20,6 +20,28 @@ import { Lead, type LeadConfig, LeadLive, TaskStore } from "../src/index.js"
 import { makeTaskStore, type TaskStoreShape } from "../src/tasks.js"
 
 export const CLAUDE = Schema.decodeUnknownSync(ExecutorId)("claude-code")
+export const CODEX = Schema.decodeUnknownSync(ExecutorId)("codex")
+
+// Tier table for the tests: light and heavy run claude-code; heavy falls back to codex. Same shape as the shipped yaml.
+export const TEST_TIERS = Schema.decodeUnknownSync(TierConfig)({
+  model_tiers: {
+    chat: { executor: "claude-code@chat", model: "claude-haiku-5-5", effort: "low" },
+    decision: { executor: "claude-code@chat", model: "claude-haiku-5-5", effort: "low" },
+    light: { executor: "claude-code", model: "claude-haiku-5-5", effort: "high" },
+    heavy: { executor: "claude-code", model: "claude-opus-5-5", effort: "high", alternatives: ["codex"] },
+  },
+  routing: {
+    code: "heavy",
+    research: "heavy",
+    plan: "heavy",
+    review: "heavy",
+    chat: "chat",
+    status: "chat",
+    system: "chat",
+    app_op: "light",
+    routine: "light",
+  },
+})
 
 const NEW_BOT = Schema.decodeUnknownSync(NewBot)({
   name: "worker-bot",
@@ -181,6 +203,9 @@ export const rawRegistry = (executor: Executor): Layer.Layer<ExecutorRegistry> =
 
 export const leadLayer = (opts: {
   readonly executor: Executor
+  // Further executors registered next to `executor`.
+  readonly extra?: ReadonlyArray<Executor>
+  readonly tiers?: TierConfig
   readonly tank?: FakeTank
   readonly config?: Partial<LeadConfig>
   readonly guarded?: boolean
@@ -190,7 +215,8 @@ export const leadLayer = (opts: {
   readonly wrapStore?: (real: TaskStoreShape) => TaskStoreShape
 }) => {
   const tank = opts.tank ?? makeFakeTank()
-  const registry = opts.guarded === false ? rawRegistry(opts.executor) : makeRegistry([opts.executor])
+  const registry =
+    opts.guarded === false ? rawRegistry(opts.executor) : makeRegistry([opts.executor, ...(opts.extra ?? [])])
   const base = Layer.provideMerge(opts.liveBeacon === true ? BeaconLive : BeaconTest, withTempDb())
   const bots = Layer.provideMerge(BotRegistryLive, base)
   const wrap = opts.wrapStore ?? ((real: TaskStoreShape) => real)
@@ -202,7 +228,7 @@ export const leadLayer = (opts: {
     bots,
   )
   const deps = Layer.provideMerge(Layer.merge(Layer.succeed(Tank, tank.shape), registry), store)
-  return Layer.provideMerge(LeadLive(opts.config), deps)
+  return Layer.provideMerge(LeadLive(opts.tiers ?? TEST_TIERS, opts.config), deps)
 }
 
 export const allEvents = Effect.gen(function* () {

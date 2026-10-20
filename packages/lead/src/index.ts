@@ -1,7 +1,7 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import type { NotFound, SchemaViolation, TaskId, TaskSpec, TaskState, Verdict } from "@shoalwork/contracts"
-import { ExecutorRegistry } from "@shoalwork/executors"
+import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, type Scope } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -28,7 +28,9 @@ export interface LeadShape {
 
 export class Lead extends Context.Service<Lead, LeadShape>()("@shoalwork/Lead") {}
 
+// `tiers` is config/model-tiers.yaml (validated by the composition root): it decides the executor of every task.
 export const LeadLive = (
+  tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
 ): Layer.Layer<Lead, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry | TaskStore> =>
   Layer.effect(
@@ -41,7 +43,7 @@ export const LeadLive = (
       const executors = yield* ExecutorRegistry
       const tasks = yield* TaskStore
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
-      const { runTask, abandon } = makeRunner({ beacon, tasks, bots, tank, executors, config })
+      const { runTask, abandon } = makeRunner({ beacon, tasks, bots, tank, executors, tiers, config })
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       return {
         intake: makeIntake({ sql, beacon, bots, tasks }),
@@ -61,9 +63,10 @@ export const LeadLive = (
 
 // Convenience for the composition root: the Lead with its own TaskStore.
 export const LeadWithStore = (
+  tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
 ): Layer.Layer<Lead, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
-  Layer.provide(LeadLive(overrides), TaskStoreLive)
+  Layer.provide(LeadLive(tiers, overrides), TaskStoreLive)
 
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

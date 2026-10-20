@@ -16,6 +16,14 @@ export const makeMapTier =
   (models: CodexModels = {}) =>
   (tier: ModelTier): CodexTarget => ({ model: models[tier] ?? CODEX_DEFAULT_MODEL })
 
+// The task's own model and effort (set by the Lead) win; the tier mapping fills what the task leaves open.
+export const targetFor = (task: ExecutorTask, mapTier: (tier: ModelTier) => CodexTarget): CodexTarget => {
+  const mapped = mapTier(task.tier)
+  const model = task.model ?? mapped.model
+  const effort = task.effort ?? mapped.effort
+  return effort === undefined ? { model } : { model, effort }
+}
+
 export const sandboxFor = (mode: PermissionMode): CodexSandbox => {
   switch (mode) {
     case "readonly":

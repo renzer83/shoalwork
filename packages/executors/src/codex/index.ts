@@ -11,7 +11,14 @@ import type { Executor } from "../executor.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { makeQuotaCounter, type QuotaCounter } from "../quota.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
-import { buildResumeArgs, buildRunArgs, type CodexModels, type CodexTarget, makeMapTier } from "./args.js"
+import {
+  buildResumeArgs,
+  buildRunArgs,
+  type CodexModels,
+  type CodexTarget,
+  makeMapTier,
+  targetFor,
+} from "./args.js"
 import { CodexEvent, makeCodexMapper } from "./events.js"
 
 export const CODEX_ID = Schema.decodeUnknownSync(ExecutorId)("codex")
@@ -42,8 +49,8 @@ const runCodex = (
       const tank = yield* Tank
       const argv =
         task.resumeSessionId === undefined
-          ? buildRunArgs(task, ctx.cwd, target(task.tier))
-          : buildResumeArgs(task.resumeSessionId, task.prompt, target(task.tier))
+          ? buildRunArgs(task, ctx.cwd, targetFor(task, target))
+          : buildResumeArgs(task.resumeSessionId, task.prompt, targetFor(task, target))
       const proc = yield* tank.spawnStream(ctx, ["codex", ...argv]).pipe(Effect.mapError(spawnFailure))
       // codex exec reads extra input from stdin until it closes; the prompt is the only input.
       yield* proc.closeStdin()

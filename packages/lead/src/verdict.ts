@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import {
   type Artifact,
   type ExecutorErrorCode,
+  type ModelTier,
   type Risk,
   type SessionId,
   type StepId,
@@ -53,6 +54,8 @@ export type Outcome =
   | { readonly _tag: "Failure"; readonly tag: string; readonly message: string }
   | { readonly _tag: "TimedOut" }
   | { readonly _tag: "Delivery"; readonly step: DeliveryStep; readonly message: string }
+  // No executor serves the task's tier (override, table and alternatives all unavailable).
+  | { readonly _tag: "NoExecutor"; readonly tier: ModelTier }
 
 export interface Progress {
   readonly usage: Usage
@@ -120,6 +123,13 @@ export const verdictFor = (progress: Progress, seconds: number): Verdict => {
         ...base,
       }
     }
+    case "NoExecutor":
+      return {
+        kind: "blocked",
+        summary: clip(`no executor available for tier ${outcome.tier}`, SUMMARY_MAX),
+        evidence: [`no executor available for tier ${outcome.tier}`],
+        ...base,
+      }
     case "Approval":
       return {
         kind: "needs_approval",
