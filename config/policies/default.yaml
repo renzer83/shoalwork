@@ -1,0 +1,86 @@
+# Base policy (T-053). A bot names its policy; any other <name>.yaml inherits these rules.
+# Order: deny -> ask -> allow. Without a rule: read and write_local allow, external and irreversible ask.
+# A deny here is a floor: a child policy cannot replace it with allow or ask.
+# Compound or wrapped Bash (; && || | newline, $(...), backticks, env/sudo/bash -c, unterminated quotes)
+# is never allowed.
+# Tilde is not expanded by the matcher: "~/..." rules only match literal "~" paths; "**/.ssh/**" covers homes.
+rules:
+  # Recursive delete of the root or home. "*" covers -r -f, -rf, -fr and --no-preserve-root.
+  - { bot: "*", tool: "Bash(rm * /)", effect: deny, reason: "recursive delete of the root" }
+  - { bot: "*", tool: "Bash(rm * /*)", effect: deny, reason: "recursive delete of an absolute path" }
+  - { bot: "*", tool: "Bash(rm * ~*)", effect: deny, reason: "recursive delete of the home directory" }
+
+  # Secrets: reading them, and writing them.
+  - { bot: "*", tool: "Read(.env*)", effect: deny, reason: "local secrets" }
+  - { bot: "*", tool: "Read(**/.env*)", effect: deny, reason: "local secrets in subdirectories" }
+  - { bot: "*", tool: "Read", resource: "~/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Read", resource: "**/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Read", resource: "~/.aws/**", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Read", resource: "**/.aws/**", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Read", resource: "**/*.pem", effect: deny, reason: "private keys" }
+  - { bot: "*", tool: "Read", resource: "**/id_rsa*", effect: deny, reason: "private keys" }
+  - { bot: "*", tool: "Grep", resource: "**/.env*", effect: deny, reason: "local secrets" }
+  - { bot: "*", tool: "Glob", resource: "**/.env*", effect: deny, reason: "local secrets" }
+
+  # Writes that must not happen from a bot: env files, git internals, policy files, home, system dirs.
+  - { bot: "*", tool: "*Edit", resource: "**/.env*", effect: deny, reason: "secrets are written by hand" }
+  - { bot: "*", tool: "Write", resource: "**/.env*", effect: deny, reason: "secrets are written by hand" }
+  - { bot: "*", tool: "*Edit", resource: "**/.git/**", effect: deny, reason: "git internals (hooks, config)" }
+  - { bot: "*", tool: "Write", resource: "**/.git/**", effect: deny, reason: "git internals (hooks, config)" }
+  - { bot: "*", tool: "*Edit", resource: "**/config/policies/**", effect: deny, reason: "policy files" }
+  - { bot: "*", tool: "Write", resource: "**/config/policies/**", effect: deny, reason: "policy files" }
+  - { bot: "*", tool: "*Edit", resource: "~/**", effect: deny, reason: "home directory" }
+  - { bot: "*", tool: "Write", resource: "~/**", effect: deny, reason: "home directory" }
+  - { bot: "*", tool: "*Edit", resource: "/etc/**", effect: deny, reason: "system configuration" }
+  - { bot: "*", tool: "Write", resource: "/etc/**", effect: deny, reason: "system configuration" }
+  - { bot: "*", tool: "*Edit", resource: "/usr/**", effect: deny, reason: "system files" }
+  - { bot: "*", tool: "Write", resource: "/usr/**", effect: deny, reason: "system files" }
+
+  # Writes that need a person to approve: bot definitions and CI workflows.
+  - { bot: "*", tool: "*Edit", resource: "**/bots/**", effect: ask, reason: "bot definitions" }
+  - { bot: "*", tool: "Write", resource: "**/bots/**", effect: ask, reason: "bot definitions" }
+  - { bot: "*", tool: "*Edit", resource: "**/.github/workflows/**", effect: ask, reason: "CI workflows" }
+  - { bot: "*", tool: "Write", resource: "**/.github/workflows/**", effect: ask, reason: "CI workflows" }
+
+  # FIX_2: credentials, startup files, agent and hook config for reads, searches and writes.
+  - { bot: "*", tool: "Read", resource: "**/.ssh", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Read", resource: "**/.aws", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Read", resource: "**/.netrc", effect: deny, reason: "network credentials" }
+  - { bot: "*", tool: "Read", resource: "**/.npmrc", effect: deny, reason: "registry credentials" }
+  - { bot: "*", tool: "Read", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
+  - { bot: "*", tool: "Grep", resource: "**/.ssh", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Grep", resource: "**/.aws", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Grep", resource: "**/.netrc", effect: deny, reason: "network credentials" }
+  - { bot: "*", tool: "Grep", resource: "**/.npmrc", effect: deny, reason: "registry credentials" }
+  - { bot: "*", tool: "Grep", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
+  - { bot: "*", tool: "Grep", resource: "**/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Grep", resource: "**/.aws/**", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Glob", resource: "**/.ssh", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Glob", resource: "**/.aws", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "Glob", resource: "**/.netrc", effect: deny, reason: "network credentials" }
+  - { bot: "*", tool: "Glob", resource: "**/.npmrc", effect: deny, reason: "registry credentials" }
+  - { bot: "*", tool: "Glob", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
+  - { bot: "*", tool: "Glob", resource: "**/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Glob", resource: "**/.aws/**", effect: deny, reason: "cloud credentials" }
+  - { bot: "*", tool: "*Edit", resource: "**/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "*Edit", resource: "**/.ssh", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "*Edit", resource: "**/.zshrc", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "*Edit", resource: "**/.bashrc", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "*Edit", resource: "**/.bash_profile", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "*Edit", resource: "**/.profile", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "*Edit", resource: "**/.gitconfig", effect: deny, reason: "git configuration" }
+  - { bot: "*", tool: "*Edit", resource: "**/Library/LaunchAgents/**", effect: deny, reason: "launch agents" }
+  - { bot: "*", tool: "*Edit", resource: "**/.claude/**", effect: deny, reason: "agent configuration" }
+  - { bot: "*", tool: "*Edit", resource: "**/.husky/**", effect: deny, reason: "git hooks" }
+  - { bot: "*", tool: "*Edit", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
+  - { bot: "*", tool: "Write", resource: "**/.ssh/**", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Write", resource: "**/.ssh", effect: deny, reason: "ssh keys" }
+  - { bot: "*", tool: "Write", resource: "**/.zshrc", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "Write", resource: "**/.bashrc", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "Write", resource: "**/.bash_profile", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "Write", resource: "**/.profile", effect: deny, reason: "shell startup" }
+  - { bot: "*", tool: "Write", resource: "**/.gitconfig", effect: deny, reason: "git configuration" }
+  - { bot: "*", tool: "Write", resource: "**/Library/LaunchAgents/**", effect: deny, reason: "launch agents" }
+  - { bot: "*", tool: "Write", resource: "**/.claude/**", effect: deny, reason: "agent configuration" }
+  - { bot: "*", tool: "Write", resource: "**/.husky/**", effect: deny, reason: "git hooks" }
+  - { bot: "*", tool: "Write", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
