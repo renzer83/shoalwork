@@ -11,17 +11,19 @@ import { Tank, type TankShape } from "@shoalwork/tank"
 import { Effect, Ref, type Scope, Stream } from "effect"
 import type { BudgetWatch } from "./budget.js"
 import type { Lifecycle } from "./lifecycle.js"
+import type { TaskStoreShape } from "./tasks.js"
 import { type Progress, withOutcome } from "./verdict.js"
 
 export interface ConsumeDeps {
   readonly taskEvent: Lifecycle["taskEvent"]
   readonly raiseError: Lifecycle["raiseError"]
   readonly tank: TankShape
+  readonly tasks: TaskStoreShape
 }
 
 // Consumes the executor stream until its first terminal event (or an approval request), recording every event.
 export const makeConsume =
-  ({ taskEvent, raiseError, tank }: ConsumeDeps) =>
+  ({ taskEvent, raiseError, tank, tasks }: ConsumeDeps) =>
   (
     spec: TaskSpec,
     bot: Bot,
@@ -47,7 +49,18 @@ export const makeConsume =
           case "started": {
             if (event.sessionId !== undefined) {
               const sessionId = event.sessionId
+              // Written down with the first session the run reports: a run cut short still leaves one to resume.
+              const first = (yield* Ref.get(progress)).sessionId === undefined
               yield* Ref.update(progress, (p) => ({ ...p, sessionId }))
+              if (first) {
+                yield* tasks
+                  .update(spec.id, { sessionId })
+                  .pipe(
+                    Effect.catch((error) =>
+                      raiseError(spec, "lead.session", error._tag, "could not record the session"),
+                    ),
+                  )
+              }
             }
             return true
           }

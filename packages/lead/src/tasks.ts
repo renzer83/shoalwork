@@ -39,7 +39,12 @@ export interface TaskStoreShape {
   readonly update: (id: TaskId, patch: TaskPatch) => Effect.Effect<TaskState, NotFound | SqlError>
   // Tasks of the bot that are running right now (the Bot is idle only when this is 0).
   readonly countRunning: (botId: BotId) => Effect.Effect<number, SqlError>
+  // The most recent tasks of the bot, newest first (at most LIST_LIMIT).
+  readonly listByBot: (botId: BotId) => Effect.Effect<ReadonlyArray<TaskRecord>, SqlError>
 }
+
+// Enough for "continua a task <título>" to find the task the user means.
+export const LIST_LIMIT = 200
 
 export class TaskStore extends Context.Service<TaskStore, TaskStoreShape>()("@shoalwork/TaskStore") {}
 
@@ -114,6 +119,13 @@ export const makeTaskStore = (sql: SqlClient): TaskStoreShape => {
         const rows = yield* sql<{ readonly n: number }>`
           SELECT COUNT(*) AS n FROM tasks WHERE bot_id = ${botId} AND state = 'running'`
         return rows[0]?.n ?? 0
+      }),
+
+    listByBot: (botId) =>
+      Effect.gen(function* () {
+        const rows = yield* sql`SELECT * FROM tasks WHERE bot_id = ${botId}
+          ORDER BY created_at DESC, rowid DESC LIMIT ${LIST_LIMIT}`
+        return yield* Effect.forEach(yield* decodeRows(rows), toRecord)
       }),
 
     update: (id, patch) =>

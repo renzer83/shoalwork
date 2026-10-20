@@ -15,7 +15,7 @@ import type { ControlShape, RunHandle } from "./control.js"
 import { makeDeliver } from "./deliver.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
-import { recoveredCarry } from "./resume.js"
+import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
 import { executorTaskFor, type McpServerConfig, makeRunSetup } from "./run-setup.js"
@@ -98,7 +98,7 @@ export const makeRunner = (deps: RunnerDeps) => {
     tasks,
     bots,
   })
-  const consume = makeConsume({ taskEvent, raiseError, tank })
+  const consume = makeConsume({ taskEvent, raiseError, tank, tasks })
   const deliver = makeDeliver({ tank, raiseError })
   const setup = makeRunSetup({
     sql,
@@ -162,7 +162,7 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             cwd: ctx.cwd,
           })
-          const delivered = yield* setup.inject(ctx, { spec, bot, task, executor: executor.id })
+          const delivered = yield* setup.inject(ctx, { spec, bot, task, executor: executor.id, carry })
           yield* consume(
             spec,
             bot,
@@ -273,7 +273,7 @@ export const makeRunner = (deps: RunnerDeps) => {
           }
         }
         const started = yield* Clock.currentTimeMillis
-        const carry = yield* recoveredCarry({ tank, bots }, current)
+        const carry = yield* carryFor({ tank, bots, tasks, beacon, raiseError }, current)
         return yield* rounds(record.spec, started, carry, handle)
       }),
     ).pipe(

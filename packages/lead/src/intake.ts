@@ -19,6 +19,7 @@ import type { SqlError } from "effect/sql/SqlError"
 import { botUsageInWindow } from "./budget.js"
 import { makeLifecycle } from "./lifecycle.js"
 import { makeOutcomes } from "./outcomes.js"
+import { authorizeResume } from "./resume.js"
 import { tierFor } from "./routing.js"
 import { emit, type TaskStoreShape } from "./tasks.js"
 import { describeFailure } from "./verdict.js"
@@ -98,6 +99,8 @@ export const makeIntake =
       const spec = yield* Schema.decodeUnknownEffect(TaskSpec)({ ...input, tier, id: newTaskId() }).pipe(
         Effect.mapError((e) => new SchemaViolation({ where: "TaskSpec", issue: e.issue })),
       )
+      // A continuation is refused before anything is stored; the same check runs again inside the transaction below.
+      yield* authorizeResume(deps.tasks, spec)
       const bot = yield* deps.bots.get(spec.botId)
       const used = yield* botUsageInWindow(deps.beacon, spec.botId, deps.botBudgetWindowMs)
       if (exceeds(usageToBudget(used), bot.budget).exceeded) {
@@ -106,6 +109,7 @@ export const makeIntake =
       }
       yield* deps.sql.withTransaction(
         Effect.gen(function* () {
+          yield* authorizeResume(deps.tasks, spec)
           yield* deps.tasks.insert(spec)
           yield* emit(deps.beacon, {
             streamId: streamIds.task(spec.id),

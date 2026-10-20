@@ -36,5 +36,7 @@ export const TaskSpec = Schema.Struct({
   parent: Schema.optional(Schema.Struct({ planId: PlanId, stepId: StepId })),
   // Id of the message that originated the task (the Reflex decisions of that message share it as correlationId).
   correlationId: Schema.optional(Schema.String),
+  // The task this one continues ("continua a task …"): same worktree and session when they still exist.
+  resumeOf: Schema.optional(TaskId),
 })
 export type TaskSpec = typeof TaskSpec.Type

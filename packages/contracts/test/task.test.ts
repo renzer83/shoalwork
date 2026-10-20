@@ -36,6 +36,16 @@ describe("task", () => {
     expect(() => Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, correlationId: 7 })).toThrow()
   })
 
+  it("resumeOf is optional and round-trips when present", () => {
+    expect(Schema.decodeUnknownSync(TaskSpec)(minimalTask).resumeOf).toBeUndefined()
+    const raw = { ...minimalTask, acceptance: [], resumeOf: "task_1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e" }
+    expect(Schema.encodeSync(TaskSpec)(Schema.decodeUnknownSync(TaskSpec)(raw))).toEqual(raw)
+    expect(() =>
+      Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, resumeOf: minimalTask.botId }),
+    ).toThrow()
+    expect(() => Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, resumeOf: "task_42" })).toThrow()
+  })
+
   it("rejects a task kind outside the closed list", () => {
     expect(() => Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, kind: "deploy" })).toThrow()
   })

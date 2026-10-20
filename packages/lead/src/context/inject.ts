@@ -1,6 +1,7 @@
 import type { Bot, ExecutorId, ExecutorTask, TaskSpec } from "@shoalwork/contracts"
 import { Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Cause, Effect, type Scope } from "effect"
+import type { Carry } from "../retry.js"
 import { describeFailure } from "../verdict.js"
 import { type Briefing, type BriefingCode, type BriefingMemory, buildBriefing } from "./briefing.js"
 import { type ContextConfig, DEFAULT_CONTEXT_CONFIG } from "./config.js"
@@ -45,6 +46,8 @@ export interface InjectInput {
   readonly executor: ExecutorId
   // The Reflex decision of the task, when the caller has it; otherwise the tier stands in for the complexity.
   readonly decision?: PlanningDecision | undefined
+  // The run's carry (retry.ts): its working lines (resume.ts) go into the briefing.
+  readonly carry?: Carry | undefined
 }
 
 // Where the briefing goes when the worktree files cannot carry it: claude-code takes it as --append-system-prompt;
@@ -92,7 +95,7 @@ export const makeInjector = (deps: InjectDeps) => {
           tank: deps.tank,
           onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
         },
-        { spec, bot, ctx, plan, config },
+        { spec, bot, ctx, plan, config, working: input.carry?.working },
       ).pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause).pipe(Effect.as(undefined)))))
       if (built === undefined) return task
       yield* announce(built)

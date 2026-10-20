@@ -29,10 +29,12 @@ import { makeFactoryStep } from "./conversation-factory.js"
 import { makeMemoryReplies } from "./conversation-memory.js"
 import type { ConversationOptions } from "./conversation-options.js"
 import { type Acked, makeChatAnswer, makeHandOff } from "./conversation-replies.js"
+import { makeResumeAnswers } from "./conversation-resume.js"
 import { escalate } from "./escalation.js"
 import { Lead } from "./lead.js"
 import { startNarrator } from "./narrate.js"
 import { ack, ackUnnamedPhrase, failedPhrase, type Lang, langOf } from "./narrator.js"
+import { parseResumeRequest } from "./resume-request.js"
 import { TaskStore } from "./tasks.js"
 
 export interface ConversationShape {
@@ -131,6 +133,7 @@ export const ConversationLive = (
 
       const answerChat = makeChatAnswer({ beacon, chat, say })
       const handOff = makeHandOff({ bots, lead, say, languages })
+      const answerResume = makeResumeAnswers({ tasks, lead, say, languages })
 
       const route = (event: Event) =>
         Effect.gen(function* () {
@@ -154,6 +157,11 @@ export const ConversationLive = (
           const facts = yield* factsFor(context, event, text, userId, hint)
           const decided = yield* reflex.standard(facts)
           const language = langOf(decided.language)
+          // "continua a task <id|título>": decided by the text, the Reflex only supplied the language.
+          const resumeRequest = parseResumeRequest(text)
+          if (resumeRequest !== undefined) {
+            return yield* answerResume(event, topicBot, resumeRequest, language)
+          }
           if (decided.intent !== "system") {
             yield* Effect.forkIn(telegram.typing(topicBot.id), layerScope)
           }
