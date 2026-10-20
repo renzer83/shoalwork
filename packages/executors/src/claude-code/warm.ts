@@ -1,8 +1,8 @@
-import type { ExecutorEvent, ExecutorTask } from "@shoalwork/contracts"
+import type { ExecutorEvent, ExecutorTask, ModelTier } from "@shoalwork/contracts"
 import { type RunningProcess, Tank, type TankContext } from "@shoalwork/tank"
 import { type Cause, Duration, Effect, Exit, Option, Queue, Schema, Scope, Semaphore, Stream } from "effect"
 import { captureStderr } from "../stderr.js"
-import { buildWarmChatArgs, encodeWarmUserMessage } from "./args.js"
+import { buildWarmChatArgs, defaultChatMapTier, encodeWarmUserMessage, type TierMapping } from "./args.js"
 import { CHAT_ID } from "./chat.js"
 import { dropApiKey } from "./env.js"
 import { ClaudeStreamLine, makeMapperState, toExecutorEvents } from "./events.js"
@@ -18,6 +18,8 @@ export type WarmChatPoolOptions = {
   readonly timeoutMs?: number
   // How often idle processes are looked for (default: a quarter of idleMs, at most 30 s).
   readonly sweepMs?: number
+  // Model and effort per tier, same meaning as in the one-shot chat (default: CHAT_MODEL at low effort).
+  readonly mapTier?: (tier: ModelTier) => TierMapping
 }
 
 // What a warm turn produced. `unavailable` means no warm process could answer (spawn failed, the process died,
@@ -106,6 +108,7 @@ export const makeWarmChatPool = (
     const idleMs = opts.idleMs ?? DEFAULT_IDLE_MS
     const maxProcesses = opts.maxProcesses ?? DEFAULT_MAX_PROCESSES
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    const mapTier = opts.mapTier ?? defaultChatMapTier
     const sweepMs = opts.sweepMs ?? Math.max(5, Math.min(MAX_SWEEP_MS, Math.floor(idleMs / 4)))
 
     const entries = new Map<string, Entry>()
@@ -157,7 +160,9 @@ export const makeWarmChatPool = (
         const scope = yield* Scope.make()
         const env = dropApiKey({ ...ctx.env, ...envOverrides })
         const spawned = yield* Effect.exit(
-          tank.spawnStream({ ...ctx, env }, [bin, ...buildWarmChatArgs(task)]).pipe(Scope.provide(scope)),
+          tank
+            .spawnStream({ ...ctx, env }, [bin, ...buildWarmChatArgs(task, mapTier)])
+            .pipe(Scope.provide(scope)),
         )
         if (!Exit.isSuccess(spawned)) {
           yield* Effect.logWarning("warm chat process could not be spawned; using the one-shot chat")

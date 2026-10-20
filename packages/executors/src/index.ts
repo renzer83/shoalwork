@@ -1,3 +1,4 @@
+export { defaultChatMapTier } from "./claude-code/args.js"
 export {
   CHAT_ID,
   type ClaudeCodeChatOptions,
@@ -5,7 +6,7 @@ export {
   type RunChatTurnOptions,
   runChatTurn,
 } from "./claude-code/chat.js"
-export { makeClaudeCode } from "./claude-code/index.js"
+export { defaultMapTier, makeClaudeCode } from "./claude-code/index.js"
 export { ChatSessions, ChatSessionsLive } from "./claude-code/sessions.js"
 export {
   makeWarmChatPool,
@@ -17,3 +18,13 @@ export { CODEX_ID, type CodexOptions, makeCodexExecutor } from "./codex/index.js
 export { type Effort, type Executor, ExecutorRegistry, makeRegistry } from "./executor.js"
 export { parseNdjsonLines } from "./ndjson.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
+export {
+  decodeTierConfig,
+  loadTierConfig,
+  type ResolvedTier,
+  resolveTier,
+  TierConfig,
+  TierEntry,
+  TierRouting,
+  tierMappingFrom,
+} from "./tiers.js"

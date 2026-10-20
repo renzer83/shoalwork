@@ -21,12 +21,14 @@ export type ClaudeCodeOptions = {
   readonly id?: ExecutorId
   // Default "none": the run ignores the account's claude.ai connectors (see McpMode in args.ts).
   readonly mcp?: McpMode
+  // Model and effort per tier. Default: defaultMapTier (config/model-tiers.yaml replaces it, T-026).
+  readonly mapTier?: (tier: ModelTier) => TierMapping
 }
 
 const DEFAULT_ID = Schema.decodeUnknownSync(ExecutorId)("claude-code")
 
-// Default tier table; T-026 replaces it with the config file. Full model ids: the alias `haiku` routed to Sonnet
-// on CLI 2.1.304 (06-research/claude-code.md §10).
+// Default tier table, used when no mapTier is injected. Full model ids: the alias `haiku` routed to Sonnet on CLI
+// 2.1.304 (06-research/claude-code.md §10).
 export const defaultMapTier = (tier: ModelTier): TierMapping => {
   switch (tier) {
     case "chat":
@@ -45,6 +47,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
   const id = opts.id ?? DEFAULT_ID
   const bin = opts.bin ?? "claude"
   const mcp: McpMode = opts.mcp ?? "none"
+  const mapTier = opts.mapTier ?? defaultMapTier
   const envOverrides = dropApiKey(opts.envOverrides ?? {})
   const spawnFailed = (cause: unknown) => new ExecutorSpawnError({ executor: id, cause })
 
@@ -57,7 +60,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
         const tank = yield* Tank
         const env = dropApiKey({ ...ctx.env, ...envOverrides })
         const proc = yield* tank
-          .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, defaultMapTier, mcp)])
+          .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, mapTier, mcp)])
           .pipe(Effect.mapError(spawnFailed))
         // The prompt travels in argv. With stdin left open, claude waits 3 s and warns about missing input.
         yield* proc.closeStdin()
@@ -99,7 +102,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
   return {
     id,
     run,
-    mapTier: defaultMapTier,
+    mapTier,
     // No local counter yet: the soft limit is not decided. Reports unlimited until F5 (real quota).
     quota: () => Effect.succeed({ executor: id, usedRatio: 0, available: true }),
   }

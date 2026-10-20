@@ -1,0 +1,5 @@
+model_tiers:
+  chat:
+    executor: claude-code:chat
+    model: claude-haiku-5-5
+routing: {}

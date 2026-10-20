@@ -55,54 +55,68 @@ export const CHAT_MODEL = "claude-haiku-5-5"
 // Without this the CLI loads the claude.ai connectors and plugins: ~145k cache tokens and ~2 s per turn (06-research §10).
 const NO_MCP_SERVERS = '{"mcpServers":{}}'
 
+// Default mapping of the chat adapter: every tier it serves (chat, decision) runs CHAT_MODEL at low effort.
+// The config file replaces it through the adapter's mapTier option (T-026).
+export const defaultChatMapTier = (): TierMapping => ({ model: CHAT_MODEL, effort: "low" })
+
 // One turn, no builtin tools, JSON output. The prompt stays last, after `--`, like buildArgs.
-export const buildChatArgs = (task: ExecutorTask): ReadonlyArray<string> => [
-  "-p",
-  "--output-format",
-  "json",
-  "--model",
-  CHAT_MODEL,
-  "--effort",
-  "low",
-  "--tools",
-  "",
-  "--max-turns",
-  "1",
-  "--permission-mode",
-  "plan",
-  "--strict-mcp-config",
-  "--mcp-config",
-  NO_MCP_SERVERS,
-  ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
-  ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
-  "--",
-  task.prompt,
-]
+export const buildChatArgs = (
+  task: ExecutorTask,
+  mapTier: (tier: ModelTier) => TierMapping = defaultChatMapTier,
+): ReadonlyArray<string> => {
+  const { model, effort } = mapTier(task.tier)
+  return [
+    "-p",
+    "--output-format",
+    "json",
+    "--model",
+    model,
+    ...(effort !== undefined ? ["--effort", effort] : []),
+    "--tools",
+    "",
+    "--max-turns",
+    "1",
+    "--permission-mode",
+    "plan",
+    "--strict-mcp-config",
+    "--mcp-config",
+    NO_MCP_SERVERS,
+    ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
+    ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
+    "--",
+    task.prompt,
+  ]
+}
 
 // Warm chat (T-163): one long-lived process per scope. Same flags as the one-shot chat, but messages arrive on stdin
 // as stream-json lines, so there is no `--`/prompt in argv and no `--max-turns` (no tools, so a turn is one reply).
 // --resume and --append-system-prompt only apply when the process is spawned.
-export const buildWarmChatArgs = (task: ExecutorTask): ReadonlyArray<string> => [
-  "-p",
-  "--input-format",
-  "stream-json",
-  "--output-format",
-  "stream-json",
-  "--verbose",
-  "--model",
-  CHAT_MODEL,
-  "--effort",
-  "low",
-  "--tools",
-  "",
-  "--permission-mode",
-  "plan",
-  "--strict-mcp-config",
-  "--mcp-config",
-  NO_MCP_SERVERS,
-  ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
-  ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
-]
+export const buildWarmChatArgs = (
+  task: ExecutorTask,
+  mapTier: (tier: ModelTier) => TierMapping = defaultChatMapTier,
+): ReadonlyArray<string> => {
+  const { model, effort } = mapTier(task.tier)
+  return [
+    "-p",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--model",
+    model,
+    ...(effort !== undefined ? ["--effort", effort] : []),
+    "--tools",
+    "",
+    "--permission-mode",
+    "plan",
+    "--strict-mcp-config",
+    "--mcp-config",
+    NO_MCP_SERVERS,
+    ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
+    ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
+  ]
+}
 
 // One user turn for the warm process stdin (shape verified on CLI 2.1.304, 06-research/claude-code.md §10).
 // U+2028/U+2029 are escaped because JSON.stringify leaves them raw and a line splitter may treat them as breaks.

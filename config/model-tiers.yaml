@@ -1,0 +1,37 @@
+# Model tiers (02-architecture §13). Changing the model of a tier means editing this file.
+# A Bot may override one tier in bots/*.yaml (modelTiers); that wins over this file.
+#
+# Executor ids: "claude-code@chat" is the chat adapter (ExecutorId does not accept ":").
+# Model ids are full ids: the alias "haiku" routed to Sonnet on CLI 2.1.304.
+model_tiers:
+  chat:
+    executor: claude-code@chat
+    model: claude-haiku-5-5
+    effort: low
+  decision:
+    executor: claude-code@chat
+    model: claude-haiku-5-5
+    effort: low
+  light:
+    executor: claude-code
+    model: claude-haiku-5-5
+    effort: high
+  heavy:
+    executor: claude-code
+    model: claude-opus-5-5
+    effort: high
+    # Used in this order when the executor above is unavailable. Their model comes from the executor itself.
+    alternatives: [codex]
+
+# Task kind -> tier. Every TaskKind needs an entry. "system" never reaches an executor (internal commands),
+# it is mapped to chat only so the table covers every kind.
+routing:
+  code: heavy
+  research: heavy
+  plan: heavy
+  review: heavy
+  chat: chat
+  status: chat
+  system: chat
+  app_op: light
+  routine: light

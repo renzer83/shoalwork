@@ -11,7 +11,7 @@ import { Tank, type TankContext } from "@shoalwork/tank"
 import { Duration, Effect, Option, Schema, type Scope, Stream } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import type { Executor } from "../executor.js"
-import { buildChatArgs, CHAT_MODEL } from "./args.js"
+import { buildChatArgs, defaultChatMapTier, type TierMapping } from "./args.js"
 import { dropApiKey } from "./env.js"
 import { ClaudeStreamLine, makeMapperState, toExecutorEvents } from "./events.js"
 import { ChatSessions } from "./sessions.js"
@@ -24,6 +24,8 @@ export type ClaudeCodeChatOptions = {
   readonly envOverrides?: Readonly<Record<string, string>>
   // Wall-clock cap for one turn, shared by its attempts (spec: 20 s).
   readonly timeoutMs?: number
+  // Model and effort per tier. Default: CHAT_MODEL at low effort (config/model-tiers.yaml replaces it, T-026).
+  readonly mapTier?: (tier: ModelTier) => TierMapping
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000
@@ -129,6 +131,7 @@ const runTurn = (
   ctx: TankContext,
   envOverrides: Readonly<Record<string, string>>,
   timeoutMs: number,
+  mapTier: (tier: ModelTier) => TierMapping,
 ): Stream.Stream<ExecutorEvent, ExecutorSpawnError, Tank | Scope.Scope> =>
   Stream.unwrap(
     Effect.gen(function* () {
@@ -138,7 +141,7 @@ const runTurn = (
       const env = dropApiKey({ ...ctx.env, ...envOverrides })
       const timedOut = failure("unknown", `chat turn exceeded ${timeoutMs} ms`)
       const started = Date.now()
-      const first = yield* runOnce(bin, buildChatArgs(task), ctx, env, timeoutMs)
+      const first = yield* runOnce(bin, buildChatArgs(task, mapTier), ctx, env, timeoutMs)
       if (first.kind === "timeout") return Stream.make(timedOut)
       // Retry only when the resumed turn printed no result (the CLI case for an unknown session). A result that
       // carries an error (rate limit, max turns) is returned as is and the stored session is left alone.
@@ -149,7 +152,7 @@ const runTurn = (
       const remaining = timeoutMs - (Date.now() - started)
       if (remaining <= 0) return Stream.make(timedOut)
       const { resumeSessionId: _failed, ...fresh } = task
-      const retry = yield* runOnce(bin, buildChatArgs(fresh), ctx, env, remaining)
+      const retry = yield* runOnce(bin, buildChatArgs(fresh, mapTier), ctx, env, remaining)
       if (retry.kind === "timeout") return Stream.make(timedOut)
       return Stream.fromIterable(retry.events)
     }),
@@ -159,11 +162,12 @@ export const makeClaudeCodeChat = (opts: ClaudeCodeChatOptions = {}): Executor =
   const bin = opts.bin ?? "claude"
   const envOverrides = dropApiKey(opts.envOverrides ?? {})
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const mapTier = opts.mapTier ?? defaultChatMapTier
   return {
     id: CHAT_ID,
-    run: (task, ctx) => runTurn(bin, task, ctx, envOverrides, timeoutMs),
+    run: (task, ctx) => runTurn(bin, task, ctx, envOverrides, timeoutMs, mapTier),
     // light and heavy are refused by run(), so this mapping is never used for them.
-    mapTier: (): { readonly model: string; readonly effort: "low" } => ({ model: CHAT_MODEL, effort: "low" }),
+    mapTier,
     // No local counter in T-017; the subscription quota is F5 work.
     quota: () => Effect.succeed({ executor: CHAT_ID, usedRatio: 0, available: true }),
   }
