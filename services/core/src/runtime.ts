@@ -22,11 +22,13 @@ import {
   Conversation,
   ConversationLive,
   executorConsolidationModel,
+  type IndexHookOptions,
   Lead,
   LeadLive,
   loadContextConfig,
   McpTokensLive,
   startConsolidateHook,
+  startIndexHook,
   TaskStoreLive,
 } from "@shoalwork/lead"
 import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
@@ -188,6 +190,15 @@ export const startConsolidateFiber = (options: ConsolidateHookOptions) =>
   appRuntime.runFork(
     Effect.gen(function* () {
       yield* startConsolidateHook(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// Repo indexing of finished and first-run code tasks, in its own fiber like the consolidation (T-170).
+export const startIndexFiber = (options: IndexHookOptions) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      yield* startIndexHook(options)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

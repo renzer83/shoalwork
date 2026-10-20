@@ -103,6 +103,27 @@ export const listRepoFiles = (repoDir: string): Effect.Effect<ReadonlyArray<stri
     ),
   )
 
+// The url of the repo's origin remote, or undefined when there is none (or git cannot say). Argv only, bounded in time.
+export const originUrlOf = (repoDir: string): Effect.Effect<string | undefined> =>
+  Effect.tryPromise({
+    try: (signal) =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          "git",
+          ["-C", repoDir, "remote", "get-url", "origin"],
+          { encoding: "utf8", maxBuffer: GIT_MAX_BUFFER, timeout: GIT_TIMEOUT_MS, signal, env: gitEnv() },
+          (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+        )
+      }),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.map((stdout) => {
+      const url = stdout.trim()
+      return url === "" ? undefined : url
+    }),
+    Effect.catch(() => Effect.succeed(undefined)),
+  )
+
 // Anything that makes one file unreadable (gone, loop, permissions, not a file, name too long) skips that file only.
 const SKIPPABLE_CODES = new Set(["ENOENT", "ENOTDIR", "ELOOP", "EACCES", "EPERM", "EISDIR", "ENAMETOOLONG"])
 const isSkippable = (cause: unknown): boolean =>

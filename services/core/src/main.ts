@@ -14,6 +14,7 @@ import {
   runEffect,
   startConsolidateFiber,
   startConversationFiber,
+  startIndexFiber,
   startLeadWorker,
   startWatchdogFiber,
 } from "./runtime.js"
@@ -122,6 +123,10 @@ const serveUntilInterrupted = (
     const consolidation = startConsolidateFiber({ pollMs: 1000, heartbeatMs: 30_000 })
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(consolidation).pipe(Effect.andThen(Effect.logInfo("shutdown: consolidation stopped"))),
+    )
+    const indexing = startIndexFiber({ pollMs: 1000, heartbeatMs: 30_000 })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(indexing).pipe(Effect.andThen(Effect.logInfo("shutdown: indexing stopped"))),
     )
     // Without TELEGRAM_BOT_TOKEN this fiber ends at once (the Telegram layer is a no-op).
     const conversation = startConversationFiber()

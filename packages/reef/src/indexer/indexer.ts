@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { resolve } from "node:path"
+import { repoKeyOf } from "@shoalwork/contracts"
 import { nowIso } from "@shoalwork/db"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -10,12 +11,25 @@ import { type CodeChunk, chunkFile, MAX_CHUNK_CHARS } from "./chunk.js"
 import { CodeChunkKey, CodeChunkRow } from "./rows.js"
 import { CODE_SEARCH_DEFAULT_K, type CodeSearchHit, searchCodeChunks } from "./search.js"
 import { langOf } from "./symbols.js"
-import { listRepoFiles, readIndexable, resolveRepoRoot, type WalkError } from "./walk.js"
+import { listRepoFiles, originUrlOf, readIndexable, resolveRepoRoot, type WalkError } from "./walk.js"
 
 export interface IndexOptions {
-  // Stable repo id stored with each chunk. Defaults to the absolute path of the directory.
+  // Stable repo id stored with each chunk. Wins over repoUrl and the origin remote.
   readonly repo?: string | undefined
+  // The repo's url in any form repoKeyOf reads (https, ssh, scp-like). Its key is the stored repo id.
+  readonly repoUrl?: string | undefined
 }
+
+// The id a run stores its chunks under: `repo`, else the key of `repoUrl`, else the key of the origin remote of the
+// directory (the same key the Lead's MCP scope and briefing use). Only a directory with no remote at all falls back to
+// its absolute path, because no url names it.
+const repoIdOf = (repoDir: string, options: IndexOptions): Effect.Effect<string> =>
+  Effect.gen(function* () {
+    if (options.repo !== undefined) return options.repo
+    if (options.repoUrl !== undefined) return repoKeyOf(options.repoUrl)
+    const origin = yield* originUrlOf(repoDir)
+    return origin === undefined ? resolve(repoDir) : repoKeyOf(origin)
+  })
 
 export interface IndexReport {
   readonly repo: string
@@ -154,7 +168,7 @@ export const IndexerLive = (
       ): Effect.Effect<IndexReport, IndexError> =>
         Effect.gen(function* () {
           const root = yield* resolveRepoRoot(repoDir)
-          const repo = indexOptions.repo ?? resolve(repoDir)
+          const repo = yield* repoIdOf(repoDir, indexOptions)
           const paths = yield* listRepoFiles(root)
           const storedRows = yield* decodeKeys(
             yield* sql`SELECT id, path, start_line, end_line, sha256, embedding IS NOT NULL AS has_embedding

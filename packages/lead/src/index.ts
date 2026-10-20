@@ -143,6 +143,7 @@ export {
   executorConsolidationModel,
   startConsolidateHook,
 } from "./hooks/consolidate.js"
+export { INDEX_QUEUE, type IndexHookOptions, indexRepoOf, startIndexHook } from "./hooks/index-repo.js"
 export { TASKS_QUEUE } from "./intake.js"
 export { Lead, type LeadShape } from "./lead.js"
 export {
@@ -158,7 +159,6 @@ export {
   makeMcpTokens,
 } from "./mcp-tokens.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
-export { repoKeyOf } from "./repo-key.js"
 export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

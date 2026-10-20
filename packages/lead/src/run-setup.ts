@@ -1,13 +1,14 @@
 import type { BotRegistryShape } from "@shoalwork/bots"
-import type {
-  Bot,
-  BotId,
-  ExecutorId,
-  ExecutorTask,
-  StepId,
-  TankError,
-  TaskSpec,
-  WorktreeConflict,
+import {
+  type Bot,
+  type BotId,
+  type ExecutorId,
+  type ExecutorTask,
+  repoKeyOf,
+  type StepId,
+  type TankError,
+  type TaskSpec,
+  type WorktreeConflict,
 } from "@shoalwork/contracts"
 import {
   type Effort,
@@ -25,7 +26,6 @@ import type { ContextConfig } from "./context/config.js"
 import { type InjectDeps, makeInjector } from "./context/inject.js"
 import { CODE_ALLOWED_TOOLS } from "./deliver.js"
 import { type IssuedMcpToken, MAX_MCP_TOKEN_TTL_MS, type McpTokensShape } from "./mcp-tokens.js"
-import { repoKeyOf } from "./repo-key.js"
 import { buildRetryPrompt, type Carry } from "./retry.js"
 import { clearProcesses } from "./run-processes.js"
 import { buildPrompt, describeFailure, type Progress } from "./verdict.js"
