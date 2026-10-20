@@ -376,6 +376,9 @@ importers:
       '@shoalwork/lead':
         specifier: workspace:*
         version: link:../../packages/lead
+      '@shoalwork/reef':
+        specifier: workspace:*
+        version: link:../../packages/reef
       '@shoalwork/reflex':
         specifier: workspace:*
         version: link:../../packages/reflex

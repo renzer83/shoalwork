@@ -7,6 +7,7 @@ import { APP_VERSION } from "../config.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
+import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
@@ -23,6 +24,8 @@ export interface AppDeps {
   readonly apiToken: Redacted.Redacted<string>
   readonly runEffect: RunEffect
   readonly probe?: ProbeEffect | undefined
+  // Mounted only when the composition root provides the Reef and the SqlClient to the HTTP layer.
+  readonly runMemory?: RunMemory | undefined
 }
 
 export interface HealthBody {
@@ -118,6 +121,9 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerEventRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
+  if (deps.runMemory !== undefined) {
+    registerMemoryRoutes(app, deps.runMemory)
+  }
 
   return app
 }

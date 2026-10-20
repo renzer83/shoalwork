@@ -4,6 +4,7 @@ import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
 import { eventsList } from "./commands/events.js"
+import { memoryImport } from "./commands/memory-import.js"
 import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
 
@@ -15,6 +16,7 @@ const USAGE = [
   "       shoalwork task show <task id>",
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork reflex export --out <file>",
+  "       shoalwork memory import --dir <dir> --scope global|bot:<name> --kind semantic|procedural --source <label>",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -84,6 +86,23 @@ const reflex = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
   )
 }
 
+const memory = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
+  const [sub, ...rest] = argv
+  if (sub === "import") {
+    return Effect.gen(function* () {
+      const { flags } = yield* parseArgs(rest, ["dir", "scope", "kind", "source", ...SETTINGS_FLAGS])
+      const settings = yield* resolveSettings(flags, process.env)
+      const report = yield* memoryImport(settings, flags)
+      yield* Console.log(JSON.stringify(report))
+    })
+  }
+  return Effect.fail(
+    new UsageError({
+      message: sub === undefined ? "missing memory subcommand (import)" : `unknown memory subcommand: ${sub}`,
+    }),
+  )
+}
+
 const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
   const [command, ...rest] = argv
   switch (command) {
@@ -95,6 +114,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return events(rest)
     case "reflex":
       return reflex(rest)
+    case "memory":
+      return memory(rest)
     default:
       return Effect.fail(
         new UsageError({
