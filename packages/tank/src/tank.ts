@@ -30,6 +30,13 @@ export type RunningProcess = {
   readonly kill: (signal?: "SIGTERM" | "SIGKILL") => Effect.Effect<void>
 }
 
+// A linked worktree of one of the Bot's repos (branch bot/<bot>/<step>), as git lists it.
+export type OwnedWorktree = {
+  readonly repoDir: string
+  readonly path: string
+  readonly branch: string
+}
+
 export interface TankShape {
   readonly mode: TankMode
   // reuse: continue the worktree an earlier attempt of the same step kept (must still be registered for the Bot);
@@ -57,6 +64,10 @@ export interface TankShape {
     ctx: TankContext,
     opts: { readonly keepWorktree: boolean },
   ) => Effect.Effect<void, TankError>
+  // Worktrees of the Bot's clone of repoUrl whose branch is the Bot's own (none when the clone does not exist).
+  readonly worktrees: (bot: Bot, repoUrl: string) => Effect.Effect<ReadonlyArray<OwnedWorktree>, TankError>
+  // Removes one of the Bot's worktrees with its branch; same confinement as release.
+  readonly removeWorktree: (bot: Bot, worktree: OwnedWorktree) => Effect.Effect<void, TankError>
 }
 
 export class Tank extends Context.Service<Tank, TankShape>()("@shoalwork/Tank") {}

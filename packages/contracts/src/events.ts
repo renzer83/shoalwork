@@ -163,7 +163,14 @@ const TideFiredPayload = Schema.Struct({
 })
 
 const WatchdogRecoveredPayload = Schema.Struct({
-  what: Schema.Literals(["stale_task", "long_process", "expired_approval", "state_mismatch"]),
+  what: Schema.Literals([
+    "stale_task",
+    "stale_job",
+    "long_process",
+    "expired_approval",
+    "state_mismatch",
+    "orphan_worktree",
+  ]),
   ref: Schema.String,
   action: Schema.String,
 })

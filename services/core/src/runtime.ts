@@ -21,6 +21,7 @@ import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { AppConfig, type AppConfigShape, hostEnvSnapshot } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
+import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
 
 // `which` without a shell: walks PATH and checks the execute bit. A lookup failure just means "not installed".
 const isExecutable = (path: string): boolean => {
@@ -101,6 +102,15 @@ export const startLeadWorker = (options: { readonly concurrency: number; readonl
     Effect.gen(function* () {
       const lead = yield* Lead
       yield* lead.startWorker(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// The watchdog runs in its own fiber, like the worker; the caller interrupts it before disposing the runtime.
+export const startWatchdogFiber = (config: WatchdogConfig) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      yield* startWatchdog(config)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

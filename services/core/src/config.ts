@@ -46,6 +46,9 @@ export const AppConfig = Config.all({
     Config.withDefault(""),
     Config.map((value) => (value.trim() === "" ? undefined : value.trim())),
   ),
+  // Watchdog (T-030): a running task silent this long is stale; a Tank process alive this long is killed.
+  watchdogStaleMinutes: Config.Int("WATCHDOG_STALE_MINUTES").pipe(Config.withDefault(20)),
+  watchdogMaxProcessMinutes: Config.Int("WATCHDOG_MAX_PROCESS_MINUTES").pipe(Config.withDefault(45)),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(
     Config.withDefault("config/model-tiers.yaml"),

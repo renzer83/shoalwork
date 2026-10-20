@@ -112,6 +112,8 @@ export interface ReapedJob {
 
 export interface ReapResult {
   readonly requeued: number
+  // The jobs that went back to the queue (requeued.length === requeued).
+  readonly requeuedJobs: ReadonlyArray<ReapedJob>
   // Jobs that had already used all their attempts: they are now 'failed' and their owner must be told.
   readonly failed: ReadonlyArray<ReapedJob>
 }
@@ -142,5 +144,8 @@ export const reapStale = (
     const failed = rows
       .filter((row) => row.state === "failed")
       .map(({ id, queue: q, payload }) => ({ id, queue: q, payload }))
-    return { requeued: rows.length - failed.length, failed }
+    const requeuedJobs = rows
+      .filter((row) => row.state !== "failed")
+      .map(({ id, queue: q, payload }) => ({ id, queue: q, payload }))
+    return { requeued: requeuedJobs.length, requeuedJobs, failed }
   })

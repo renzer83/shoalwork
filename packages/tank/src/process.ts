@@ -33,6 +33,18 @@ const signalGroup = (pid: number, signal: "SIGTERM" | "SIGKILL" | 0): boolean =>
 
 const POLL_MS = 25
 
+// Every process a Tank spawns while it runs, keyed by pid. The watchdog reads it to find processes that run too long.
+export type TrackedProcess = {
+  readonly pid: number
+  readonly startedAt: number
+  // Same as the owner's terminate: SIGTERM to the group, SIGKILL after the grace period.
+  readonly terminate: Effect.Effect<void>
+}
+
+const tracked = new Map<number, TrackedProcess>()
+
+export const trackedProcesses = (): ReadonlyArray<TrackedProcess> => Array.from(tracked.values())
+
 type Spawned = {
   readonly child: ChildProcessWithoutNullStreams
   readonly pid: number
@@ -107,10 +119,14 @@ const spawnRaw = (
           signalGroup(pid, "SIGKILL")
           yield* waitSettled(KILL_GRACE_MS)
         })
+        tracked.set(pid, { pid, startedAt: Date.now(), terminate })
         resume(Effect.succeed({ child, pid, closed, terminate, signal }))
       })
     }),
-    (p) => p.terminate,
+    (p) =>
+      Effect.sync(() => {
+        tracked.delete(p.pid)
+      }).pipe(Effect.andThen(p.terminate)),
   )
 
 export const spawnProcess = (

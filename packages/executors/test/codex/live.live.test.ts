@@ -31,6 +31,8 @@ describe.skipIf(process.env.LIVE !== "1")("codex live", () => {
         spawnStream: (spawnCtx, cmd) => spawnProcess(cmd, { cwd: spawnCtx.cwd, env: spawnCtx.env }),
         readFile: () => Effect.die("unused"),
         writeFile: () => Effect.die("unused"),
+        worktrees: () => Effect.die("unused"),
+        removeWorktree: () => Effect.die("unused"),
         release: () => Effect.die("unused"),
       }
       const task: ExecutorTask = {

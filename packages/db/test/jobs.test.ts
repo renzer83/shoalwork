@@ -84,10 +84,12 @@ describe("jobs", () => {
       const job = yield* Jobs.enqueue(QUEUE, {})
       yield* Jobs.claim(QUEUE)
       const freshReaped = yield* Jobs.reapStale(60)
-      expect(freshReaped).toEqual({ requeued: 0, failed: [] })
+      expect(freshReaped).toEqual({ requeued: 0, requeuedJobs: [], failed: [] })
       yield* sql`UPDATE jobs SET heartbeat_at = ${PAST} WHERE id = ${job.id}`
       const reaped = yield* Jobs.reapStale(60)
-      expect(reaped).toEqual({ requeued: 1, failed: [] })
+      expect(reaped.requeued).toBe(1)
+      expect(reaped.requeuedJobs.map((j) => j.id)).toEqual([job.id])
+      expect(reaped.failed).toEqual([])
       const row = yield* readJob(job.id)
       expect(row?.state).toBe("queued")
     }).pipe(Effect.provide(withTempDb())),

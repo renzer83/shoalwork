@@ -3,9 +3,9 @@ import { lstat, realpath } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Semaphore } from "effect"
-import { ensureClone, worktreeAdd, worktreeRemove, worktreeReuse } from "./git.js"
+import { ensureClone, worktreeAdd, worktreeList, worktreeRemove, worktreeReuse } from "./git.js"
 import { type BotOps, localOps } from "./ops.js"
-import { Tank, type TankContext, type TankShape } from "./tank.js"
+import { type OwnedWorktree, Tank, type TankContext, type TankShape } from "./tank.js"
 
 // Environment inherited by Bot processes; the caller (core) decides, this package never reads process.env.
 export type BaseEnv = Readonly<Record<string, string | undefined>>
@@ -227,9 +227,48 @@ export const makeBotTank = (
       yield* ops.removeTree(ctx.cwd)
     })
 
+  // Only worktrees on the Bot's own branches are reported or removed; the Bot's repo paths are checked as in release.
+  const ownRepoDir = (botDir: string, repoDir: string): boolean =>
+    isInside(join(botDir, "repos"), repoDir) && repoDir !== join(botDir, "repos")
+
+  const worktrees: TankShape["worktrees"] = (bot, repoUrl) =>
+    Effect.gen(function* () {
+      yield* checkSegment("bot name", bot.name)
+      const ops = layout.opsFor(bot.name)
+      const botDir = layout.botDir(bot.name)
+      const repoDir = join(botDir, "repos", slugRepoUrl(repoUrl))
+      if (!(yield* ops.exists(repoDir))) return []
+      const env = buildBotEnv(baseEnv, layout.home(botDir), extraEnv)
+      const listed = yield* lockFor(repoDir).withPermits(1)(worktreeList(repoDir, env, ops))
+      const prefix = `bot/${bot.name}/`
+      const owned: Array<OwnedWorktree> = []
+      for (const wt of listed) {
+        const branch = wt.branch ?? ""
+        if (branch.startsWith(prefix)) owned.push({ repoDir, path: wt.path, branch })
+      }
+      return owned
+    })
+
+  const removeWorktree: TankShape["removeWorktree"] = (bot, wt) =>
+    Effect.gen(function* () {
+      yield* checkSegment("bot name", bot.name)
+      const botDir = layout.botDir(bot.name)
+      const workDir = join(botDir, "work")
+      const reject = (what: string) =>
+        Effect.fail(new TankError({ op: "release", cause: `${what} outside the tank root` }))
+      if (!ownRepoDir(botDir, wt.repoDir)) return yield* reject("repoDir")
+      if (!isInside(workDir, wt.path) || wt.path === workDir) return yield* reject("worktree path")
+      if (!wt.branch.startsWith(`bot/${bot.name}/`)) return yield* reject("branch")
+      const ops = layout.opsFor(bot.name)
+      const env = buildBotEnv(baseEnv, layout.home(botDir), extraEnv)
+      yield* lockFor(wt.repoDir).withPermits(1)(worktreeRemove(wt.repoDir, wt.path, wt.branch, env, ops))
+    })
+
   return {
     mode: layout.mode,
     prepare,
+    worktrees,
+    removeWorktree,
     exec: (ctx, cmd, opts) =>
       opsOf(ctx.botName).pipe(
         Effect.flatMap((ops) =>

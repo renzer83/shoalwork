@@ -191,6 +191,8 @@ export const makeFakeTank = (
           worktrees.clear()
         }
       }),
+    worktrees: () => Effect.succeed([]),
+    removeWorktree: unused,
   }
   return { shape, prepared, released, commands }
 }

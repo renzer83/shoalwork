@@ -20,6 +20,8 @@ export interface LeadShape {
   ) => Effect.Effect<{ spec: TaskSpec; state: TaskState; verdict?: Verdict }, NotFound | SqlError>
   // Never fails: every error becomes a Verdict (blocked, failed, budget_exceeded or needs_approval).
   readonly runOnce: (id: TaskId) => Effect.Effect<Verdict, never>
+  // Closes a task that will never get a verdict (idempotent for a task already settled); never fails.
+  readonly abandon: (id: TaskId, reason: string) => Effect.Effect<void>
   readonly startWorker: (opts: {
     readonly concurrency: number
     readonly pollMs: number
@@ -46,6 +48,7 @@ export const LeadLive = (
       const { runTask, abandon } = makeRunner({ beacon, tasks, bots, tank, executors, tiers, config })
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       return {
+        abandon,
         intake: makeIntake({ sql, beacon, bots, tasks }),
         get: (id) =>
           tasks.get(id).pipe(
@@ -68,6 +71,8 @@ export const LeadWithStore = (
 ): Layer.Layer<Lead, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
   Layer.provide(LeadLive(tiers, overrides), TaskStoreLive)
 
+export { TASKS_QUEUE } from "./intake.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"
+export { stepIdFor } from "./verdict.js"
