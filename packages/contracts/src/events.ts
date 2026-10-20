@@ -33,6 +33,9 @@ export const EventType = Schema.Literals([
   "memory.added",
   "memory.superseded",
   "memory.forgotten",
+  "control.changed",
+  "bot.proposed",
+  "bot.proposal_resolved",
 ])
 export type EventType = typeof EventType.Type
 
@@ -217,6 +220,28 @@ const MemoryForgottenPayload = Schema.Struct({
   ownerId: Schema.String,
 })
 
+// A pause, resume or stop asked by a person (or the watchdog). `scope` is "global", "bot:<id>" or "task:<id>".
+const ControlChangedPayload = Schema.Struct({
+  scope: Schema.String,
+  action: Schema.Literals(["pause", "resume", "stop"]),
+  by: Schema.String,
+  // Tasks the action interrupted or cancelled.
+  tasks: Schema.Array(TaskId),
+})
+
+// A Bot proposed by conversation and what became of it. Ids and names only: never the model's text.
+const BotProposedPayload = Schema.Struct({
+  proposalId: Schema.String,
+  botName: Schema.String,
+  requestedBy: Schema.String,
+})
+
+const BotProposalResolvedPayload = Schema.Struct({
+  proposalId: Schema.String,
+  botName: Schema.String,
+  status: Schema.Literals(["confirmed", "rejected", "expired", "failed"]),
+})
+
 // One payload schema per event type; `satisfies` keeps the map exhaustive.
 export const EventPayloads = {
   "task.received": TaskReceivedPayload,
@@ -242,6 +267,9 @@ export const EventPayloads = {
   "memory.added": MemoryAddedPayload,
   "memory.superseded": MemorySupersededPayload,
   "memory.forgotten": MemoryForgottenPayload,
+  "control.changed": ControlChangedPayload,
+  "bot.proposed": BotProposedPayload,
+  "bot.proposal_resolved": BotProposalResolvedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

@@ -5,6 +5,7 @@ import { SqlClient } from "effect/sql/SqlClient"
 import { Hono } from "hono"
 import { APP_VERSION } from "../config.js"
 import { registerBotRoutes } from "./routes/bots.js"
+import { registerControlRoutes } from "./routes/control.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
@@ -118,6 +119,7 @@ export const makeApp = (deps: AppDeps): Hono => {
 
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
+  registerControlRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)

@@ -53,6 +53,8 @@ export type Outcome =
   | { readonly _tag: "Channel"; readonly tag: string; readonly executor: string }
   | { readonly _tag: "Failure"; readonly tag: string; readonly message: string }
   | { readonly _tag: "TimedOut" }
+  // A person (or the watchdog) stopped the task: `by` says who.
+  | { readonly _tag: "Stopped"; readonly by: string }
   | { readonly _tag: "Delivery"; readonly step: DeliveryStep; readonly message: string }
   // No executor serves the task's tier (override, table and alternatives all unavailable).
   | { readonly _tag: "NoExecutor"; readonly tier: ModelTier }
@@ -162,6 +164,13 @@ export const verdictFor = (progress: Progress, seconds: number): Verdict => {
       }
     case "TimedOut":
       return { kind: "budget_exceeded", summary: "task exceeded its time budget", evidence: [], ...base }
+    case "Stopped":
+      return {
+        kind: "blocked",
+        summary: clip(`stopped by ${outcome.by}`, SUMMARY_MAX),
+        evidence: [clip(`stopped by ${outcome.by}`, EVIDENCE_MAX)],
+        ...base,
+      }
     case "Pending":
       return {
         kind: "blocked",
@@ -197,6 +206,13 @@ export const blockedVerdict = (summary: string, tag: string): Verdict => ({
   kind: "blocked",
   summary,
   evidence: [tag],
+  cost: { tokensIn: 0, tokensOut: 0, usd: 0, seconds: 0 },
+})
+
+export const stoppedVerdict = (by: string): Verdict => ({
+  kind: "blocked",
+  summary: `stopped by ${by}`,
+  evidence: [`stopped by ${by}`],
   cost: { tokensIn: 0, tokensOut: 0, usd: 0, seconds: 0 },
 })
 

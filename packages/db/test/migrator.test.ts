@@ -25,6 +25,9 @@ describe("runMigrations", () => {
         "0005_telegram.sql",
         "0006_memory.sql",
         "0007_code_chunks.sql",
+        "0008_control.sql",
+        "0009_bot_proposals.sql",
+        "0010_task_processes.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

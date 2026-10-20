@@ -4,12 +4,21 @@ import { BotRegistry } from "@shoalwork/bots"
 import { Duration, Effect, Layer, Redacted } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { createTelegramBot, installInbound, reportFailure } from "./bot.js"
+import { installCallbacks } from "./callbacks.js"
 import { type TelegramError, telegramError } from "./errors.js"
 import { makeTelegramOut, TelegramOut } from "./out.js"
 
+export {
+  botProposalButtons,
+  memoryButtons,
+  memoryCallbackText,
+  PROPOSAL_ID,
+  proposalCallbackText,
+} from "./callbacks.js"
 export { TelegramError } from "./errors.js"
+export { escapeHtml } from "./format.js"
 export { type SendFlags, TelegramOut, type TelegramOutShape } from "./out.js"
-export type { TopicRef } from "./topics.js"
+export type { MessageRef, TopicRef } from "./topics.js"
 
 export interface TelegramConfig {
   readonly token: Redacted.Redacted<string>
@@ -60,11 +69,13 @@ export const TelegramLive = (
       const bot = createTelegramBot(Redacted.value(config.token), {
         ...(config.apiRoot === undefined ? {} : { apiRoot: config.apiRoot }),
       })
-      installInbound(bot, {
+      const inbound = {
         allowedUserIds: new Set(config.allowedUserIds),
         forumChatId: config.forumChatId,
         context,
-      })
+      }
+      installInbound(bot, inbound)
+      installCallbacks(bot, inbound)
       yield* Effect.tryPromise({
         try: () => bot.api.setMyCommands(COMMANDS),
         catch: telegramError("setMyCommands"),

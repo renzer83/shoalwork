@@ -13,7 +13,13 @@ export interface SendOptions {
 }
 
 export interface TelegramApi {
-  sendMessage(chatId: string, text: string, other: SendOptions): Promise<unknown>
+  sendMessage(chatId: string, text: string, other: SendOptions): Promise<{ readonly message_id: number }>
+  // An empty `other` removes the inline keyboard of the message.
+  editMessageReplyMarkup(
+    chatId: string,
+    messageId: number,
+    other: { readonly reply_markup?: InlineKeyboard },
+  ): Promise<unknown>
   sendChatAction(
     chatId: string,
     action: "typing",
@@ -25,6 +31,12 @@ export interface TelegramApi {
 export interface TopicRef {
   readonly chatId: string
   readonly threadId: number
+}
+
+// A message already on the wire, addressed for later edits (e.g. removing its buttons).
+export interface MessageRef {
+  readonly chatId: string
+  readonly messageId: number
 }
 
 const TopicRow = Schema.Struct({ chat_id: Schema.String, thread_id: Schema.Int })

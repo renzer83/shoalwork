@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url"
 import { NodeRuntime } from "@effect/platform-node"
 import { BotRegistry } from "@shoalwork/bots"
 import { runMigrations } from "@shoalwork/db"
+import { Control } from "@shoalwork/lead"
 import { loadReflexConfig } from "@shoalwork/reflex"
 import { Data, Effect, Fiber, type LogLevel, type Redacted, References } from "effect"
 import { AppConfig, type AppConfigShape, REPO_ROOT } from "./config.js"
@@ -55,6 +56,11 @@ const syncBots = Effect.gen(function* () {
   return yield* registry.syncFromDir(BOTS_DIR)
 })
 
+const recoverOrphans = Effect.gen(function* () {
+  const control = yield* Control
+  return yield* control.recoverOrphans()
+})
+
 // Finalizers run in reverse order: the HTTP server closes first, then the Lead worker, then the database runtime.
 const serveUntilInterrupted = (
   port: number,
@@ -92,6 +98,14 @@ const serveUntilInterrupted = (
       catch: (cause) => new BootError({ step: "migrations", cause }),
     })
     yield* Effect.logInfo(`migrations applied: ${applied.length}`)
+    // Tasks left `running` by the previous process are closed before any worker can claim work.
+    const orphans = yield* Effect.tryPromise({
+      try: () => runEffect(recoverOrphans),
+      catch: (cause) => new BootError({ step: "orphans", cause }),
+    })
+    yield* Effect.logInfo(
+      `orphan tasks after restart: ${orphans.resumed.length} resumed, ${orphans.failed.length} failed`,
+    )
     const bots = yield* Effect.tryPromise({
       try: () => runEffect(syncBots),
       catch: (cause) => new BootError({ step: "bots", cause }),

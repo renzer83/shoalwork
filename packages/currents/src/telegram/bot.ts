@@ -109,15 +109,22 @@ export const recordInbound = (message: InboundMessage) =>
     Effect.asVoid,
   )
 
+// The two gates every update passes: an allowlisted sender, and a DM or the forum chat. Shared with callbacks.ts.
+export const senderAllowed = (ctx: GrammyContext, options: Pick<InboundOptions, "allowedUserIds">): boolean =>
+  ctx.from !== undefined && options.allowedUserIds.has(ctx.from.id)
+
+export const chatAllowed = (ctx: GrammyContext, options: Pick<InboundOptions, "forumChatId">): boolean =>
+  ctx.chat?.type === "private" || String(ctx.chat?.id) === options.forumChatId
+
 // Middlewares in order: allowlist (silent drop) -> chat gate (DM or forum chat) -> sequentialize per chat -> text handler.
 export const installInbound = (bot: GrammyBot, options: InboundOptions): void => {
   bot.use(async (ctx, next) => {
-    if (ctx.from !== undefined && options.allowedUserIds.has(ctx.from.id)) {
+    if (senderAllowed(ctx, options)) {
       await next()
     }
   })
   bot.use(async (ctx, next) => {
-    if (ctx.chat?.type === "private" || String(ctx.chat?.id) === options.forumChatId) {
+    if (chatAllowed(ctx, options)) {
       await next()
     }
   })

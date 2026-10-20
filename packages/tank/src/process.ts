@@ -37,6 +37,8 @@ const POLL_MS = 25
 export type TrackedProcess = {
   readonly pid: number
   readonly startedAt: number
+  // The directory the process was started in: the Lead matches a run to its processes by it.
+  readonly cwd: string
   // Same as the owner's terminate: SIGTERM to the group, SIGKILL after the grace period.
   readonly terminate: Effect.Effect<void>
 }
@@ -119,7 +121,7 @@ const spawnRaw = (
           signalGroup(pid, "SIGKILL")
           yield* waitSettled(KILL_GRACE_MS)
         })
-        tracked.set(pid, { pid, startedAt: Date.now(), terminate })
+        tracked.set(pid, { pid, startedAt: Date.now(), cwd: opts.cwd, terminate })
         resume(Effect.succeed({ child, pid, closed, terminate, signal }))
       })
     }),

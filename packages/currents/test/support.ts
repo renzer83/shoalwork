@@ -58,6 +58,7 @@ export interface FakeTelegram {
   readonly sent: Array<SentMessage>
   readonly topicsCreated: Array<{ readonly chatId: string; readonly name: string }>
   readonly chatActions: Array<{ readonly chatId: string; readonly threadId: number }>
+  readonly edits: Array<{ readonly chatId: string; readonly messageId: number; readonly other: unknown }>
 }
 
 // Stands in for the grammY Api: records calls, never touches the network.
@@ -67,6 +68,7 @@ export const makeFakeTelegram = (
   const sent: Array<SentMessage> = []
   const topicsCreated: Array<{ chatId: string; name: string }> = []
   const chatActions: Array<{ chatId: string; threadId: number }> = []
+  const edits: FakeTelegram["edits"] = []
   let nextThreadId = 100 // first topic gets 101
   const api: TelegramApi = {
     sendMessage: (chatId, text, other) => {
@@ -75,6 +77,10 @@ export const makeFakeTelegram = (
       }
       sent.push({ chatId, text, other })
       return Promise.resolve({ message_id: sent.length })
+    },
+    editMessageReplyMarkup: (chatId, messageId, other) => {
+      edits.push({ chatId, messageId, other })
+      return Promise.resolve(true)
     },
     sendChatAction: (chatId, _action, other) => {
       if (options.failChatAction === true) {
@@ -89,5 +95,5 @@ export const makeFakeTelegram = (
       return Promise.resolve({ message_thread_id: nextThreadId })
     },
   }
-  return { api, sent, topicsCreated, chatActions }
+  return { api, sent, topicsCreated, chatActions, edits }
 }

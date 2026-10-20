@@ -30,6 +30,9 @@ export class ChatFailure extends Data.TaggedError("ChatFailure")<{
 // A turn that takes longer than this is not a chat any more (spec: "Demorei demais").
 export const CHAT_TIMEOUT_MS = 10_000
 const CHAT_BUDGET = { tokens: 20_000, seconds: 20, usd: 0.5 }
+// The heavy call (a Bot proposal) is structured output, not a chat: more budget and its own timeout.
+const HEAVY_BUDGET = { tokens: 100_000, seconds: 60, usd: 1 }
+export const HEAVY_TIMEOUT_MS = 60_000
 const ERROR_MAX = 200
 
 export interface ChatDeps {
@@ -41,6 +44,7 @@ export interface ChatDeps {
   // Long-lived chat processes (T-163). Without it every turn spawns the one-shot chat.
   readonly warm?: WarmChatPool
   readonly timeoutMs?: number
+  readonly heavyTimeoutMs?: number
 }
 
 // The text a finished chat run produced: its `done` result, else the reason it failed.
@@ -72,6 +76,7 @@ const asFailure = (error: unknown): ChatFailure =>
 // alternative) must be in `allowed`, or the call fails.
 export const makeChat = (deps: ChatDeps) => {
   const timeoutMs = deps.timeoutMs ?? CHAT_TIMEOUT_MS
+  const heavyTimeoutMs = deps.heavyTimeoutMs ?? HEAVY_TIMEOUT_MS
   const contexts = new Map<BotId, TankContext>()
   // One turn at a time per conversation scope. Held before the timeout starts, so waiting for the previous turn
   // does not count against the 10 s.
@@ -128,6 +133,7 @@ export const makeChat = (deps: ChatDeps) => {
     prompt: string,
     systemAppend: string | undefined,
     chosen: { readonly model: string; readonly effort: ExecutorTask["effort"] },
+    budget: ExecutorTask["budget"] = CHAT_BUDGET,
   ): ExecutorTask => ({
     taskId: newTaskId(),
     botId,
@@ -139,15 +145,18 @@ export const makeChat = (deps: ChatDeps) => {
     allowedTools: [],
     permissionMode: "readonly",
     maxTurns: 1,
-    budget: CHAT_BUDGET,
+    budget,
   })
 
-  const capped = <A>(run: Effect.Effect<A, ChatFailure>): Effect.Effect<A, ChatFailure> =>
+  const capped = <A>(
+    run: Effect.Effect<A, ChatFailure>,
+    limitMs: number = timeoutMs,
+  ): Effect.Effect<A, ChatFailure> =>
     run.pipe(
-      Effect.timeoutOption(Duration.millis(timeoutMs)),
+      Effect.timeoutOption(Duration.millis(limitMs)),
       Effect.flatMap(
         Option.match({
-          onNone: () => Effect.fail(new ChatFailure({ reason: "timeout", message: `over ${timeoutMs} ms` })),
+          onNone: () => Effect.fail(new ChatFailure({ reason: "timeout", message: `over ${limitMs} ms` })),
           onSome: Effect.succeed,
         }),
       ),
@@ -204,7 +213,24 @@ export const makeChat = (deps: ChatDeps) => {
       }).pipe(Effect.catch((error) => Effect.fail(asFailure(error)))),
     )
 
-  return { turn, once }
+  // One stateless call on the heavy tier for a structured answer (a Bot proposal). Read-only, no tools, one turn,
+  // no session. Same executor rule as the chat: the resolved executor must be in bot.executors.allowed.
+  const heavy = (botId: BotId, prompt: string): Effect.Effect<string, ChatFailure> =>
+    capped(
+      Effect.gen(function* () {
+        const chosen = yield* pick(botId, "heavy")
+        const ctx = yield* contextOf(botId)
+        const task = taskFor(botId, "heavy", prompt, undefined, chosen, HEAVY_BUDGET)
+        const events = yield* Stream.runCollect(chosen.executor.run(task, ctx)).pipe(
+          Effect.scoped,
+          Effect.provideService(Tank, deps.tank),
+        )
+        return yield* answerOf(Array.from(events))
+      }).pipe(Effect.catch((error) => Effect.fail(asFailure(error)))),
+      heavyTimeoutMs,
+    )
+
+  return { turn, once, heavy }
 }
 
 export type Chat = ReturnType<typeof makeChat>

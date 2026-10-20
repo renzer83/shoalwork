@@ -7,15 +7,28 @@ import type { SqlClient } from "effect/sql/SqlClient"
 import type { InlineKeyboard } from "grammy"
 import { describeError, type TelegramError, telegramError } from "./errors.js"
 import { chunkText, escapeHtml } from "./format.js"
-import { ensureTopic, type SendOptions, type TelegramApi, type TopicRef } from "./topics.js"
+import { ensureTopic, type MessageRef, type SendOptions, type TelegramApi, type TopicRef } from "./topics.js"
 
 export interface SendFlags {
   readonly replyMarkup?: InlineKeyboard
   readonly inReplyTo?: EventId
+  // The text is already HTML-escaped by the caller (e.g. a Bot proposal). Default: the text is escaped here.
+  readonly html?: boolean
 }
 
 export interface TelegramOutShape {
   readonly send: (botId: BotId, text: string, opts?: SendFlags) => Effect.Effect<void, TelegramError>
+  // Like send, and returns the last message sent (undefined when the text is blank) so it can be edited later.
+  readonly sendRef: (
+    botId: BotId,
+    text: string,
+    opts?: SendFlags,
+  ) => Effect.Effect<MessageRef | undefined, TelegramError>
+  // Replaces the message's inline keyboard; null removes it.
+  readonly editReplyMarkup: (
+    ref: MessageRef,
+    markup: InlineKeyboard | null,
+  ) => Effect.Effect<void, TelegramError>
   readonly typing: (botId: BotId) => Effect.Effect<void>
   readonly ensureTopic: (bot: Bot) => Effect.Effect<TopicRef, TelegramError>
 }
@@ -94,31 +107,57 @@ export const makeTelegramOut = (deps: TelegramOutDeps): TelegramOutShape => {
       ),
     )
 
-  const send = (botId: BotId, text: string, opts?: SendFlags): Effect.Effect<void, TelegramError> =>
+  // The one send path: returns the last message it put on the wire, if any.
+  const deliver = (
+    botId: BotId,
+    text: string,
+    opts?: SendFlags,
+  ): Effect.Effect<MessageRef | undefined, TelegramError> =>
     Effect.gen(function* () {
       const bot = yield* deps.registry.get(botId).pipe(Effect.mapError(telegramError("bot.get")))
       const topic = yield* topicOf(bot)
       const chunks = chunkText(text)
       if (chunks.length === 0) {
-        return
+        return undefined
       }
       // Resolved before the first chunk goes out: a failure here sends nothing, so a retry is safe.
       const inReplyTo = opts?.inReplyTo
       const inbound = inReplyTo === undefined ? undefined : yield* inboundOf(deps.sql, inReplyTo)
       const last = chunks.length - 1
+      let sentId: number | undefined
       for (const [index, chunk] of chunks.entries()) {
         const other: SendOptions = {
           parse_mode: "HTML",
           message_thread_id: topic.threadId,
           ...(index === last && opts?.replyMarkup !== undefined ? { reply_markup: opts.replyMarkup } : {}),
         }
-        yield* Effect.tryPromise({
-          try: () => deps.api.sendMessage(topic.chatId, escapeHtml(chunk), other),
+        const sent = yield* Effect.tryPromise({
+          try: () =>
+            deps.api.sendMessage(topic.chatId, opts?.html === true ? chunk : escapeHtml(chunk), other),
           catch: telegramError("sendMessage"),
         })
+        sentId = sent.message_id
       }
       yield* recordOutbound(botId, topic, text, inReplyTo, inbound)
+      return sentId === undefined ? undefined : { chatId: topic.chatId, messageId: sentId }
     })
+
+  const send = (botId: BotId, text: string, opts?: SendFlags): Effect.Effect<void, TelegramError> =>
+    deliver(botId, text, opts).pipe(Effect.asVoid)
+
+  const editReplyMarkup = (
+    ref: MessageRef,
+    markup: InlineKeyboard | null,
+  ): Effect.Effect<void, TelegramError> =>
+    Effect.tryPromise({
+      try: () =>
+        deps.api.editMessageReplyMarkup(
+          ref.chatId,
+          ref.messageId,
+          markup === null ? {} : { reply_markup: markup },
+        ),
+      catch: telegramError("editMessageReplyMarkup"),
+    }).pipe(Effect.asVoid)
 
   // Best effort: a missing "typing" indicator never fails the caller.
   const typing = (botId: BotId): Effect.Effect<void> =>
@@ -133,6 +172,8 @@ export const makeTelegramOut = (deps: TelegramOutDeps): TelegramOutShape => {
 
   return {
     send,
+    sendRef: deliver,
+    editReplyMarkup,
     typing,
     ensureTopic: topicOf,
   }

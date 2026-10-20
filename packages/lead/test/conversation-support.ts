@@ -63,6 +63,8 @@ export interface SentMessage {
   readonly botId: BotId
   readonly text: string
   readonly inReplyTo?: EventId
+  // The inline keyboard the message carried, as callback data in order.
+  readonly buttons?: ReadonlyArray<string>
 }
 
 export interface FakeTelegramOut {
@@ -87,8 +89,26 @@ export const makeFakeTelegramOut = (
               botId,
               text,
               ...(flags?.inReplyTo === undefined ? {} : { inReplyTo: flags.inReplyTo }),
+              ...(flags?.replyMarkup === undefined
+                ? {}
+                : {
+                    buttons: (flags.replyMarkup.inline_keyboard.flat() as ReadonlyArray<object>).map(
+                      (button) => ("callback_data" in button ? String(button.callback_data) : ""),
+                    ),
+                  }),
             })
           }),
+    // A proposal goes out through sendRef: it is recorded like send, and its keyboard edits are not read.
+    sendRef: (botId, text, flags) =>
+      Effect.sync(() => {
+        sent.push({
+          botId,
+          text,
+          ...(flags?.inReplyTo === undefined ? {} : { inReplyTo: flags.inReplyTo }),
+        })
+        return { chatId: "-100", messageId: sent.length }
+      }),
+    editReplyMarkup: () => Effect.void,
     typing: (botId) =>
       Effect.sync(() => {
         typing.push(botId)

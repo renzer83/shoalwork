@@ -54,6 +54,8 @@ const disabledError = new TelegramError({ op: "disabled", message: "telegram is 
 
 const DISABLED_OUT: TelegramOutShape = {
   send: () => Effect.fail(disabledError),
+  sendRef: () => Effect.fail(disabledError),
+  editReplyMarkup: () => Effect.fail(disabledError),
   typing: () => Effect.void,
   ensureTopic: () => Effect.fail(disabledError),
 }

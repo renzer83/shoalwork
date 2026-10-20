@@ -120,7 +120,7 @@ describe("watchdog", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.live("a stale running task out of attempts is stopped and its task closes as blocked", () =>
+  it.live("a stale running task out of attempts is stopped and its task is cancelled by the watchdog", () =>
     Effect.gen(function* () {
       const bot = yield* makeBot
       const spec = yield* intakeTask(bot)
@@ -129,8 +129,9 @@ describe("watchdog", () => {
       yield* runWatchdogCycle(IMPATIENT)
 
       const record = yield* (yield* Lead).get(spec.id)
-      expect(record.state).toBe("failed")
+      expect(record.state).toBe("cancelled")
       expect(record.verdict?.kind).toBe("blocked")
+      expect(record.verdict?.evidence).toEqual(["stopped by watchdog"])
       expect(yield* jobState(spec.id)).not.toBe("active")
       expect(yield* recoveredEvents).toEqual([{ what: "stale_task", ref: spec.id, action: "stopped" }])
     }).pipe(Effect.provide(TestLayer)),

@@ -149,3 +149,236 @@ describe("POST /memory/import", () => {
     expect(await second.json()).toMatchObject({ files: 1, chunks: 1, created: 0, unchanged: 1, forgotten: 0 })
   })
 })
+
+const call = (method: string, path: string, body?: unknown) =>
+  app.request(path, {
+    method,
+    headers: AUTH,
+    ...(body === undefined ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
+  })
+
+const ItemEnvelope = Schema.Struct({
+  item: Schema.Struct({
+    id: Schema.String,
+    scope: Schema.String,
+    ownerId: Schema.String,
+    kind: Schema.String,
+    content: Schema.String,
+    source: Schema.String,
+    supersededBy: Schema.NullOr(Schema.String),
+    forgotten: Schema.Boolean,
+  }),
+})
+const UNKNOWN_BOT = "bot_00000000-0000-4000-8000-0000000000ff"
+const UNKNOWN_MEMORY = "mem_00000000-0000-4000-8000-0000000000ff"
+
+// Creates a bot-scope semantic memory for the lead and returns its id.
+const addLeadMemory = async (content: string): Promise<string> => {
+  const res = await call("POST", "/memory", {
+    scope: "bot",
+    ownerId: leadId,
+    kind: "semantic",
+    content,
+    userId: "42",
+  })
+  expect(res.status).toBe(201)
+  return Schema.decodeUnknownSync(ItemEnvelope)(await res.json()).item.id
+}
+
+describe("GET /memory", () => {
+  it("answers 400 when q is missing or blank", async () => {
+    expect((await call("GET", `/memory?bot=${leadId}`)).status).toBe(400)
+    expect((await call("GET", `/memory?bot=${leadId}&q=%20%20`)).status).toBe(400)
+  })
+
+  it("answers 400 when bot is not a BotId", async () => {
+    const res = await call("GET", "/memory?bot=lead&q=deploy")
+    expect(res.status).toBe(400)
+  })
+
+  it("answers 404 when the BotId is not registered", async () => {
+    const res = await call("GET", `/memory?bot=${UNKNOWN_BOT}&q=deploy`)
+    expect(res.status).toBe(404)
+  })
+
+  it("answers 400 for k outside 1..100 or not a number", async () => {
+    expect((await call("GET", `/memory?bot=${leadId}&q=deploy&k=0`)).status).toBe(400)
+    expect((await call("GET", `/memory?bot=${leadId}&q=deploy&k=101`)).status).toBe(400)
+    expect((await call("GET", `/memory?bot=${leadId}&q=deploy&k=abc`)).status).toBe(400)
+  })
+
+  it("answers 400 for a kind outside the memory kinds", async () => {
+    const res = await call("GET", `/memory?bot=${leadId}&q=deploy&kinds=semantic,nope`)
+    expect(res.status).toBe(400)
+  })
+
+  it("answers a bare array of hits from the bot's own scope only", async () => {
+    await addLeadMemory("Deploy usa Fly.io em producao")
+    const global = await call("POST", "/memory", {
+      scope: "global",
+      ownerId: "global",
+      kind: "semantic",
+      content: "Deploy global de teste",
+      userId: "42",
+    })
+    expect(global.status).toBe(201)
+    const res = await call("GET", `/memory?bot=${leadId}&q=deploy&k=20`)
+    expect(res.status).toBe(200)
+    const hits: unknown = await res.json()
+    expect(Array.isArray(hits)).toBe(true)
+    const list = hits as ReadonlyArray<{ content: string; scope: string; score: number; id: string }>
+    expect(list.length).toBeGreaterThan(0)
+    expect(list.every((hit) => hit.scope === "bot")).toBe(true)
+    expect(list.some((hit) => hit.content === "Deploy usa Fly.io em producao")).toBe(true)
+    expect(list.some((hit) => hit.content === "Deploy global de teste")).toBe(false)
+    expect(list.every((hit) => typeof hit.score === "number" && typeof hit.id === "string")).toBe(true)
+  })
+})
+
+describe("POST /memory", () => {
+  it("answers 400 when the body is not JSON", async () => {
+    expect((await call("POST", "/memory", "{not json")).status).toBe(400)
+  })
+
+  it("answers 400 for a scope other than bot or global", async () => {
+    const res = await call("POST", "/memory", {
+      scope: "pod",
+      ownerId: leadId,
+      kind: "semantic",
+      content: "x",
+      userId: "1",
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("answers 400 when a bot-scope ownerId is not a BotId", async () => {
+    const res = await call("POST", "/memory", {
+      scope: "bot",
+      ownerId: "lead",
+      kind: "semantic",
+      content: "x",
+      userId: "1",
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("answers 404 when the bot-scope ownerId is not registered", async () => {
+    const res = await call("POST", "/memory", {
+      scope: "bot",
+      ownerId: UNKNOWN_BOT,
+      kind: "semantic",
+      content: "x",
+      userId: "1",
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it("answers 400 for empty content and for a blank userId", async () => {
+    const blankContent = await call("POST", "/memory", {
+      scope: "bot",
+      ownerId: leadId,
+      kind: "semantic",
+      content: "   ",
+      userId: "1",
+    })
+    expect(blankContent.status).toBe(400)
+    const blankUser = await call("POST", "/memory", {
+      scope: "bot",
+      ownerId: leadId,
+      kind: "semantic",
+      content: "algo",
+      userId: " ",
+    })
+    expect(blankUser.status).toBe(400)
+  })
+
+  it("answers 400 when a global scope names an owner other than global", async () => {
+    const res = await call("POST", "/memory", {
+      scope: "global",
+      ownerId: leadId,
+      kind: "semantic",
+      content: "x",
+      userId: "1",
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("creates the item with source user:<id> and answers 201 with the item", async () => {
+    const id = await addLeadMemory("Prefere respostas curtas")
+    const history = await call("GET", `/memory/${id}/history`)
+    expect(history.status).toBe(200)
+    const body = (await history.json()) as {
+      items: ReadonlyArray<{ id: string; source: string; kind: string }>
+    }
+    expect(body.items.map((item) => item.id)).toEqual([id])
+    expect(body.items[0]).toMatchObject({ source: "user:42", kind: "semantic" })
+  })
+})
+
+describe("PATCH /memory/:id", () => {
+  it("answers 404 for an unknown id", async () => {
+    expect((await call("PATCH", `/memory/${UNKNOWN_MEMORY}`, { content: "x", userId: "1" })).status).toBe(404)
+  })
+
+  it("answers 400 for empty content", async () => {
+    const id = await addLeadMemory("Conteudo original para editar")
+    expect((await call("PATCH", `/memory/${id}`, { content: "", userId: "1" })).status).toBe(400)
+  })
+
+  it("supersedes the item: same scope, owner and kind, the old version stays in the history", async () => {
+    const id = await addLeadMemory("Usa Node 22 no CI")
+    const res = await call("PATCH", `/memory/${id}`, { content: "Usa Node 24 no CI", userId: "7" })
+    expect(res.status).toBe(200)
+    const next = Schema.decodeUnknownSync(ItemEnvelope)(await res.json()).item
+    expect(next).toMatchObject({
+      scope: "bot",
+      ownerId: leadId,
+      kind: "semantic",
+      content: "Usa Node 24 no CI",
+      source: "user:7",
+    })
+    const history = await call("GET", `/memory/${id}/history`)
+    const body = (await history.json()) as {
+      items: ReadonlyArray<{ id: string; supersededBy: string | null }>
+    }
+    expect(body.items.map((item) => item.id)).toEqual([id, next.id])
+    expect(body.items[0]?.supersededBy).toBe(next.id)
+  })
+
+  it("answers 404 when the item was already superseded", async () => {
+    const id = await addLeadMemory("Versao antiga que ja foi trocada")
+    expect((await call("PATCH", `/memory/${id}`, { content: "nova", userId: "1" })).status).toBe(200)
+    expect((await call("PATCH", `/memory/${id}`, { content: "de novo", userId: "1" })).status).toBe(404)
+  })
+})
+
+describe("DELETE /memory/:id", () => {
+  it("answers 404 for an unknown id", async () => {
+    expect((await call("DELETE", `/memory/${UNKNOWN_MEMORY}`)).status).toBe(404)
+  })
+
+  it("forgets the item: it leaves the search and the history shows it as forgotten", async () => {
+    const id = await addLeadMemory("Cafe sem acucar zebra-unica")
+    expect((await call("DELETE", `/memory/${id}`)).status).toBe(200)
+    const hits = (await (await call("GET", `/memory?bot=${leadId}&q=zebra-unica`)).json()) as ReadonlyArray<{
+      id: string
+    }>
+    expect(hits.some((hit) => hit.id === id)).toBe(false)
+    const history = (await (await call("GET", `/memory/${id}/history`)).json()) as {
+      items: ReadonlyArray<{ forgotten: boolean }>
+    }
+    expect(history.items[0]?.forgotten).toBe(true)
+  })
+
+  it("answers 200 again when the item is forgotten twice", async () => {
+    const id = await addLeadMemory("Item esquecido duas vezes")
+    expect((await call("DELETE", `/memory/${id}`)).status).toBe(200)
+    expect((await call("DELETE", `/memory/${id}`)).status).toBe(200)
+  })
+})
+
+describe("GET /memory/:id/history", () => {
+  it("answers 404 for an id the Reef never stored", async () => {
+    expect((await call("GET", `/memory/${UNKNOWN_MEMORY}/history`)).status).toBe(404)
+  })
+})

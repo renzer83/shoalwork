@@ -1,6 +1,7 @@
 import type { BeaconShape } from "@shoalwork/beacon"
 import type { BotRegistryShape } from "@shoalwork/bots"
 import {
+  type BotId,
   type EventType,
   streamIds,
   type TaskId,
@@ -21,6 +22,7 @@ import {
   isSettled,
   type Progress,
   REAPED_EVIDENCE,
+  stoppedVerdict,
 } from "./verdict.js"
 
 export interface LifecycleDeps {
@@ -92,6 +94,7 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
     durationMs: number,
     progress: Progress,
     closing: "retry" | "exhausted" | "settle" = "settle",
+    reason?: string,
   ) =>
     Effect.gen(function* () {
       const sessionPatch = verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }
@@ -111,15 +114,40 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       }
       yield* recordAttempt(spec, verdict, durationMs, progress)
       const exhausted = closing === "exhausted"
-      const next = finalTaskState(verdict)
-      yield* transition(spec, next, { verdict, ...sessionPatch }, exhausted ? "max retries" : undefined)
+      const stop = progress.outcome._tag === "Stopped" ? progress.outcome : undefined
+      const next = stop === undefined ? finalTaskState(verdict) : "cancelled"
+      const why = reason ?? (stop === undefined ? undefined : `stopped by ${stop.by}`)
+      yield* transition(
+        spec,
+        next,
+        { verdict, ...sessionPatch },
+        why ?? (exhausted ? "max retries" : undefined),
+      )
       // Terminal outcome of every Reflex decision of this task (idempotent; see outcomes.ts).
       if (isTerminal(next)) {
         yield* recordOutcomes(spec, next)
       }
       // The Bot is free only when none of its tasks is still running; after exhausted retries it is blocked.
-      if ((yield* tasks.countRunning(spec.botId)) === 0) {
+      // A paused Bot stays paused: only a resume changes that.
+      if ((yield* tasks.countRunning(spec.botId)) === 0 && !(yield* botIsPaused(spec.botId))) {
         yield* bots.setState(spec.botId, exhausted ? "blocked" : "idle", spec.id)
+      }
+    })
+
+  const botIsPaused = (botId: BotId) =>
+    Effect.map(bots.list(), (all) => all.find((bot) => bot.id === botId)?.state === "paused")
+
+  // A task with no run to show for it (still queued, or stopped before its next run starts) is cancelled without an
+  // executor.finished: nothing executed. A Bot left with nothing to do is free again.
+  const cancelUnstarted = (spec: TaskSpec, by: string) =>
+    Effect.gen(function* () {
+      const verdict = stoppedVerdict(by)
+      yield* transition(spec, "cancelled", { verdict }, `stopped by ${by}`)
+      yield* recordOutcomes(spec, "cancelled")
+      const bot = (yield* bots.list()).find((entry) => entry.id === spec.botId)
+      const busy = bot?.state === "working" || bot?.state === "waiting_approval"
+      if (busy && (yield* tasks.countRunning(spec.botId)) === 0) {
+        yield* bots.setState(spec.botId, "idle", spec.id)
       }
     })
 
@@ -133,6 +161,28 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
       durationMs,
     })
+
+  // recorded = false means the round could not be written down (database trouble).
+  const record = (
+    spec: TaskSpec,
+    verdict: Verdict,
+    durationMs: number,
+    progress: Progress,
+    closing: "retry" | "exhausted" | "settle",
+  ): Effect.Effect<boolean> =>
+    finish(spec, verdict, durationMs, progress, closing).pipe(
+      Effect.as(true),
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : raiseError(
+              spec,
+              "lead.finish",
+              describeFailure(Cause.squash(cause)).tag,
+              "could not record the verdict",
+            ).pipe(Effect.as(false)),
+      ),
+    )
 
   // The queue gave up on the task's job (all attempts used, worker never reported back): close the task.
   const abandon = (id: TaskId, reason: string): Effect.Effect<void> =>
@@ -153,7 +203,7 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       Effect.annotateLogs({ taskId: id }),
     )
 
-  return { taskEvent, raiseError, transition, finish, abandon }
+  return { taskEvent, raiseError, transition, finish, record, abandon, cancelUnstarted, botIsPaused }
 }
 
 export type Lifecycle = ReturnType<typeof makeLifecycle>

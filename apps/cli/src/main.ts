@@ -3,7 +3,9 @@ import type { SchemaViolation } from "@shoalwork/contracts"
 import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
+import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
 import { eventsList } from "./commands/events.js"
+import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
 import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
@@ -14,9 +16,18 @@ const USAGE = [
   "usage: shoalwork health [--url <base-url>] [--token <token>]",
   "       shoalwork task send --bot <bot id> --prompt <text> [--kind <kind>] [--repo <url> [--base <branch>]] [--tier <tier>]",
   "       shoalwork task show <task id>",
+  "       shoalwork stop [--bot <bot id or name>] | shoalwork stop task <task id>",
+  "       shoalwork pause [--bot <bot id or name>]",
+  "       shoalwork resume [--bot <bot id or name>]",
+  "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork reflex export --out <file>",
   "       shoalwork memory import --dir <dir> --scope global|bot:<name> --kind semantic|procedural --source <label>",
+  "       shoalwork memory search --bot <bot id or name> <query> [--k <1..100>] [--kinds <kind,kind>]",
+  "       shoalwork memory add --scope global|bot:<name> --kind semantic|procedural --content <text> [--user <id>]",
+  "       shoalwork memory edit <memory id> --content <text> [--user <id>]",
+  "       shoalwork memory forget <memory id>",
+  "       shoalwork memory history <memory id>",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -61,6 +72,37 @@ const task = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError | Usage
   )
 }
 
+const CONTROL_FLAGS = ["bot", ...SETTINGS_FLAGS]
+
+// stop | pause | resume: the whole system, or one Bot with --bot. `stop task <id>` stops a single task.
+const control = (
+  action: "stop" | "pause" | "resume",
+  argv: ReadonlyArray<string>,
+): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const { flags, positionals } = yield* parseArgs(argv, CONTROL_FLAGS)
+    const settings = yield* resolveSettings(flags, process.env)
+    const [first, second, ...extra] = positionals
+    if (action === "stop" && first === "task") {
+      if (second === undefined || extra.length > 0 || flags.bot !== undefined) {
+        return yield* Effect.fail(new UsageError({ message: "usage: stop task <task id>" }))
+      }
+      yield* Console.log(JSON.stringify(yield* controlStopTask(settings, second)))
+      return
+    }
+    if (first !== undefined) {
+      return yield* Effect.fail(new UsageError({ message: `unexpected argument: ${first}` }))
+    }
+    yield* Console.log(JSON.stringify(yield* controlScope(settings, action, flags)))
+  })
+
+const status = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const { flags } = yield* parseArgs(argv, SETTINGS_FLAGS)
+    const settings = yield* resolveSettings(flags, process.env)
+    yield* Console.log(JSON.stringify(yield* controlStatus(settings), null, 2))
+  })
+
 const events = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
   Effect.gen(function* () {
     const { flags } = yield* parseArgs(argv, ["stream", "after", ...SETTINGS_FLAGS])
@@ -86,21 +128,72 @@ const reflex = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
   )
 }
 
+const MEMORY_SUBCOMMANDS = "import|search|add|edit|forget|history"
+
+// One memory id as the positional argument of edit, forget and history.
+const memoryId = (positionals: ReadonlyArray<string>, sub: string): Effect.Effect<string, UsageError> => {
+  const [id, ...extra] = positionals
+  return id === undefined || extra.length > 0
+    ? Effect.fail(new UsageError({ message: `usage: memory ${sub} <memory id>` }))
+    : Effect.succeed(id)
+}
+
 const memory = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
   const [sub, ...rest] = argv
-  if (sub === "import") {
-    return Effect.gen(function* () {
-      const { flags } = yield* parseArgs(rest, ["dir", "scope", "kind", "source", ...SETTINGS_FLAGS])
-      const settings = yield* resolveSettings(flags, process.env)
-      const report = yield* memoryImport(settings, flags)
-      yield* Console.log(JSON.stringify(report))
-    })
+  switch (sub) {
+    case "import":
+      return Effect.gen(function* () {
+        const { flags } = yield* parseArgs(rest, ["dir", "scope", "kind", "source", ...SETTINGS_FLAGS])
+        const settings = yield* resolveSettings(flags, process.env)
+        const report = yield* memoryImport(settings, flags)
+        yield* Console.log(JSON.stringify(report))
+      })
+    case "search":
+      return Effect.gen(function* () {
+        const { flags, positionals } = yield* parseArgs(rest, ["bot", "k", "kinds", ...SETTINGS_FLAGS])
+        const settings = yield* resolveSettings(flags, process.env)
+        const hits = yield* memorySearch(settings, flags, positionals)
+        yield* Console.log(JSON.stringify(hits, null, 2))
+      })
+    case "add":
+      return Effect.gen(function* () {
+        const { flags } = yield* parseArgs(rest, ["scope", "kind", "content", "user", ...SETTINGS_FLAGS])
+        const settings = yield* resolveSettings(flags, process.env)
+        const body = yield* memoryAdd(settings, flags)
+        yield* Console.log(JSON.stringify(body))
+      })
+    case "edit":
+      return Effect.gen(function* () {
+        const { flags, positionals } = yield* parseArgs(rest, ["content", "user", ...SETTINGS_FLAGS])
+        const id = yield* memoryId(positionals, "edit")
+        const settings = yield* resolveSettings(flags, process.env)
+        const body = yield* memoryEdit(settings, id, flags)
+        yield* Console.log(JSON.stringify(body))
+      })
+    case "forget":
+      return Effect.gen(function* () {
+        const { flags, positionals } = yield* parseArgs(rest, SETTINGS_FLAGS)
+        const id = yield* memoryId(positionals, "forget")
+        const settings = yield* resolveSettings(flags, process.env)
+        yield* Console.log(JSON.stringify(yield* memoryForget(settings, id)))
+      })
+    case "history":
+      return Effect.gen(function* () {
+        const { flags, positionals } = yield* parseArgs(rest, SETTINGS_FLAGS)
+        const id = yield* memoryId(positionals, "history")
+        const settings = yield* resolveSettings(flags, process.env)
+        yield* Console.log(JSON.stringify(yield* memoryHistory(settings, id), null, 2))
+      })
+    default:
+      return Effect.fail(
+        new UsageError({
+          message:
+            sub === undefined
+              ? `missing memory subcommand (${MEMORY_SUBCOMMANDS})`
+              : `unknown memory subcommand: ${sub}`,
+        }),
+      )
   }
-  return Effect.fail(
-    new UsageError({
-      message: sub === undefined ? "missing memory subcommand (import)" : `unknown memory subcommand: ${sub}`,
-    }),
-  )
 }
 
 const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
@@ -110,6 +203,12 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return health(rest)
     case "task":
       return task(rest)
+    case "stop":
+    case "pause":
+    case "resume":
+      return control(command, rest)
+    case "status":
+      return status(rest)
     case "events":
       return events(rest)
     case "reflex":

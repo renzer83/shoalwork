@@ -62,7 +62,10 @@ export const makeWorker = (deps: WorkerDeps) => {
         yield* Effect.logWarning("verdict not recorded, job left for redelivery")
         return
       }
-      const held = yield* db(Jobs.complete(job.id, job.attempts))
+      // A stopped task is closed for good (failed, no retry); any other verdict completes the job.
+      const held = yield* outcome.stopped
+        ? db(Jobs.abort(job.id, "stopped", job.attempts))
+        : db(Jobs.complete(job.id, job.attempts))
       if (!held) {
         yield* Effect.logWarning("lost the job lock before completing it")
       }
@@ -103,7 +106,7 @@ export const makeWorker = (deps: WorkerDeps) => {
       const poll = Effect.forever(
         Effect.gen(function* () {
           yield* permits.take(1)
-          const claimed = yield* db(Jobs.claim(TASKS_QUEUE)).pipe(
+          const claimed = yield* db(Jobs.claim(TASKS_QUEUE, { skipPausedTasks: true })).pipe(
             Effect.catch((error) =>
               Effect.logWarning("claim failed", error._tag).pipe(Effect.as(Option.none<JobRow>())),
             ),

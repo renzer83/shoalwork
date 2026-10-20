@@ -59,7 +59,7 @@ const scripted = (scripts: ReadonlyArray<ReadonlyArray<ExecutorEvent>>) => {
 
 const count = (types: ReadonlyArray<string>, type: string) => types.filter((t) => t === type).length
 
-// Records tasks.attempts every time the runner reads the task. The first read is runTask's own, before any run.
+// Records tasks.attempts every time the runner reads the task. The first two reads are runTask's own (before and after the stop registration), before any run.
 const recordAttempts =
   (log: Array<number>) =>
   (real: TaskStoreShape): TaskStoreShape => ({
@@ -331,7 +331,7 @@ describe("Lead retries", () => {
       const bot = yield* createBot
       const spec = yield* lead.intake(specFor(bot))
       expect((yield* lead.runOnce(spec.id)).kind).toBe("ok")
-      expect(log.slice(1)).toEqual([1, 2])
+      expect(log.slice(2)).toEqual([1, 2])
       expect((yield* (yield* TaskStore).get(spec.id)).attempts).toBe(2)
     }).pipe(Effect.provide(leadLayer({ executor, wrapStore: recordAttempts(log) })))
   })
@@ -353,7 +353,7 @@ describe("Lead retries", () => {
       const spec = yield* lead.intake(specFor(bot))
       expect((yield* lead.runOnce(spec.id)).kind).toBe("ok")
       expect(runs).toHaveLength(3)
-      expect(log.slice(1)).toEqual([1, 2, 2])
+      expect(log.slice(2)).toEqual([1, 2, 2])
       expect((yield* (yield* TaskStore).get(spec.id)).attempts).toBe(2)
     }).pipe(Effect.provide(leadLayer({ executor, wrapStore: recordAttempts(log) })))
   })

@@ -36,15 +36,28 @@ export const enqueue = (
     return job
   })
 
-export const claim = (queue: string): Effect.Effect<Option.Option<JobRow>, SqlError, SqlClient> =>
+export interface ClaimOptions {
+  // For a queue whose payload is { taskId }: leaves out the jobs of tasks whose Bot (or everything) is paused.
+  readonly skipPausedTasks?: boolean
+}
+
+export const claim = (
+  queue: string,
+  opts?: ClaimOptions,
+): Effect.Effect<Option.Option<JobRow>, SqlError, SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
     const now = nowIso()
+    const skipPaused = opts?.skipPausedTasks === true ? 1 : 0
     const rows = yield* sql.withTransaction(
       sql`UPDATE jobs SET state = 'active', attempts = attempts + 1, locked_at = ${now}, heartbeat_at = ${now}
         WHERE id = (
           SELECT id FROM jobs
           WHERE queue = ${queue} AND state = 'queued' AND run_at <= ${now}
+            AND (${skipPaused} = 0 OR NOT EXISTS (
+              SELECT 1 FROM control_flags f WHERE f.paused = 1 AND (
+                f.scope = 'global' OR f.scope = 'bot:' || (
+                  SELECT t.bot_id FROM tasks t WHERE t.id = json_extract(jobs.payload, '$.taskId')))))
           ORDER BY run_at, id LIMIT 1
         ) AND state = 'queued'
         RETURNING *`,
@@ -102,6 +115,23 @@ export const fail = (
         return true
       }),
     )
+  })
+
+// Closes a job for good, without a retry: the work was stopped on purpose. Returns true when this worker still held
+// the lock (a row was changed).
+export const abort = (
+  id: number,
+  error: string,
+  attempt?: number,
+): Effect.Effect<boolean, SqlError, SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient
+    const guard = attempt ?? null
+    const rows = yield* sql`UPDATE jobs SET state = 'failed', attempts = max_attempts, last_error = ${error},
+        locked_at = NULL, heartbeat_at = NULL
+      WHERE id = ${id} AND state = 'active' AND (${guard} IS NULL OR attempts = ${guard})
+      RETURNING id`
+    return rows.length > 0
   })
 
 export interface ReapedJob {

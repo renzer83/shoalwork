@@ -1,12 +1,14 @@
 import type { BeaconShape } from "@shoalwork/beacon"
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import { type Bot, BotId, streamIds, TaskId } from "@shoalwork/contracts"
+import { streamIds, TaskId } from "@shoalwork/contracts"
 import { Jobs } from "@shoalwork/db"
-import { Lead, stepIdFor, TASKS_QUEUE } from "@shoalwork/lead"
-import { Tank, trackedProcesses } from "@shoalwork/tank"
-import { Cause, Clock, DateTime, Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
+import { Control, Lead, TASKS_QUEUE, taskTarget } from "@shoalwork/lead"
+import { trackedProcesses } from "@shoalwork/tank"
+import { Clock, DateTime, Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
+import { decodeRows, guarded, recovered, TaskRow } from "./watchdog-support.js"
+import { sweepOrphanWorktrees } from "./watchdog-worktrees.js"
 
 // Recovery loop: every cycle runs each check on its own, so one failing check never stops the others. Every action
 // it takes is a watchdog.recovered on the system stream; a failed check is an error.raised there.
@@ -22,92 +24,12 @@ export interface WatchdogConfig {
 // A stale task gets one more attempt through the queue while it has used fewer than this many.
 const MAX_STALE_ATTEMPTS = 2
 const REAP_SECONDS = 120
-const WORKTREE_TTL_MS = 24 * 60 * 60 * 1000
-const ACTOR = "system:watchdog"
-const CORRELATION = "watchdog"
-
-const TaskRow = Schema.Struct({
-  id: TaskId,
-  bot_id: BotId,
-  attempts: Schema.Int,
-  state: Schema.String,
-  spec: Schema.String,
-  updated_at: Schema.String,
-})
-
 const JobRow = Schema.Struct({ id: Schema.Int, attempts: Schema.Int, state: Schema.String })
 const JobPayload = Schema.Struct({ taskId: TaskId })
-const RepoSpec = Schema.Struct({ repo: Schema.optional(Schema.Struct({ url: Schema.String })) })
-
-const decodeRows = <A, I>(schema: Schema.Codec<A, I>, rows: ReadonlyArray<unknown>) =>
-  Schema.decodeUnknownEffect(Schema.Array(schema))(rows).pipe(Effect.orDie)
-
 const taskIdOf = (payload: string): Option.Option<TaskId> =>
   Option.flatMap(Option.liftThrowable((text: string): unknown => JSON.parse(text))(payload), (raw) =>
     Option.map(Schema.decodeUnknownOption(JobPayload)(raw), (parsed) => parsed.taskId),
   )
-
-const describe = (failure: unknown): { readonly tag: string; readonly message: string } => {
-  if (failure instanceof Error) return { tag: failure.name, message: failure.message }
-  if (
-    typeof failure === "object" &&
-    failure !== null &&
-    "_tag" in failure &&
-    typeof failure._tag === "string"
-  ) {
-    return { tag: failure._tag, message: failure._tag }
-  }
-  return { tag: "Defect", message: String(failure) }
-}
-
-// Reporting a failure must not hide the failure being reported.
-const reportError = (where: string, failure: unknown): Effect.Effect<void, never, Beacon> =>
-  Effect.gen(function* () {
-    const beacon = yield* Beacon
-    const { tag, message } = describe(failure)
-    yield* beacon
-      .append({
-        streamId: streamIds.system,
-        type: "error.raised",
-        payload: { where: `watchdog.${where}`, tag, message },
-        actor: ACTOR,
-        correlationId: CORRELATION,
-      })
-      .pipe(Effect.catchCause(() => Effect.void))
-  })
-
-// One check: its failure becomes error.raised and a count of zero. Interruption is never swallowed.
-const guarded = <R>(
-  where: string,
-  check: Effect.Effect<number, unknown, R>,
-): Effect.Effect<number, never, R | Beacon> =>
-  check.pipe(
-    Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause)
-        ? Effect.interrupt
-        : reportError(where, Cause.squash(cause)).pipe(Effect.as(0)),
-    ),
-  )
-
-const recovered = (
-  beacon: BeaconShape,
-  what:
-    | "stale_task"
-    | "stale_job"
-    | "long_process"
-    | "expired_approval"
-    | "state_mismatch"
-    | "orphan_worktree",
-  ref: string,
-  action: string,
-) =>
-  beacon.append({
-    streamId: streamIds.system,
-    type: "watchdog.recovered",
-    payload: { what, ref, action },
-    actor: ACTOR,
-    correlationId: CORRELATION,
-  })
 
 // Epoch ms of the task's last event (its stream); the row's updated_at when the stream is empty.
 const lastActivityMs = (beacon: BeaconShape, taskId: TaskId, fallbackIso: string) =>
@@ -139,7 +61,7 @@ const recoverStaleTasks = (config: WatchdogConfig) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
     const beacon = yield* Beacon
-    const lead = yield* Lead
+    const control = yield* Control
     const now = yield* Clock.currentTimeMillis
     const staleMs = config.staleMinutes * 60_000
     const rows =
@@ -158,7 +80,8 @@ const recoverStaleTasks = (config: WatchdogConfig) =>
         yield* Jobs.fail(job.value.id, "stale", job.value.attempts)
         yield* recovered(beacon, "stale_task", task.id, "requeued")
       } else {
-        yield* lead.abandon(task.id, "watchdog: stale")
+        // Interrupts the run when this process still holds it, so the Tank's processes die with it.
+        yield* control.stop(taskTarget(task.id), "watchdog")
         if (active) {
           yield* Jobs.fail(job.value.id, "stale", job.value.attempts)
         }
@@ -244,74 +167,6 @@ const reconcile = (config: WatchdogConfig) =>
       yield* Jobs.complete(jobId, attempts)
       yield* recovered(beacon, "state_mismatch", String(row.task_id), "job completed")
       count++
-    }
-    return count
-  })
-
-interface WorktreeGroup {
-  readonly bot: Bot
-  readonly repoUrl: string
-  // Branch of every step a task may have used (one per attempt) -> the task.
-  readonly branches: Map<string, TaskId>
-}
-
-// Worktrees of terminal tasks older than a day are removed (T-031 debt). Running tasks are never touched.
-const sweepOrphanWorktrees = () =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient
-    const beacon = yield* Beacon
-    const bots = yield* BotRegistry
-    const tank = yield* Tank
-    const now = yield* Clock.currentTimeMillis
-    const cutoff = new Date(now - WORKTREE_TTL_MS).toISOString()
-    const rows = yield* sql`SELECT id, bot_id, attempts, state, spec, updated_at FROM tasks
-      WHERE state IN ('done', 'failed', 'cancelled') AND updated_at < ${cutoff}`
-    const groups = new Map<string, WorktreeGroup>()
-    for (const row of yield* decodeRows(TaskRow, rows)) {
-      const repo = yield* Effect.try({
-        try: (): unknown => JSON.parse(row.spec),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.flatMap((raw) => Schema.decodeUnknownEffect(RepoSpec)(raw)),
-        Effect.option,
-        Effect.map((parsed) => (Option.isSome(parsed) ? parsed.value.repo : undefined)),
-      )
-      if (repo === undefined) continue
-      const bot = yield* bots.get(row.bot_id).pipe(Effect.option)
-      if (Option.isNone(bot)) continue
-      const key = `${row.bot_id}\n${repo.url}`
-      const group = groups.get(key) ?? {
-        bot: bot.value,
-        repoUrl: repo.url,
-        branches: new Map<string, TaskId>(),
-      }
-      for (let attempt = 1; attempt <= row.attempts + 1; attempt++) {
-        group.branches.set(`bot/${bot.value.name}/${stepIdFor(row.id, attempt)}`, row.id)
-      }
-      groups.set(key, group)
-    }
-    let count = 0
-    for (const group of groups.values()) {
-      const removed = yield* guarded(
-        "orphan_worktrees",
-        Effect.gen(function* () {
-          let done = 0
-          for (const wt of yield* tank.worktrees(group.bot, group.repoUrl)) {
-            if (!group.branches.has(wt.branch)) continue
-            done += yield* guarded(
-              "orphan_worktrees",
-              tank
-                .removeWorktree(group.bot, wt)
-                .pipe(
-                  Effect.andThen(recovered(beacon, "orphan_worktree", wt.branch, "removed")),
-                  Effect.as(1),
-                ),
-            )
-          }
-          return done
-        }),
-      )
-      count += removed
     }
     return count
   })

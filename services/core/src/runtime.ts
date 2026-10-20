@@ -31,7 +31,7 @@ import { EmbedderOllamaLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
-import { AppConfig, type AppConfigShape, hostEnvSnapshot } from "./config.js"
+import { AppConfig, type AppConfigShape, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
 import { TelegramFromSettings, TelegramStatus, telegramSettings } from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
@@ -74,6 +74,9 @@ const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<
   ]
 }
 
+// What a Bot created by conversation may be given: the most it can spend, the one policy and the one Tank of the host.
+const BOT_FACTORY_CEILING = { tokens: 1_000_000, seconds: 3600, usd: 10 } as const
+
 const DbFromConfig = Layer.unwrap(Effect.map(AppConfig, (config) => makeDbLayer(config.databasePath)))
 
 const PersistenceLive = Layer.mergeAll(DbFromConfig, BeaconLive.pipe(Layer.provide(DbFromConfig)))
@@ -114,6 +117,14 @@ export const AppLayer = Layer.unwrap(
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
     return ConversationLive(tiers, reflexConfig, {
       warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },
+      botFactory: {
+        botsDir: `${REPO_ROOT}bots`,
+        // The chat adapter only answers conversation turns: a Bot never runs on it.
+        executors: executorsFor(config, tiers)
+          .map((executor) => executor.id)
+          .filter((id) => id !== CHAT_ID),
+        config: { ceiling: BOT_FACTORY_CEILING, policy: "default", tank: { mode: "local", host: "mac" } },
+      },
     }).pipe(Layer.provideMerge(withTelegram))
   }),
 )

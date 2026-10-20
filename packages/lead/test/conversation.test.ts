@@ -1,8 +1,14 @@
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { it } from "@effect/vitest"
-import { BotId, EventPayloads, type ExecutorEvent } from "@shoalwork/contracts"
+import { BotRegistry } from "@shoalwork/bots"
+import { BotId, EventPayloads, type ExecutorEvent, NotFound } from "@shoalwork/contracts"
+import type { MemoryItem } from "@shoalwork/reef"
 import { Clock, Duration, Effect, Fiber, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect } from "vitest"
+import type { MemoryPort } from "../src/commands/memory.js"
 import { Conversation } from "../src/conversation.js"
 import { ownerFor } from "../src/conversation-context.js"
 import { Lead } from "../src/lead.js"
@@ -229,19 +235,73 @@ describe("system commands", () => {
     }).pipe(Effect.provide(h.layer))
   })
 
-  it.effect("answers /help and the commands that are not available yet", () => {
+  it.effect("answers /help and tells an unknown command apart", () => {
     const h = harness()
     return Effect.gen(function* () {
       const { lead } = yield* createBots
       const conversation = yield* Conversation
-      for (const text of ["/help", "/stop", "/pause@my_bot", "/nope"]) {
+      for (const text of ["/help", "/nope", "/confirm-bot prop_x ok"]) {
         yield* conversation.onInbound(yield* inbound(lead, text))
       }
       const texts = h.telegram.sent.map((message) => message.text)
-      expect(texts[0]).toContain("/status")
-      expect(texts[1]).toBe("Ainda não disponível.")
-      expect(texts[2]).toBe("Ainda não disponível.")
-      expect(texts[3]).toBe("Comando desconhecido. Use /help.")
+      expect(texts[0]).toContain("/stop")
+      expect(texts[1]).toBe("Comando desconhecido. Use /help.")
+      // Without a Bot factory wired, /confirm-bot is not a command.
+      expect(texts[2]).toBe("Comando desconhecido. Use /help.")
+    }).pipe(Effect.provide(h.layer))
+  })
+
+  it.effect("/pause and /resume pause everything or one Bot and say so in /status", () => {
+    const h = harness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      for (const text of [
+        "/pause",
+        "/status",
+        "/resume",
+        "/pause worker-bot",
+        "/status",
+        "/resume worker-bot",
+      ]) {
+        yield* conversation.onInbound(yield* inbound(lead, text))
+      }
+      const texts = h.telegram.sent.map((message) => message.text)
+      expect(texts[0]).toContain("Tudo pausado")
+      expect(texts[1]).toContain("Tudo pausado (/resume libera).")
+      expect(texts[1]).toContain("• worker-bot — paused")
+      expect(texts[2]).toBe("Tudo retomado.")
+      expect(texts[3]).toContain("worker-bot pausado")
+      expect(texts[4]).toContain("• worker-bot — paused")
+      expect(texts[4]).toContain("• lead — idle")
+      expect(texts[5]).toBe("worker-bot retomado.")
+      const control = Array.from(yield* allEvents).filter((event) => event.type === "control.changed")
+      expect(control.map((event) => event.actor)).toEqual(Array.from({ length: 4 }, () => "user:telegram:42"))
+    }).pipe(Effect.provide(h.layer))
+  })
+
+  it.effect("/stop answers for everything, one Bot and one task, and rejects what it cannot read", () => {
+    const h = harness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      for (const text of [
+        "/stop",
+        "/stop worker-bot",
+        "/stop ghost",
+        "/stop task task_00000000-0000-4000-8000-0000000000ff",
+        "/stop task nope",
+        "/stop one two three",
+      ]) {
+        yield* conversation.onInbound(yield* inbound(lead, text))
+      }
+      const texts = h.telegram.sent.map((message) => message.text)
+      expect(texts[0]).toBe("Tudo parado: nada para parar.")
+      expect(texts[1]).toBe("worker-bot parado: nada para parar.")
+      expect(texts[2]).toBe("Bot desconhecido: ghost.")
+      expect(texts[3]).toBe("Tarefa desconhecida: task_00000000-0000-4000-8000-0000000000ff.")
+      expect(texts[4]).toBe("Tarefa desconhecida: nope.")
+      expect(texts[5]).toContain("Uso: /stop")
     }).pipe(Effect.provide(h.layer))
   })
 })
@@ -569,5 +629,233 @@ describe("start with a failing topic", () => {
       expect(telegram.topics).toEqual(["lead"])
       expect(telegram.sent.map((message) => message.text)).toEqual(["ola"])
     }).pipe(Effect.scoped, Effect.provide(h.layer))
+  })
+})
+
+describe("creating Bots by conversation", () => {
+  const draft = JSON.stringify({
+    name: "marketing-faturium",
+    role: "marketing",
+    instructions: "Write short campaigns.\nKeep them under 300 characters.\nNever promise discounts.",
+    executors: { preferred: "claude-code", allowed: ["claude-code"] },
+    budget: { tokens: 300_000, seconds: 900, usd: 2 },
+  })
+
+  // The model is a fake that drafts the Bot; the factory, the registry and the files are real.
+  const factoryHarness = () => {
+    const botsDir = mkdtempSync(join(tmpdir(), "shoalwork-factory-"))
+    const h = harness({
+      // The draft comes from the heavy tier, which the tier table serves with the Lead's task executor.
+      leadEvents: done(draft),
+      options: {
+        botFactory: {
+          botsDir,
+          executors: ["claude-code"],
+          config: {
+            ceiling: { tokens: 500_000, seconds: 1800, usd: 5 },
+            policy: "default",
+            tank: { mode: "local", host: "mac" },
+          },
+        },
+      },
+    })
+    return { h, botsDir }
+  }
+
+  const proposalIdOf = (events: ReadonlyArray<{ readonly type: string; readonly payload: unknown }>) => {
+    const proposed = events.find((event) => event.type === "bot.proposed")
+    const parsed = Schema.decodeUnknownSync(EventPayloads["bot.proposed"])(proposed?.payload)
+    return parsed.proposalId
+  }
+
+  it.effect("a request to create a Bot is proposed and recorded; the confirmation writes the Bot", () => {
+    const { h, botsDir } = factoryHarness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+
+      yield* conversation.onInbound(yield* inbound(lead, "cria um bot de marketing para o Faturium"))
+      const proposalId = proposalIdOf(Array.from(yield* allEvents))
+      const proposed = Array.from(yield* allEvents).filter((event) => event.type === "bot.proposed")
+      expect(proposed.map((event) => event.payload)).toEqual([
+        { proposalId, botName: "marketing-faturium", requestedBy: "42" },
+      ])
+      expect(h.telegram.sent.at(-1)?.text).toContain("marketing-faturium")
+      // Nothing exists yet, and the message was not treated as a task or a chat.
+      expect(readdirSync(botsDir)).toEqual([])
+      expect(typesOf(Array.from(yield* allEvents))).not.toContain("task.received")
+
+      yield* conversation.onInbound(yield* inbound(lead, `/confirm-bot ${proposalId} ok`))
+
+      expect(readdirSync(botsDir)).toEqual(["marketing-faturium.yaml"])
+      const registry = yield* BotRegistry
+      expect((yield* registry.getByName("marketing-faturium")).role).toBe("marketing")
+      const resolved = Array.from(yield* allEvents).filter((event) => event.type === "bot.proposal_resolved")
+      expect(resolved.map((event) => event.payload)).toEqual([
+        { proposalId, botName: "marketing-faturium", status: "confirmed" },
+      ])
+      expect(h.telegram.sent.at(-1)?.text).toContain("marketing-faturium")
+    }).pipe(
+      Effect.provide(h.layer),
+      Effect.ensuring(Effect.sync(() => rmSync(botsDir, { recursive: true, force: true }))),
+    )
+  })
+
+  it.effect("cancelling records a rejection and writes nothing; a stranger's decision is refused", () => {
+    const { h, botsDir } = factoryHarness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      yield* conversation.onInbound(yield* inbound(lead, "create a bot for marketing"))
+      const proposalId = proposalIdOf(Array.from(yield* allEvents))
+
+      yield* conversation.onInbound(yield* inbound(lead, `/confirm-bot ${proposalId} ok`, { userId: "999" }))
+      expect(
+        Array.from(yield* allEvents).filter((event) => event.type === "bot.proposal_resolved"),
+      ).toHaveLength(0)
+
+      yield* conversation.onInbound(yield* inbound(lead, `/confirm-bot ${proposalId} no`))
+      const resolved = Array.from(yield* allEvents).filter((event) => event.type === "bot.proposal_resolved")
+      expect(resolved.map((event) => event.payload)).toEqual([
+        { proposalId, botName: "marketing-faturium", status: "rejected" },
+      ])
+      expect(existsSync(join(botsDir, "marketing-faturium.yaml"))).toBe(false)
+      const registry = yield* BotRegistry
+      expect((yield* registry.list()).map((bot) => bot.name)).toEqual(["lead", "worker-bot"])
+    }).pipe(
+      Effect.provide(h.layer),
+      Effect.ensuring(Effect.sync(() => rmSync(botsDir, { recursive: true, force: true }))),
+    )
+  })
+
+  it.effect("without the factory wired, the same words are an ordinary chat message", () => {
+    const h = harness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      yield* conversation.onInbound(yield* inbound(lead, "cria um bot de marketing para o Faturium"))
+      expect(typesOf(Array.from(yield* allEvents))).not.toContain("bot.proposed")
+    }).pipe(Effect.provide(h.layer))
+  })
+})
+
+describe("memory commands", () => {
+  const MINE = "mem_00000000-0000-4000-8000-00000000000a"
+  const THEIRS = "mem_00000000-0000-4000-8000-0000000000d0"
+
+  const item = (id: string, owner: string, content: string): MemoryItem => ({
+    id,
+    scope: "bot",
+    owner_id: owner,
+    kind: "semantic",
+    content,
+    source: "user:42",
+    confidence: 1,
+    created_at: "2026-10-20T10:00:00.000Z",
+    superseded_by: null,
+    tombstone: 0,
+  })
+
+  // The Reef's four methods over a map; `calls` records what the conversation asked of it.
+  const fakeMemory = (seed: ReadonlyArray<MemoryItem>) => {
+    const items = new Map(seed.map((entry) => [entry.id, entry] as const))
+    const calls: Array<string> = []
+    const add = (entry: MemoryItem) => {
+      items.set(entry.id, entry)
+    }
+    const port: MemoryPort = {
+      remember: (next) =>
+        Effect.sync(() => {
+          calls.push(`remember:${next.ownerId}:${next.source}:${next.content}`)
+          return item("mem_new", next.ownerId, next.content)
+        }),
+      search: (q, opts) =>
+        Effect.sync(() => {
+          calls.push(`search:${q}`)
+          const scope = opts.scopes[0]
+          return [...items.values()]
+            .filter((entry) => entry.owner_id === scope?.ownerId && entry.content.includes(q))
+            .map((entry) => ({ ...entry, score: 1 }))
+        }),
+      forget: (id) =>
+        Effect.gen(function* () {
+          const entry = items.get(id)
+          if (entry === undefined) {
+            return yield* Effect.fail(new NotFound({ entity: "memory_item", id }))
+          }
+          items.set(id, { ...entry, tombstone: 1 })
+          calls.push(`forget:${id}`)
+        }),
+      history: (id) => Effect.sync(() => (items.has(id) ? [items.get(id) as MemoryItem] : [])),
+    }
+    return { port, calls, add }
+  }
+
+  const memoryHarness = (seed: ReadonlyArray<MemoryItem>) => {
+    const memory = fakeMemory(seed)
+    return { memory, h: harness({ options: { memory: memory.port } }) }
+  }
+
+  it.effect("/remember stores a memory of the topic's Bot, with the sender as source", () => {
+    const { memory, h } = memoryHarness([])
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      yield* conversation.onInbound(yield* inbound(lead, "/remember@my_bot Deploy usa Fly.io"))
+      expect(memory.calls).toEqual([`remember:${lead.id}:user:42:Deploy usa Fly.io`])
+      expect(h.telegram.sent.map((message) => message.text)).toEqual(["Lembrado."])
+      expect(h.chat.runs).toEqual([])
+    }).pipe(Effect.provide(h.layer))
+  })
+
+  it.effect("/forget offers the Bot's matches as buttons and a press forgets only that memory", () => {
+    const { memory, h } = memoryHarness([])
+    return Effect.gen(function* () {
+      const { lead, dev } = yield* createBots
+      const conversation = yield* Conversation
+      memory.add(item(MINE, lead.id, "Deploy usa Fly.io"))
+      memory.add(item(THEIRS, dev.id, "Deploy usa Fly.io"))
+
+      yield* conversation.onInbound(yield* inbound(lead, "/forget Fly"))
+      const offer = h.telegram.sent.at(-1)
+      expect(offer?.text).toContain("1. Deploy usa Fly.io")
+      expect(offer?.buttons).toEqual([`mem:forget:${MINE}`, "mem:cancel"])
+
+      yield* conversation.onInbound(yield* inbound(lead, `/memory mem:forget:${THEIRS}`))
+      expect(h.telegram.sent.at(-1)?.text).toBe("Essa memória não pertence a este Bot.")
+      yield* conversation.onInbound(yield* inbound(lead, `/memory mem:forget:${MINE}`))
+      expect(h.telegram.sent.at(-1)?.text).toBe("Esquecida: Deploy usa Fly.io")
+      expect(memory.calls.filter((call) => call.startsWith("forget:"))).toEqual([`forget:${MINE}`])
+    }).pipe(Effect.provide(h.layer))
+  })
+
+  it.effect(
+    "a /forget button press runs the memory callback in the topic and the cancel button changes nothing",
+    () => {
+      const { memory, h } = memoryHarness([])
+      return Effect.gen(function* () {
+        const { lead } = yield* createBots
+        const conversation = yield* Conversation
+        yield* conversation.onInbound(yield* inbound(lead, "/memory mem:cancel"))
+        yield* conversation.onInbound(yield* inbound(lead, `/memory mem:forget:${THEIRS}`))
+        yield* conversation.onInbound(yield* inbound(lead, "/memory nonsense"))
+        expect(h.telegram.sent.map((message) => message.text)).toEqual([
+          "Cancelado. Nada foi esquecido.",
+          "Essa memória não existe mais.",
+          "Comando desconhecido. Use /help.",
+        ])
+        expect(memory.calls).toEqual([])
+      }).pipe(Effect.provide(h.layer))
+    },
+  )
+
+  it.effect("without a Reef the memory commands are unknown", () => {
+    const h = harness()
+    return Effect.gen(function* () {
+      const { lead } = yield* createBots
+      const conversation = yield* Conversation
+      yield* conversation.onInbound(yield* inbound(lead, "/remember algo"))
+      expect(h.telegram.sent.map((message) => message.text)).toEqual(["Comando desconhecido. Use /help."])
+    }).pipe(Effect.provide(h.layer))
   })
 })

@@ -204,3 +204,61 @@ describe("jobs", () => {
     ),
   )
 })
+
+describe("claim with skipPausedTasks", () => {
+  // Two tasks of two Bots, each with a queued job, as the Lead's intake leaves them.
+  const seed = Effect.gen(function* () {
+    const sql = yield* SqlClient
+    const now = nowIso()
+    for (const bot of ["bot_a", "bot_b"]) {
+      yield* sql`INSERT INTO bots (id, name, definition, state, updated_at) VALUES (${bot}, ${bot}, '{}', 'idle', ${now})`
+      yield* sql`INSERT INTO tasks (id, bot_id, spec, state, attempts, created_at, updated_at)
+        VALUES (${`task_${bot}`}, ${bot}, '{}', 'received', 0, ${now}, ${now})`
+      yield* Jobs.enqueue("tasks", { taskId: `task_${bot}` })
+    }
+    return sql
+  })
+
+  const claimedTask = (skipPausedTasks: boolean) =>
+    Effect.map(Jobs.claim("tasks", { skipPausedTasks }), (job) =>
+      Option.getOrUndefined(Option.map(job, (row) => row.payload)),
+    )
+
+  it.effect("leaves out the jobs of a paused Bot and takes the next one", () =>
+    Effect.gen(function* () {
+      const sql = yield* seed
+      yield* sql`INSERT INTO control_flags (scope, paused, updated_at) VALUES ('bot:bot_a', 1, ${nowIso()})`
+      expect(yield* claimedTask(true)).toBe('{"taskId":"task_bot_b"}')
+      expect(yield* claimedTask(true)).toBeUndefined()
+      // Without the option the paused Bot's job is still handed out.
+      expect(yield* claimedTask(false)).toBe('{"taskId":"task_bot_a"}')
+    }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("claims nothing while everything is paused and claims again after the flag is cleared", () =>
+    Effect.gen(function* () {
+      const sql = yield* seed
+      yield* sql`INSERT INTO control_flags (scope, paused, updated_at) VALUES ('global', 1, ${nowIso()})`
+      expect(yield* claimedTask(true)).toBeUndefined()
+      yield* sql`UPDATE control_flags SET paused = 0 WHERE scope = 'global'`
+      expect(yield* claimedTask(true)).toBe('{"taskId":"task_bot_a"}')
+    }).pipe(Effect.provide(withTempDb())),
+  )
+})
+
+describe("abort", () => {
+  it.effect("closes an active job as failed without a retry, only for the worker that holds it", () =>
+    Effect.gen(function* () {
+      yield* Jobs.enqueue(QUEUE, { n: 1 }, { maxAttempts: 5 })
+      const job = Option.getOrUndefined(yield* Jobs.claim(QUEUE))
+      expect(job).toBeDefined()
+      const id = job?.id ?? 0
+      expect(yield* Jobs.abort(id, "stopped", 99)).toBe(false)
+      expect(yield* Jobs.abort(id, "stopped by user", job?.attempts)).toBe(true)
+      const row = yield* readJob(id)
+      expect(row?.state).toBe("failed")
+      expect(row?.last_error).toBe("stopped by user")
+      expect(Option.isNone(yield* Jobs.claim(QUEUE))).toBe(true)
+    }).pipe(Effect.provide(withTempDb())),
+  )
+})

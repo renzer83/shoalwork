@@ -19,6 +19,8 @@ const TRANSPORT_FAILURE = 0
 
 const messageOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause))
 
+type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE"
+
 export class ApiClient {
   constructor(
     readonly baseUrl: string,
@@ -37,13 +39,25 @@ export class ApiClient {
     return this.request("POST", path, body, schema)
   }
 
+  patch<A>(
+    path: string,
+    body: unknown,
+    schema: Schema.Codec<A, unknown>,
+  ): Effect.Effect<A, HttpError | SchemaViolation> {
+    return this.request("PATCH", path, body, schema)
+  }
+
+  remove<A>(path: string, schema: Schema.Codec<A, unknown>): Effect.Effect<A, HttpError | SchemaViolation> {
+    return this.request("DELETE", path, undefined, schema)
+  }
+
   // Raw body for non-JSON responses (NDJSON exports). The caller decides what the text means.
   getText(path: string): Effect.Effect<string, HttpError> {
     return this.send("GET", path, undefined, "application/x-ndjson, application/json")
   }
 
   private request<A>(
-    method: "GET" | "POST",
+    method: HttpMethod,
     path: string,
     body: unknown,
     schema: Schema.Codec<A, unknown>,
@@ -65,7 +79,7 @@ export class ApiClient {
   }
 
   private send(
-    method: "GET" | "POST",
+    method: HttpMethod,
     path: string,
     body: unknown,
     accept: string,
