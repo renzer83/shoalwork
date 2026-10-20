@@ -1,5 +1,5 @@
 export { type AcpOptions, type AcpPolicy, makeAcp } from "./acp/index.js"
-export { defaultChatMapTier } from "./claude-code/args.js"
+export { defaultChatMapTier, REEF_MCP_TOOLS } from "./claude-code/args.js"
 export {
   CHAT_ID,
   type ClaudeCodeChatOptions,

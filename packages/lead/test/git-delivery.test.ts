@@ -301,7 +301,8 @@ describe("Lead delivers code tasks after an ok run", () => {
         })
         expect(tank.commands.map((argv) => argv[0])).toEqual(["git", "git", "git", "git"])
         expect(tank.released).toEqual([{ keepWorktree: false }])
-        expect(runs[0]?.allowedTools).toContain("Bash(pnpm *)")
+        // T-057: the tool list comes from the Bot's policy; the test layer has no Policy, so nothing is pre-approved.
+        expect(runs[0]?.allowedTools).toEqual([])
       }).pipe(Effect.provide(leadLayer({ executor: fakeExecutor(eventsOf(OK_EVENTS), runs), tank })))
     },
   )

@@ -14,7 +14,6 @@ describe("riskOf: read and local writes", () => {
     ["Write", { tool: "Write", input: { file_path: "a.ts", content: "x" } }, "write_local"],
     ["git status", bash("git status"), "read"],
     ["git diff", bash("git diff --stat"), "read"],
-    ["git log", bash("git log --oneline"), "read"],
     ["git add", bash("git add packages/policy/src/risk.ts"), "write_local"],
     ["git commit", bash('git commit -m "feat: x"'), "write_local"],
     ["pnpm test", bash("pnpm -r test"), "write_local"],
@@ -36,6 +35,8 @@ describe("riskOf: read and local writes", () => {
 describe("riskOf: external", () => {
   const cases: ReadonlyArray<readonly [string, ToolCall]> = [
     ["git push", bash("git push origin main")],
+    ["git log", bash("git log --oneline")],
+    ["git show", bash("git show HEAD:src/a.ts")],
     ["npm publish", bash("npm publish")],
     ["pnpm dlx", bash("pnpm dlx some-tool")],
     ["mcp tool", { tool: "mcp__github__create_issue", input: { title: "x" } }],

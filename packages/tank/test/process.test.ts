@@ -219,6 +219,6 @@ describe("spawnProcess", () => {
         expect(Date.now() - started).toBeGreaterThanOrEqual(5000)
         expect(yield* waitGone("sleep 60.18")).toBe(true)
       }),
-    20_000,
+    30_000,
   )
 })

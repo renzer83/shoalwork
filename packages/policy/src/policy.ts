@@ -5,6 +5,7 @@ import {
   newEventId,
   type PolicyDecision,
   type PolicyEffect,
+  type PolicyRule,
   type Risk,
   streamIds,
   type ToolCall,
@@ -74,6 +75,9 @@ export interface PolicyShape {
     context?: EvaluationContext,
   ) => Effect.Effect<PolicyDecision, never>
   readonly riskOf: (call: ToolCall) => Risk
+  // The rules that apply to a Bot: its named policy, inheritance resolved. Empty when the policy cannot be read or
+  // does not exist (nothing is pre-approved then). Used to derive the permissions of a run (T-057).
+  readonly rulesOf: (botId: BotId) => Effect.Effect<ReadonlyArray<PolicyRule>, never>
   // The workspace roots the service was configured with (never taken from a request).
   readonly workspaceRoots: ReadonlyArray<string>
   readonly reload: () => Effect.Effect<void, ConfigError>
@@ -141,6 +145,23 @@ const evaluateNamed = (
     },
     catch: (cause): unknown => cause,
   })
+
+// The rules of the policy a Bot names. Any failure reading the name gives no rules, never more.
+const rulesFor = (
+  set: PolicySet,
+  policyOf: PolicyOptions["policyOf"],
+  botId: BotId,
+): Effect.Effect<ReadonlyArray<PolicyRule>> =>
+  Effect.try({
+    try: (): string | undefined | Effect.Effect<string | undefined> => policyOf(botId),
+    catch: (cause): unknown => cause,
+  }).pipe(
+    Effect.flatMap((named) =>
+      typeof named === "string" || named === undefined ? Effect.succeed(named) : named,
+    ),
+    Effect.map((chosen) => set.rulesOf(chosen ?? DEFAULT_POLICY)?.map((compiled) => compiled.rule) ?? []),
+    Effect.catch(() => Effect.succeed<ReadonlyArray<PolicyRule>>([])),
+  )
 
 const RESOURCE_MAX_CHARS = 200
 const SECRET_PAIR =
@@ -213,6 +234,7 @@ const makePolicy = (deps: {
       return decision
     }),
   riskOf: (call) => riskOf(call, deps.maxInputBytes),
+  rulesOf: (botId) => Ref.get(deps.state).pipe(Effect.flatMap((set) => rulesFor(set, deps.policyOf, botId))),
   workspaceRoots: deps.workspaceRoots,
   // On failure the previous rules stay active; the error is returned to the caller.
   reload: () => deps.load().pipe(Effect.flatMap((set) => Ref.set(deps.state, set))),

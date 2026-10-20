@@ -15,12 +15,13 @@ const mcpArgs = (mcp: McpMode, mcpConfigFile: string | undefined): ReadonlyArray
   return mcp === "none" ? NO_MCP_ARGS : []
 }
 
-// Abstract permission level -> the CLI's --permission-mode value.
+// Abstract permission level -> the CLI's --permission-mode value. "bypass" is never derived for a run (T-057); if it
+// reaches the adapter anyway, the CLI denies what it would have to ask for instead of skipping the check.
 const PERMISSION_FLAG: Record<PermissionMode, string> = {
   readonly: "plan",
   edit: "acceptEdits",
   auto: "auto",
-  bypass: "bypassPermissions",
+  bypass: "dontAsk",
 }
 
 // The task's own model and effort (set by the Lead from the tier table and the Bot override) win; the adapter's

@@ -5,19 +5,6 @@ import { Effect, Ref } from "effect"
 import { deliverCode } from "./git-delivery.js"
 import { type Progress, withArtifact, withOutcome } from "./verdict.js"
 
-// What a Bot may run in a code task. Commit, push and PR are the Lead's job (git-delivery.ts), not the Bot's.
-export const CODE_ALLOWED_TOOLS: ReadonlyArray<string> = [
-  "Bash(pnpm *)",
-  "Bash(npm *)",
-  "Bash(git status *)",
-  "Bash(git diff *)",
-  "Read",
-  "Edit",
-  "Write",
-  "Glob",
-  "Grep",
-]
-
 export interface DeliverDeps {
   readonly tank: TankShape
   readonly gh: GhClientShape

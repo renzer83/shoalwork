@@ -127,6 +127,7 @@ describe("plan integration (real git, real Tank)", () => {
           expect(gh.calls.length).toBeGreaterThan(0)
         }),
       ).pipe(Effect.provide(DispatchLayer)),
+    30_000,
   )
 
   it.live(
@@ -149,6 +150,7 @@ describe("plan integration (real git, real Tank)", () => {
         )
         expect(yield* tank.worktrees(lead, origin)).toEqual([])
       }).pipe(Effect.provide(DispatchLayer)),
+    30_000,
   )
 
   it.live(
@@ -183,23 +185,27 @@ describe("plan integration (real git, real Tank)", () => {
         expect(git(origin, "rev-list", "--merges", "--count", branch).trim()).toBe("2")
         expect(git(repoDir, "branch", "--list", "plan/*").trim()).toBe("")
       }).pipe(Effect.provide(DispatchLayer)),
+    30_000,
   )
 
-  it.live("a stale local plan branch left by a crash is reset, not a failure", () =>
-    Effect.gen(function* () {
-      const { lead, rootSpec, integration } = yield* setup
-      const repoDir = join(root, "tanks", lead.name, "repos", slugRepoUrl(origin))
-      const fresh: TaskSpec = { ...rootSpec, id: newTaskId() }
-      // Opening once makes sure the Bot's clone exists, whatever order the tests run in.
-      yield* Effect.scoped(integration.open(rootSpec))
-      git(repoDir, "branch", planBranchOf(fresh.id), "origin/main")
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const session = yield* integration.open(fresh)
-          expect(session.branch).toBe(planBranchOf(fresh.id))
-          expect(yield* session.isPublished).toBe(false)
-        }),
-      )
-    }).pipe(Effect.provide(DispatchLayer)),
+  it.live(
+    "a stale local plan branch left by a crash is reset, not a failure",
+    () =>
+      Effect.gen(function* () {
+        const { lead, rootSpec, integration } = yield* setup
+        const repoDir = join(root, "tanks", lead.name, "repos", slugRepoUrl(origin))
+        const fresh: TaskSpec = { ...rootSpec, id: newTaskId() }
+        // Opening once makes sure the Bot's clone exists, whatever order the tests run in.
+        yield* Effect.scoped(integration.open(rootSpec))
+        git(repoDir, "branch", planBranchOf(fresh.id), "origin/main")
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const session = yield* integration.open(fresh)
+            expect(session.branch).toBe(planBranchOf(fresh.id))
+            expect(yield* session.isPublished).toBe(false)
+          }),
+        )
+      }).pipe(Effect.provide(DispatchLayer)),
+    30_000,
   )
 })

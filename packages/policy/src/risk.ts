@@ -28,7 +28,9 @@ const MCP_IRREVERSIBLE_WORDS: ReadonlyArray<string> = [
 // Matched on the text of a command or of a non-read, non-write tool input. Word boundaries.
 const DESTRUCTIVE_SQL = /\b(drop|truncate)\b/i
 
-const READ_GIT_VERBS: ReadonlySet<string> = new Set(["status", "diff", "log", "show", "blame", "shortlog"])
+// "log" and "show" are not read verbs: they print the content of any file of the history (git show HEAD:.env), which
+// the deny rules on the paths cannot catch. They are external (ask) unless a rule of the policy says otherwise.
+const READ_GIT_VERBS: ReadonlySet<string> = new Set(["status", "diff", "blame", "shortlog"])
 const GIT_OUTPUT_PREFIXES = ["--output", "--ext-diff", "--textconv", "--no-index"]
 const PACKAGE_MANAGERS: ReadonlySet<string> = new Set(["npm", "pnpm", "yarn", "bun"])
 const PM_WRITE_VERBS: ReadonlySet<string> = new Set([

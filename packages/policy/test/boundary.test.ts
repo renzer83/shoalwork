@@ -171,12 +171,14 @@ describe("git read commands with output or external-program flags are not read",
     "git show --textconv HEAD",
     "git diff --no-index a b",
     "git blame -o x",
+    "git log --oneline -5",
+    "git show HEAD:src/a.ts",
   ]) {
     it.effect(`asks: ${command}`, () =>
       effectOf(bash(command)).pipe(Effect.map((effect) => expect(effect).toBe("ask"))),
     )
   }
-  for (const command of ["git status", "git diff --stat", "git log --oneline -5"]) {
+  for (const command of ["git status", "git diff --stat"]) {
     it.effect(`allows: ${command}`, () =>
       effectOf(bash(command)).pipe(Effect.map((effect) => expect(effect).toBe("allow"))),
     )

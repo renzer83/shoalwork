@@ -1,7 +1,7 @@
-import type { BotId, ExecutorTask, StepId, TaskSpec } from "@shoalwork/contracts"
+import type { ExecutorTask, StepId, TaskSpec } from "@shoalwork/contracts"
 import type { Effort, ExecutorContext } from "@shoalwork/executors"
 import { Data } from "effect"
-import { CODE_ALLOWED_TOOLS } from "./deliver.js"
+import type { DerivedPermission } from "./permissions.js"
 import { buildRetryPrompt, type Carry } from "./retry.js"
 import { buildPrompt } from "./verdict.js"
 
@@ -16,19 +16,20 @@ const promptSource = (spec: TaskSpec): Pick<TaskSpec, "prompt" | "acceptance"> =
 // The task the executor receives. A retry carries the tail of the run before it; the session resumes when there is one.
 export const executorTaskFor = (input: {
   readonly spec: TaskSpec
-  readonly botId: BotId
   readonly carry: Carry | undefined
   readonly stepId: StepId
   readonly model: string
   readonly effort: Effort | undefined
   readonly maxTurns: number
+  // The run's permissions, derived from the Bot's policy (permissions.ts).
+  readonly permission: DerivedPermission
 }): ExecutorTask => {
   const { spec, carry, effort } = input
   const resumeSessionId = carry?.sessionId
   return {
     taskId: spec.id,
     stepId: input.stepId,
-    botId: input.botId,
+    botId: spec.botId,
     prompt:
       carry === undefined
         ? buildPrompt(promptSource(spec))
@@ -38,8 +39,8 @@ export const executorTaskFor = (input: {
             notes: carry.notes,
           }),
     tier: spec.tier,
-    allowedTools: spec.kind === "code" && spec.repo !== undefined ? [...CODE_ALLOWED_TOOLS] : [],
-    permissionMode: "edit",
+    allowedTools: [...input.permission.allowedTools],
+    permissionMode: input.permission.permissionMode,
     maxTurns: input.maxTurns,
     budget: spec.budget,
     model: input.model,

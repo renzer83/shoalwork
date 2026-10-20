@@ -26,7 +26,18 @@ describe("shipped policies", () => {
     const rules = set.rulesOf("default") ?? []
     expect(rules.some((r) => r.rule.effect === "deny")).toBe(true)
     expect(rules.some((r) => r.rule.effect === "ask")).toBe(true)
-    expect(rules.some((r) => r.rule.effect === "allow")).toBe(false)
+    // T-057: the base names the commands a code task runs; nothing else is allowed by default.
+    expect(rules.filter((r) => r.rule.effect === "allow").map((r) => r.rule.tool)).toEqual([
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(pnpm test *)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm build *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+    ])
   })
 
   it("rejects a missing directory with ConfigError", () => {

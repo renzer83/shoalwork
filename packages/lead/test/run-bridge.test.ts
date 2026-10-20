@@ -1,6 +1,7 @@
 import { it } from "@effect/vitest"
 import { type ExecutorTask, SchemaViolation } from "@shoalwork/contracts"
 import type { Executor, ExecutorContext } from "@shoalwork/executors"
+import { REEF_MCP_TOOLS } from "@shoalwork/executors"
 import { Effect, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { SqlError, UnknownError } from "effect/sql/SqlError"
@@ -60,6 +61,9 @@ describe("run-setup with the permission bridge", () => {
         expect(yield* lead.runOnce(spec.id)).toMatchObject({ kind: "ok" })
         expect(contexts[0]?.mcp?.permissionBridge).toEqual(BRIDGE)
         expect(tasks[0]?.permissionMode).toBe("auto")
+        // The audit records the mode the CLI got, which is the bridge's "auto" and not the derived "edit" (T-057).
+        const started = (yield* allEvents).find((event) => event.type === "executor.started")
+        expect(started?.payload).toMatchObject({ permissionMode: "auto", allowedTools: [...REEF_MCP_TOOLS] })
         expect(yield* tokenRows(spec.id)).toEqual([{ cwd: contexts[0]?.cwd, bridge_mode: "inline" }])
       }).pipe(
         Effect.provide(

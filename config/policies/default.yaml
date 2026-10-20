@@ -84,3 +84,37 @@ rules:
   - { bot: "*", tool: "Write", resource: "**/.claude/**", effect: deny, reason: "agent configuration" }
   - { bot: "*", tool: "Write", resource: "**/.husky/**", effect: deny, reason: "git hooks" }
   - { bot: "*", tool: "Write", resource: "**/.config/gh/**", effect: deny, reason: "GitHub CLI credentials" }
+
+  # Asks for the variants of the commands below that run as "external" (not read, not write_local). Without a rule
+  # the default asks them too, so the allows below do not loosen them. Must stay before the allows in every reading.
+  - { bot: "*", tool: "Bash(git diff * -o *)", effect: ask, reason: "git diff writes to a file" }
+  - { bot: "*", tool: "Bash(git diff * --output* *)", effect: ask, reason: "git diff writes to a file" }
+  - { bot: "*", tool: "Bash(git diff * --ext-diff* *)", effect: ask, reason: "git diff runs an external tool" }
+  - { bot: "*", tool: "Bash(git diff * --textconv* *)", effect: ask, reason: "git diff runs a textconv filter" }
+  - { bot: "*", tool: "Bash(git diff * --no-index* *)", effect: ask, reason: "git diff outside the repository" }
+  - { bot: "*", tool: "Bash(pnpm * -g *)", effect: ask, reason: "global package manager action" }
+  - { bot: "*", tool: "Bash(pnpm * --global* *)", effect: ask, reason: "global package manager action" }
+  - { bot: "*", tool: "Bash(pnpm * --config.* *)", effect: ask, reason: "package manager config outside the workspace" }
+  - { bot: "*", tool: "Bash(pnpm * --userconfig* *)", effect: ask, reason: "package manager config outside the workspace" }
+  - { bot: "*", tool: "Bash(pnpm * -C *)", effect: ask, reason: "package manager runs in another directory" }
+  - { bot: "*", tool: "Bash(pnpm * --dir* *)", effect: ask, reason: "package manager runs in another directory" }
+  - { bot: "*", tool: "Bash(pnpm * --prefix* *)", effect: ask, reason: "package manager runs in another directory" }
+  - { bot: "*", tool: "Bash(git diff * /* *)", effect: ask, reason: "git diff of a path outside the worktree (no-index)" }
+  - { bot: "*", tool: "Bash(git diff * ../* *)", effect: ask, reason: "git diff of a path outside the worktree (no-index)" }
+  - { bot: "*", tool: "Bash(git diff * ~* *)", effect: ask, reason: "git diff of a path outside the worktree (no-index)" }
+  - { bot: "*", tool: "Bash(git diff * -O* *)", effect: ask, reason: "git diff reads an order file outside the worktree" }
+  - { bot: "*", tool: "Bash(git diff * *.env* *)", effect: ask, reason: "git diff of local secrets" }
+  - { bot: "*", tool: "Bash(git diff * *.ssh* *)", effect: ask, reason: "git diff of ssh keys" }
+  - { bot: "*", tool: "Bash(git show * *.env* *)", effect: ask, reason: "git show of local secrets" }
+  - { bot: "*", tool: "Bash(git show * *.ssh* *)", effect: ask, reason: "git show of ssh keys" }
+
+  # Commands a code task runs (T-057). Read and write_local are already allowed by default; these name them.
+  - { bot: "*", tool: "Read", effect: allow }
+  - { bot: "*", tool: "Glob", effect: allow }
+  - { bot: "*", tool: "Grep", effect: allow }
+  - { bot: "*", tool: "Bash(pnpm test *)", effect: allow }
+  - { bot: "*", tool: "Bash(pnpm lint *)", effect: allow }
+  - { bot: "*", tool: "Bash(pnpm typecheck *)", effect: allow }
+  - { bot: "*", tool: "Bash(pnpm build *)", effect: allow }
+  - { bot: "*", tool: "Bash(git status)", effect: allow }
+  - { bot: "*", tool: "Bash(git diff *)", effect: allow }

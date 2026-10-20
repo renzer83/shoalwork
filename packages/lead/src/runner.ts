@@ -17,6 +17,7 @@ import type { ControlShape, RunHandle } from "./control.js"
 import { waitedSince } from "./inline-wait.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
+import { permissionOf, recordStarted } from "./permissions.js"
 import type { PodNotesShape } from "./pod-notes.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
@@ -143,31 +144,23 @@ export const makeRunner = (deps: RunnerDeps) => {
         yield* Ref.update(progress, withOutcome({ _tag: "NoExecutor", tier: spec.tier }))
         return Option.none()
       }
-      // The model and effort the tier table (or the Bot override) resolved travel in the task: the adapter's argv
-      // uses them, and executor.started reports the same model.
+      // The model and effort the tier table (or the Bot override) resolved travel in the task (argv and executor.started).
       const { executor, model, effort } = chosen.value
       const task = executorTaskFor({
         spec,
-        botId: bot.id,
         carry,
         stepId,
         model,
         effort,
         maxTurns: config.maxTurns,
+        permission: yield* permissionOf(bot),
       })
       const watch = yield* watchBudgets({ beacon, bot, spec, carry, windowMs: config.botBudgetWindowMs })
       const use = (ctx: TankContext, context: ExecutorContext) =>
         Effect.gen(function* () {
           // The process groups of this run are written down so that a restart can kill the ones it leaves behind.
           yield* Effect.forkScoped(watchProcesses(sql, spec.id, ctx.cwd))
-          yield* taskEvent(spec.id, "executor.started", {
-            taskId: spec.id,
-            stepId,
-            botId: bot.id,
-            executor: executor.id,
-            model,
-            cwd: ctx.cwd,
-          })
+          yield* recordStarted(taskEvent, { spec, bot, stepId, executor: executor.id, model, task, context })
           const delivered = yield* setup.inject(ctx, {
             spec,
             bot,

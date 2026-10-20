@@ -85,7 +85,7 @@ describe("buildArgs", () => {
     ["readonly", "plan"],
     ["edit", "acceptEdits"],
     ["auto", "auto"],
-    ["bypass", "bypassPermissions"],
+    ["bypass", "dontAsk"],
   ] as const)("maps permissionMode %s to --permission-mode %s", (mode, cliMode) => {
     const args = buildArgs(baseTask({ permissionMode: mode }), mapTier)
     expect(valueAfter(args, "--permission-mode")).toBe(cliMode)
