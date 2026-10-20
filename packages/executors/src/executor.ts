@@ -10,14 +10,18 @@ import {
 } from "@shoalwork/contracts"
 import type { Tank, TankContext } from "@shoalwork/tank"
 import { Context, Effect, Layer, Ref, type Scope, Stream } from "effect"
+import type { McpAttachment } from "./mcp-config.js"
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max"
+
+// The Tank context of the run, plus the MCP servers the Bot should get (T-042). Without `mcp` nothing is attached.
+export type ExecutorContext = TankContext & { readonly mcp?: McpAttachment }
 
 export interface Executor {
   readonly id: ExecutorId
   readonly run: (
     task: ExecutorTask,
-    ctx: TankContext,
+    ctx: ExecutorContext,
   ) => Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope>
   readonly mapTier: (tier: ModelTier) => { readonly model: string; readonly effort?: Effort }
   readonly quota: () => Effect.Effect<QuotaStatus>

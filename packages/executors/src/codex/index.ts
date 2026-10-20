@@ -5,9 +5,10 @@ import {
   ExecutorSpawnError,
   type ExecutorTask,
 } from "@shoalwork/contracts"
-import { Tank, type TankContext } from "@shoalwork/tank"
+import { Tank } from "@shoalwork/tank"
 import { Duration, Effect, Schema, type Scope, Stream } from "effect"
-import type { Executor } from "../executor.js"
+import type { Executor, ExecutorContext } from "../executor.js"
+import { mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { makeQuotaCounter, type QuotaCounter } from "../quota.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
@@ -40,13 +41,17 @@ const one = (event: ExecutorEvent): Stream.Stream<ExecutorEvent> => Stream.make(
 
 const runCodex = (
   task: ExecutorTask,
-  ctx: TankContext,
+  ctx: ExecutorContext,
   quota: QuotaCounter,
   target: (tier: ExecutorTask["tier"]) => CodexTarget,
 ): Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const tank = yield* Tank
+      // Merges the reef table into the Bot's CODEX_HOME/config.toml before codex starts (T-042).
+      if (ctx.mcp !== undefined) {
+        yield* mcpConfigFor("codex", ctx).pipe(Effect.mapError(spawnFailure))
+      }
       const argv =
         task.resumeSessionId === undefined
           ? buildRunArgs(task, ctx.cwd, targetFor(task, target))

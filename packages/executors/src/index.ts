@@ -15,7 +15,14 @@ export {
   type WarmTurnOutcome,
 } from "./claude-code/warm.js"
 export { CODEX_ID, type CodexOptions, makeCodexExecutor } from "./codex/index.js"
-export { type Effort, type Executor, ExecutorRegistry, makeRegistry } from "./executor.js"
+export {
+  type Effort,
+  type Executor,
+  type ExecutorContext,
+  ExecutorRegistry,
+  makeRegistry,
+} from "./executor.js"
+export { MCP_TOKEN_ENV, type McpAttachment, McpConfigError, mcpConfigFor } from "./mcp-config.js"
 export { parseNdjsonLines } from "./ndjson.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
 export {

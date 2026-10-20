@@ -69,3 +69,38 @@ export const buildResumeArgs = (
   "--",
   prompt,
 ]
+
+// config.toml table of the reef MCP server. The token is named by env_vars, never written into the file.
+export const reefTomlBlock = (args: ReadonlyArray<string>, command: string, tokenEnv: string): string =>
+  [
+    "[mcp_servers.reef]",
+    `command = ${JSON.stringify(command)}`,
+    `args = [${args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
+    `env_vars = [${JSON.stringify(tokenEnv)}]`,
+    "",
+  ].join("\n")
+
+const TABLE_HEADER = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$/
+
+const isReefTable = (name: string): boolean => {
+  const normalized = name.replace(/["'\s]/g, "")
+  return normalized === "mcp_servers.reef" || normalized.startsWith("mcp_servers.reef.")
+}
+
+// Replaces every reef table (and its sub-tables) with `block` and keeps all other lines as they are. Running it on
+// its own output gives the same text, so repeated runs leave one reef table.
+export const mergeMcpTable = (existing: string, block: string): string => {
+  const kept: Array<string> = []
+  let inReef = false
+  for (const line of existing.split("\n")) {
+    const header = TABLE_HEADER.exec(line)
+    if (header !== null) {
+      inReef = isReefTable(header[1] ?? "")
+    }
+    if (!inReef) {
+      kept.push(line)
+    }
+  }
+  const head = kept.join("\n").trimEnd()
+  return head === "" ? block : `${head}\n\n${block}`
+}

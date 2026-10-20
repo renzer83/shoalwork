@@ -7,6 +7,9 @@
       "default": "./dist/index.js"
     }
   },
+  "bin": {
+    "app-reef-mcp": "./dist/mcp.js"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
@@ -16,11 +19,14 @@
   "dependencies": {
     "@shoalwork/beacon": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
+    "@modelcontextprotocol/server": "catalog:",
     "@shoalwork/db": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

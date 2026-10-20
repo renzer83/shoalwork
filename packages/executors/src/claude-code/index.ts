@@ -6,9 +6,10 @@ import {
   type ExecutorTask,
   type ModelTier,
 } from "@shoalwork/contracts"
-import { Tank, type TankContext } from "@shoalwork/tank"
+import { Tank } from "@shoalwork/tank"
 import { Effect, Schema, type Scope, Stream } from "effect"
-import type { Executor } from "../executor.js"
+import type { Executor, ExecutorContext } from "../executor.js"
+import { mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
 import { buildArgs, type McpMode, type TierMapping } from "./args.js"
@@ -53,14 +54,19 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
 
   const run = (
     task: ExecutorTask,
-    ctx: TankContext,
+    ctx: ExecutorContext,
   ): Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope> =>
     Stream.unwrap(
       Effect.gen(function* () {
         const tank = yield* Tank
         const env = dropApiKey({ ...ctx.env, ...envOverrides })
+        // The reef MCP config is written once per run, into the Bot's home (T-042).
+        const mcpConfigFile =
+          ctx.mcp === undefined
+            ? undefined
+            : yield* mcpConfigFor("claude-code", ctx).pipe(Effect.mapError(spawnFailed))
         const proc = yield* tank
-          .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, mapTier, mcp)])
+          .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, mapTier, mcp, mcpConfigFile)])
           .pipe(Effect.mapError(spawnFailed))
         // The prompt travels in argv. With stdin left open, claude waits 3 s and warns about missing input.
         yield* proc.closeStdin()

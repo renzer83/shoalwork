@@ -4,10 +4,16 @@ import type { Effort } from "../executor.js"
 export type TierMapping = { readonly model: string; readonly effort?: Effort }
 
 // "none": the CLI ignores the claude.ai connectors and plugins of the account (~145k cache tokens per turn otherwise).
-// "inherit": no MCP flags; reserved for T-042 (the Bot's own MCP servers).
+// "inherit": no MCP flags, the CLI loads the account's own servers.
 export type McpMode = "none" | "inherit"
 
 const NO_MCP_ARGS: ReadonlyArray<string> = ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}']
+
+// A run with an attached MCP config (T-042) gets only that config: the account's servers stay out.
+const mcpArgs = (mcp: McpMode, mcpConfigFile: string | undefined): ReadonlyArray<string> => {
+  if (mcpConfigFile !== undefined) return ["--strict-mcp-config", "--mcp-config", mcpConfigFile]
+  return mcp === "none" ? NO_MCP_ARGS : []
+}
 
 // Abstract permission level -> the CLI's --permission-mode value.
 const PERMISSION_FLAG: Record<PermissionMode, string> = {
@@ -29,12 +35,29 @@ export const effectiveMapping = (
   return effort === undefined ? { model } : { model, effort }
 }
 
+// The reef tools a run with an attached MCP config may call. Added to the task's own list, without duplicates.
+export const REEF_MCP_TOOLS: ReadonlyArray<string> = [
+  "mcp__reef__search_code",
+  "mcp__reef__search_memory",
+  "mcp__reef__read_chunk",
+]
+
+const allowedToolsArgs = (
+  allowedTools: ReadonlyArray<string>,
+  mcpConfigFile: string | undefined,
+): ReadonlyArray<string> => {
+  const tools = mcpConfigFile === undefined ? allowedTools : [...allowedTools, ...REEF_MCP_TOOLS]
+  const unique = [...new Set(tools)]
+  return unique.length > 0 ? ["--allowedTools", unique.join(",")] : []
+}
+
 // argv only (never a shell string). The prompt is last, after `--`, so text that starts with "-" (which may come
 // from a third party) is read as a prompt and never as a flag: `-p "--version"` prints the CLI version.
 export const buildArgs = (
   task: ExecutorTask,
   mapTier: (tier: ModelTier) => TierMapping,
   mcp: McpMode = "none",
+  mcpConfigFile?: string,
 ): ReadonlyArray<string> => {
   const { model, effort } = effectiveMapping(task, mapTier)
   return [
@@ -51,10 +74,10 @@ export const buildArgs = (
     "--model",
     model,
     ...(effort !== undefined ? ["--effort", effort] : []),
-    ...(task.allowedTools.length > 0 ? ["--allowedTools", task.allowedTools.join(",")] : []),
+    ...allowedToolsArgs(task.allowedTools, mcpConfigFile),
     ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
     ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
-    ...(mcp === "none" ? NO_MCP_ARGS : []),
+    ...mcpArgs(mcp, mcpConfigFile),
     "--",
     task.prompt,
   ]
