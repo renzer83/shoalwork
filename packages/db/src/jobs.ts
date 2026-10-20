@@ -53,45 +53,94 @@ export const claim = (queue: string): Effect.Effect<Option.Option<JobRow>, SqlEr
     return Option.fromNullishOr(job)
   })
 
-export const heartbeat = (id: number): Effect.Effect<void, SqlError, SqlClient> =>
+// heartbeat/complete/fail return true when this worker still held the lock (a row was changed). `attempt` is the
+// `attempts` value returned by claim(): when given, a job that was reaped and claimed again by someone else
+// (attempts moved on) no longer counts as ours.
+
+export const heartbeat = (id: number, attempt?: number): Effect.Effect<boolean, SqlError, SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
-    yield* sql`UPDATE jobs SET heartbeat_at = ${nowIso()} WHERE id = ${id} AND state = 'active'`
+    const guard = attempt ?? null
+    const rows = yield* sql`UPDATE jobs SET heartbeat_at = ${nowIso()}
+      WHERE id = ${id} AND state = 'active' AND (${guard} IS NULL OR attempts = ${guard})
+      RETURNING id`
+    return rows.length > 0
   })
 
-export const complete = (id: number): Effect.Effect<void, SqlError, SqlClient> =>
+export const complete = (id: number, attempt?: number): Effect.Effect<boolean, SqlError, SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
-    yield* sql`UPDATE jobs SET state = 'done', locked_at = NULL, heartbeat_at = NULL WHERE id = ${id} AND state = 'active'`
+    const guard = attempt ?? null
+    const rows = yield* sql`UPDATE jobs SET state = 'done', locked_at = NULL, heartbeat_at = NULL
+      WHERE id = ${id} AND state = 'active' AND (${guard} IS NULL OR attempts = ${guard})
+      RETURNING id`
+    return rows.length > 0
   })
 
 // Retry delay is 2^attempts seconds (attempts already counts this claim). Exhausted jobs go to 'failed'.
-export const fail = (id: number, error: string): Effect.Effect<void, SqlError, SqlClient> =>
+export const fail = (
+  id: number,
+  error: string,
+  attempt?: number,
+): Effect.Effect<boolean, SqlError, SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
-    yield* sql.withTransaction(
+    const guard = attempt ?? null
+    return yield* sql.withTransaction(
       Effect.gen(function* () {
         const found = yield* sql<{ readonly attempts: number; readonly max_attempts: number }>`
-          SELECT attempts, max_attempts FROM jobs WHERE id = ${id} AND state = 'active'`
+          SELECT attempts, max_attempts FROM jobs
+          WHERE id = ${id} AND state = 'active' AND (${guard} IS NULL OR attempts = ${guard})`
         const job = found[0]
         if (job === undefined) {
-          return
+          return false
         }
         const exhausted = job.attempts >= job.max_attempts
         const retryAt = new Date(Date.now() + 2 ** job.attempts * 1000).toISOString()
         yield* sql`UPDATE jobs SET state = ${exhausted ? "failed" : "queued"}, run_at = ${retryAt},
           last_error = ${error}, locked_at = NULL, heartbeat_at = NULL WHERE id = ${id}`
+        return true
       }),
     )
   })
 
-// Returns how many active jobs without a recent heartbeat were put back in the queue.
-export const reapStale = (olderThanSeconds: number): Effect.Effect<number, SqlError, SqlClient> =>
+export interface ReapedJob {
+  readonly id: number
+  readonly queue: string
+  readonly payload: string
+}
+
+export interface ReapResult {
+  readonly requeued: number
+  // Jobs that had already used all their attempts: they are now 'failed' and their owner must be told.
+  readonly failed: ReadonlyArray<ReapedJob>
+}
+
+// Active jobs without a recent heartbeat go back to the queue; one that already used all its attempts goes to
+// 'failed' instead (poison pill: a job that kills its worker must not loop forever). `queue` limits the sweep
+// to one queue, so a consumer never fails jobs it cannot report on.
+export const reapStale = (
+  olderThanSeconds: number,
+  queue?: string,
+): Effect.Effect<ReapResult, SqlError, SqlClient> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient
     const cutoff = new Date(Date.now() - olderThanSeconds * 1000).toISOString()
-    const rows = yield* sql`UPDATE jobs SET state = 'queued', locked_at = NULL, heartbeat_at = NULL
-      WHERE state = 'active' AND (heartbeat_at IS NULL OR heartbeat_at < ${cutoff})
-      RETURNING id`
-    return rows.length
+    const only = queue ?? null
+    const rows = yield* sql<{
+      readonly id: number
+      readonly queue: string
+      readonly payload: string
+      readonly state: string
+    }>`UPDATE jobs SET
+        state = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+        last_error = CASE WHEN attempts >= max_attempts THEN 'lock expired after max attempts' ELSE last_error END,
+        locked_at = NULL, heartbeat_at = NULL
+      WHERE state = 'active' AND (${only} IS NULL OR queue = ${only})
+        AND (heartbeat_at IS NULL OR heartbeat_at < ${cutoff})
+      RETURNING id, queue, payload, state`
+    const failed = rows
+      .filter((row) => row.state === "failed")
+      .map(({ id, queue: q, payload }) => ({ id, queue: q, payload }))
+    return { requeued: rows.length - failed.length, failed }
   })

@@ -1,8 +1,13 @@
+import { randomUUID } from "node:crypto"
+import { rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { it } from "@effect/vitest"
-import { Effect, Option } from "effect"
+import { Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { describe, expect } from "vitest"
-import { Jobs } from "../src/index.js"
+import { makeDbLayer } from "../src/client.js"
+import { Jobs, runMigrations } from "../src/index.js"
 import { nowIso } from "../src/now.js"
 import { withTempDb } from "../src/testing.js"
 
@@ -79,10 +84,10 @@ describe("jobs", () => {
       const job = yield* Jobs.enqueue(QUEUE, {})
       yield* Jobs.claim(QUEUE)
       const freshReaped = yield* Jobs.reapStale(60)
-      expect(freshReaped).toBe(0)
+      expect(freshReaped).toEqual({ requeued: 0, failed: [] })
       yield* sql`UPDATE jobs SET heartbeat_at = ${PAST} WHERE id = ${job.id}`
       const reaped = yield* Jobs.reapStale(60)
-      expect(reaped).toBe(1)
+      expect(reaped).toEqual({ requeued: 1, failed: [] })
       const row = yield* readJob(job.id)
       expect(row?.state).toBe("queued")
     }).pipe(Effect.provide(withTempDb())),
@@ -98,5 +103,102 @@ describe("jobs", () => {
       expect(ids[1]).toBeDefined()
       expect(ids[0]).not.toBe(ids[1])
     }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("reapStale fails a job that already used all its attempts", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient
+      const poison = yield* Jobs.enqueue(QUEUE, { n: 1 }, { maxAttempts: 1 })
+      const retryable = yield* Jobs.enqueue(QUEUE, { n: 2 }, { maxAttempts: 3 })
+      yield* Jobs.claim(QUEUE)
+      yield* Jobs.claim(QUEUE)
+      yield* sql`UPDATE jobs SET heartbeat_at = ${PAST}`
+      const reaped = yield* Jobs.reapStale(60)
+      expect(reaped.requeued).toBe(1)
+      expect(reaped.failed).toEqual([{ id: poison.id, queue: QUEUE, payload: JSON.stringify({ n: 1 }) }])
+      expect((yield* readJob(poison.id))?.state).toBe("failed")
+      expect((yield* readJob(retryable.id))?.state).toBe("queued")
+      yield* makeRunnable(retryable.id)
+      expect(Option.isSome(yield* Jobs.claim(QUEUE))).toBe(true)
+      expect(Option.isNone(yield* Jobs.claim(QUEUE))).toBe(true)
+    }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("reapStale with a queue only touches that queue", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient
+      const mine = yield* Jobs.enqueue(QUEUE, {}, { maxAttempts: 1 })
+      const other = yield* Jobs.enqueue("other", {}, { maxAttempts: 1 })
+      yield* Jobs.claim(QUEUE)
+      yield* Jobs.claim("other")
+      yield* sql`UPDATE jobs SET heartbeat_at = ${PAST}`
+      const reaped = yield* Jobs.reapStale(60, QUEUE)
+      expect(reaped.failed.map((job) => job.id)).toEqual([mine.id])
+      expect((yield* readJob(other.id))?.state).toBe("active")
+    }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("heartbeat, complete and fail report whether the lock was still held", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient
+      const job = yield* Jobs.enqueue(QUEUE, {})
+      const claimed = Option.getOrUndefined(yield* Jobs.claim(QUEUE))
+      expect(claimed?.attempts).toBe(1)
+      expect(yield* Jobs.heartbeat(job.id, 1)).toBe(true)
+      // The lock expires and another worker claims the job again (attempts moves on).
+      yield* sql`UPDATE jobs SET heartbeat_at = ${PAST}`
+      expect((yield* Jobs.reapStale(60)).requeued).toBe(1)
+      yield* makeRunnable(job.id)
+      const second = Option.getOrUndefined(yield* Jobs.claim(QUEUE))
+      expect(second?.attempts).toBe(2)
+      // The first worker no longer owns the lock; its calls are no-ops.
+      expect(yield* Jobs.heartbeat(job.id, 1)).toBe(false)
+      expect(yield* Jobs.fail(job.id, "late", 1)).toBe(false)
+      expect(yield* Jobs.complete(job.id, 1)).toBe(false)
+      expect((yield* readJob(job.id))?.state).toBe("active")
+      expect(yield* Jobs.complete(job.id, 2)).toBe(true)
+      expect((yield* readJob(job.id))?.state).toBe("done")
+      // Once done, even the current owner's calls report a lost lock.
+      expect(yield* Jobs.complete(job.id, 2)).toBe(false)
+      expect(yield* Jobs.heartbeat(job.id)).toBe(false)
+      expect(yield* Jobs.fail(job.id, "after done")).toBe(false)
+    }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("claims from two connections to the same file never return the same job", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const path = join(tmpdir(), `shoalwork-test-${randomUUID()}.db`)
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            for (const suffix of ["", "-wal", "-shm"]) {
+              rmSync(`${path}${suffix}`, { force: true })
+            }
+          }),
+        )
+        const a = yield* Layer.build(makeDbLayer(path))
+        const b = yield* Layer.build(makeDbLayer(path))
+        yield* runMigrations.pipe(Effect.provide(a))
+        for (let n = 0; n < 6; n++) {
+          yield* Jobs.enqueue(QUEUE, { n }).pipe(Effect.provide(a))
+        }
+        const claimAll = (ctx: typeof a) =>
+          Effect.gen(function* () {
+            const ids: Array<number> = []
+            for (let n = 0; n < 6; n++) {
+              const job = Option.getOrUndefined(yield* Jobs.claim(QUEUE))
+              if (job !== undefined) {
+                ids.push(job.id)
+              }
+              yield* Effect.yieldNow
+            }
+            return ids
+          }).pipe(Effect.provide(ctx))
+        const [fromA, fromB] = yield* Effect.all([claimAll(a), claimAll(b)], { concurrency: 2 })
+        const all = [...fromA, ...fromB]
+        expect(all).toHaveLength(6)
+        expect(new Set(all).size).toBe(6)
+      }),
+    ),
   )
 })

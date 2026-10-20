@@ -17,7 +17,12 @@ describe("runMigrations", () => {
   it.effect("applies 0001 to a fresh database", () =>
     Effect.gen(function* () {
       const applied = yield* runMigrations
-      expect(applied).toEqual(["0001_events_jobs.sql", "0002_bots.sql", "0003_chat_sessions.sql"])
+      expect(applied).toEqual([
+        "0001_events_jobs.sql",
+        "0002_bots.sql",
+        "0003_chat_sessions.sql",
+        "0004_tasks.sql",
+      ])
     }).pipe(Effect.provide(withRawTempDb())),
   )
 
