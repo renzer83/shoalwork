@@ -68,5 +68,6 @@ export const LeadWithStore = (
 ): Layer.Layer<Lead, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
   Layer.provide(LeadLive(tiers, overrides), TaskStoreLive)
 
+export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

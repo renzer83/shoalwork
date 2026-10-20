@@ -19,6 +19,7 @@
     "@shoalwork/db": "workspace:*",
     "@shoalwork/executors": "workspace:*",
     "@shoalwork/lead": "workspace:*",
+    "@shoalwork/reflex": "workspace:*",
     "@shoalwork/tank": "workspace:*",
     "effect": "catalog:",
     "hono": "catalog:"

@@ -37,6 +37,11 @@ export class ApiClient {
     return this.request("POST", path, body, schema)
   }
 
+  // Raw body for non-JSON responses (NDJSON exports). The caller decides what the text means.
+  getText(path: string): Effect.Effect<string, HttpError> {
+    return this.send("GET", path, undefined, "application/x-ndjson, application/json")
+  }
+
   private request<A>(
     method: "GET" | "POST",
     path: string,
@@ -44,10 +49,31 @@ export class ApiClient {
     schema: Schema.Codec<A, unknown>,
   ): Effect.Effect<A, HttpError | SchemaViolation> {
     const where = `${method} ${path}`
+    return this.send(method, path, body, "application/json").pipe(
+      Effect.flatMap((text) =>
+        Effect.try({
+          try: (): unknown => JSON.parse(text),
+          catch: () => new SchemaViolation({ where, issue: "response is not JSON" }),
+        }),
+      ),
+      Effect.flatMap((raw) =>
+        Schema.decodeUnknownEffect(schema)(raw).pipe(
+          Effect.mapError((cause) => new SchemaViolation({ where, issue: cause.message })),
+        ),
+      ),
+    )
+  }
+
+  private send(
+    method: "GET" | "POST",
+    path: string,
+    body: unknown,
+    accept: string,
+  ): Effect.Effect<string, HttpError> {
     const url = `${this.baseUrl.replace(/\/+$/, "")}${path}`
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.token}`,
-      accept: "application/json",
+      accept,
     }
     const init: RequestInit =
       body === undefined
@@ -67,13 +93,7 @@ export class ApiClient {
       if (!res.ok) {
         return yield* Effect.fail(new HttpError({ status: res.status, body: text }))
       }
-      const raw: unknown = yield* Effect.try({
-        try: () => JSON.parse(text),
-        catch: () => new SchemaViolation({ where, issue: "response is not JSON" }),
-      })
-      return yield* Schema.decodeUnknownEffect(schema)(raw).pipe(
-        Effect.mapError((cause) => new SchemaViolation({ where, issue: cause.message })),
-      )
+      return text
     })
   }
 }

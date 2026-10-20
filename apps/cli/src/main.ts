@@ -4,6 +4,7 @@ import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
 import { eventsList } from "./commands/events.js"
+import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
 
 type CliError = UsageError | HttpError | SchemaViolation
@@ -13,6 +14,7 @@ const USAGE = [
   "       shoalwork task send --bot <bot id> --prompt <text> [--kind <kind>] [--repo <url> [--base <branch>]] [--tier <tier>]",
   "       shoalwork task show <task id>",
   "       shoalwork events --stream <stream id> [--after <version>]",
+  "       shoalwork reflex export --out <file>",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -65,6 +67,23 @@ const events = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
     yield* Console.log(JSON.stringify(body, null, 2))
   })
 
+const reflex = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
+  const [sub, ...rest] = argv
+  if (sub === "export") {
+    return Effect.gen(function* () {
+      const { flags } = yield* parseArgs(rest, ["out", ...SETTINGS_FLAGS])
+      const settings = yield* resolveSettings(flags, process.env)
+      const written = yield* reflexExport(settings, flags)
+      yield* Console.log(JSON.stringify(written))
+    })
+  }
+  return Effect.fail(
+    new UsageError({
+      message: sub === undefined ? "missing reflex subcommand (export)" : `unknown reflex subcommand: ${sub}`,
+    }),
+  )
+}
+
 const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
   const [command, ...rest] = argv
   switch (command) {
@@ -74,6 +93,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return task(rest)
     case "events":
       return events(rest)
+    case "reflex":
+      return reflex(rest)
     default:
       return Effect.fail(
         new UsageError({

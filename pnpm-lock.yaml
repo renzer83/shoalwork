@@ -302,6 +302,9 @@ importers:
       '@shoalwork/lead':
         specifier: workspace:*
         version: link:../../packages/lead
+      '@shoalwork/reflex':
+        specifier: workspace:*
+        version: link:../../packages/reflex
       '@shoalwork/tank':
         specifier: workspace:*
         version: link:../../packages/tank

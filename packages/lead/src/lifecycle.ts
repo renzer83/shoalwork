@@ -10,6 +10,7 @@ import {
   type Verdict,
 } from "@shoalwork/contracts"
 import { Cause, Effect } from "effect"
+import { isTerminal, makeOutcomes } from "./outcomes.js"
 import { emit, type TaskStoreShape } from "./tasks.js"
 import {
   ACTOR,
@@ -43,6 +44,22 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
   const raiseError = (spec: Pick<TaskSpec, "id" | "botId">, where: string, tag: string, message: string) =>
     taskEvent(spec.id, "error.raised", { where, tag, message, taskId: spec.id, botId: spec.botId }).pipe(
       Effect.catchCause(() => Effect.void),
+    )
+
+  const outcomes = makeOutcomes(beacon)
+
+  // Outcomes are derived data: a failure to write them is reported as an error event, never a failed task.
+  const recordOutcomes = (spec: TaskSpec, state: TaskState): Effect.Effect<void> =>
+    outcomes.recordTaskOutcomes(spec.id, state).pipe(
+      Effect.asVoid,
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.interrupt
+          : Effect.gen(function* () {
+              const failure = describeFailure(Cause.squash(cause))
+              yield* raiseError(spec, "lead.outcomes", failure.tag, failure.message)
+            }),
+      ),
     )
 
   const transition = (
@@ -91,12 +108,12 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       }
       yield* recordAttempt(spec, verdict, durationMs, progress)
       const exhausted = closing === "exhausted"
-      yield* transition(
-        spec,
-        finalTaskState(verdict),
-        { verdict, ...sessionPatch },
-        exhausted ? "max retries" : undefined,
-      )
+      const next = finalTaskState(verdict)
+      yield* transition(spec, next, { verdict, ...sessionPatch }, exhausted ? "max retries" : undefined)
+      // Terminal outcome of every Reflex decision of this task (idempotent; see outcomes.ts).
+      if (isTerminal(next)) {
+        yield* recordOutcomes(spec, next)
+      }
       // The Bot is free only when none of its tasks is still running; after exhausted retries it is blocked.
       if ((yield* tasks.countRunning(spec.botId)) === 0) {
         yield* bots.setState(spec.botId, exhausted ? "blocked" : "idle", spec.id)

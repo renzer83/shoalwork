@@ -7,6 +7,7 @@ import { APP_VERSION } from "../config.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
+import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
 import { html } from "./ui.js"
@@ -116,6 +117,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerTaskRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
+  registerReflexRoutes(app, deps.runEffect)
 
   return app
 }
