@@ -29,7 +29,21 @@ describe("runMigrations", () => {
         "0009_bot_proposals.sql",
         "0010_task_processes.sql",
         "0011_mcp_tokens.sql",
+        "0012_tides.sql",
       ])
+    }).pipe(Effect.provide(withRawTempDb())),
+  )
+
+  it.effect("creates tides with a timezone column and one tide per bot and name", () =>
+    Effect.gen(function* () {
+      yield* runMigrations
+      const sql = yield* SqlClient
+      const columns = yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info('tides')`
+      expect(columns.map((row) => row.name)).toEqual(
+        expect.arrayContaining(["timezone", "locked_at", "next_run_at"]),
+      )
+      const indexes = yield* sql<{ readonly name: string }>`SELECT name FROM pragma_index_list('tides')`
+      expect(indexes.length).toBeGreaterThan(1)
     }).pipe(Effect.provide(withRawTempDb())),
   )
 

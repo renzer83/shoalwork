@@ -10,6 +10,7 @@ import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from
 import { memoryImport } from "./commands/memory-import.js"
 import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
+import { tideCommand } from "./commands/tide.js"
 
 type CliError = UsageError | HttpError | SchemaViolation
 
@@ -23,6 +24,8 @@ const USAGE = [
   "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
+  "       shoalwork tide list [--bot <bot id or name>] | shoalwork tide add --bot <bot> --file <tide.json>",
+  "       shoalwork tide enable|disable <tide id> | shoalwork tide run <tide id>",
   "       shoalwork reflex export --out <file>",
   "       shoalwork memory import --dir <dir> --scope global|bot:<name> --kind semantic|procedural --source <label>",
   "       shoalwork memory search --bot <bot id or name> <query> [--k <1..100>] [--kinds <kind,kind>]",
@@ -232,6 +235,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return reflex(rest)
     case "memory":
       return memory(rest)
+    case "tide":
+      return tideCommand(rest)
     default:
       return Effect.fail(
         new UsageError({

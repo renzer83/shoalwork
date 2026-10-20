@@ -1,0 +1,19 @@
+name: scout
+role: scout
+instructions: look around
+kind: auxiliary
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 1000, seconds: 600, usd: 1 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: morning
+    cron: "0 9 * * 1-5"
+    task: { title: "Morning check", prompt: "Look at the queue", kind: research, tier: light, budget: { tokens: 500, seconds: 300, usd: 0.5 } }
+  - name: on-open
+    on: message.inbound
+    filter: { "payload.channel": "api" }
+    task: { title: "Reply", prompt: "Answer", kind: chat, tier: chat, budget: { tokens: 500, seconds: 300, usd: 0.5 } }

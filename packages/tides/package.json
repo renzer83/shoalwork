@@ -1,0 +1,30 @@
+{
+  "name": "@shoalwork/tides",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@shoalwork/beacon": "workspace:*",
+    "@shoalwork/bots": "workspace:*",
+    "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "@shoalwork/lead": "workspace:*",
+    "croner": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

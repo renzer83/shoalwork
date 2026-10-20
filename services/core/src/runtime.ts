@@ -34,6 +34,7 @@ import {
 import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
+import { Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
@@ -126,7 +127,9 @@ export const AppLayer = Layer.unwrap(
     const withLead = LeadLive(tiers, { botBudgetWindowMs, mcp, context: contextConfig }).pipe(
       Layer.provideMerge(withIndexer),
     )
-    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
+    // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
+    const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
+    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withTides))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withSessions))
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
@@ -199,6 +202,16 @@ export const startIndexFiber = (options: IndexHookOptions) =>
   appRuntime.runFork(
     Effect.gen(function* () {
       yield* startIndexHook(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// Cron and event triggers (T-044) in their own fiber; the cron window is checked every pollMs.
+export const startTidesFiber = (options: { readonly pollMs: number }) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      const tides = yield* Tides
+      yield* tides.startScheduler(options)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

@@ -21,6 +21,7 @@ import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
+import { registerTideRoutes } from "./routes/tides.js"
 import { html } from "./ui.js"
 
 export interface DbProbe {
@@ -145,6 +146,7 @@ export const makeApp = (deps: AppDeps): Hono => {
 
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
+  registerTideRoutes(app, deps.runEffect)
   registerControlRoutes(app, deps.runEffect)
   registerCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)

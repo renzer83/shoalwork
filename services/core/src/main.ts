@@ -4,6 +4,7 @@ import { BotRegistry } from "@shoalwork/bots"
 import { runMigrations } from "@shoalwork/db"
 import { Control } from "@shoalwork/lead"
 import { loadReflexConfig } from "@shoalwork/reflex"
+import { Tides } from "@shoalwork/tides"
 import { Data, Effect, Fiber, type LogLevel, type Redacted, References } from "effect"
 import { AppConfig, type AppConfigShape, REPO_ROOT } from "./config.js"
 import { makeApp } from "./http/app.js"
@@ -16,6 +17,7 @@ import {
   startConversationFiber,
   startIndexFiber,
   startLeadWorker,
+  startTidesFiber,
   startWatchdogFiber,
 } from "./runtime.js"
 import { telegramSettings } from "./telegram.js"
@@ -56,6 +58,15 @@ const syncBots = Effect.gen(function* () {
   const registry = yield* BotRegistry
   return yield* registry.syncFromDir(BOTS_DIR)
 })
+
+// Tides come from the bot files, after the bots exist (their ids are the registry's): upserted by (bot, name).
+const syncTides = Effect.gen(function* () {
+  const tides = yield* Tides
+  return yield* tides.syncFromDir(BOTS_DIR)
+})
+
+// Tide cadence (02-architecture §11): the cron windows are checked every 30 seconds.
+const TIDES_POLL_MS = 30_000
 
 const recoverOrphans = Effect.gen(function* () {
   const control = yield* Control
@@ -112,6 +123,15 @@ const serveUntilInterrupted = (
       catch: (cause) => new BootError({ step: "bots", cause }),
     })
     yield* Effect.logInfo(`bots synced: ${bots.length}`)
+    const tides = yield* Effect.tryPromise({
+      try: () => runEffect(syncTides),
+      catch: (cause) => new BootError({ step: "tides", cause }),
+    })
+    yield* Effect.logInfo(`tides synced: ${tides.length}`)
+    const scheduling = startTidesFiber({ pollMs: TIDES_POLL_MS })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(scheduling).pipe(Effect.andThen(Effect.logInfo("shutdown: tides stopped"))),
+    )
     const worker = startLeadWorker({ concurrency: 2, pollMs: 1000 })
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(worker).pipe(Effect.andThen(Effect.logInfo("shutdown: lead worker stopped"))),
