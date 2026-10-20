@@ -17,9 +17,11 @@
     "@shoalwork/beacon": "workspace:*",
     "@shoalwork/bots": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/currents": "workspace:*",
     "@shoalwork/db": "workspace:*",
     "@shoalwork/executors": "workspace:*",
     "@shoalwork/reef": "workspace:*",
+    "@shoalwork/reflex": "workspace:*",
     "@shoalwork/tank": "workspace:*",
     "effect": "catalog:"
   },

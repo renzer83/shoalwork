@@ -3,6 +3,8 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Config, Schema } from "effect"
 
+const orDefault = (fallback: string) => (value: string) => (value.trim() === "" ? fallback : value.trim())
+
 // src/ and dist/ sit at the same depth, so the same relative path reaches the repo root from both.
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url))
 
@@ -49,6 +51,24 @@ export const AppConfig = Config.all({
   // Watchdog (T-030): a running task silent this long is stale; a Tank process alive this long is killed.
   watchdogStaleMinutes: Config.Int("WATCHDOG_STALE_MINUTES").pipe(Config.withDefault(20)),
   watchdogMaxProcessMinutes: Config.Int("WATCHDOG_MAX_PROCESS_MINUTES").pipe(Config.withDefault(45)),
+  // Telegram (T-024): the connector starts only when a token is set. A blank value counts as unset (.env.example).
+  telegramBotToken: Config.Redacted("TELEGRAM_BOT_TOKEN").pipe(Config.option),
+  telegramAllowedUserIds: Config.String("TELEGRAM_ALLOWED_USER_IDS").pipe(Config.withDefault("")),
+  telegramForumChatId: Config.String("TELEGRAM_FORUM_CHAT_ID").pipe(Config.withDefault("")),
+  // Reflex rules and thresholds (T-023). Relative paths resolve against the repo root.
+  reflexConfigPath: Config.String("REFLEX_CONFIG_PATH").pipe(
+    Config.withDefault("config/reflex.config.yaml"),
+    Config.map((configured) => resolveRepoPath(configured)),
+  ),
+  // Embeddings for the Reef (T-034). Nothing connects until a memory is saved or searched.
+  ollamaUrl: Config.String("OLLAMA_URL").pipe(
+    Config.withDefault(""),
+    Config.map(orDefault("http://127.0.0.1:11434")),
+  ),
+  ollamaEmbedModel: Config.String("OLLAMA_EMBED_MODEL").pipe(
+    Config.withDefault(""),
+    Config.map(orDefault("bge-m3")),
+  ),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(
     Config.withDefault("config/model-tiers.yaml"),

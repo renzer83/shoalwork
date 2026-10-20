@@ -29,6 +29,13 @@ describe("task", () => {
     expect(decoded.repo).toBeUndefined()
   })
 
+  it("correlationId is optional and round-trips when present", () => {
+    expect(Schema.decodeUnknownSync(TaskSpec)(minimalTask).correlationId).toBeUndefined()
+    const raw = { ...minimalTask, acceptance: [], correlationId: "evt_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" }
+    expect(Schema.encodeSync(TaskSpec)(Schema.decodeUnknownSync(TaskSpec)(raw))).toEqual(raw)
+    expect(() => Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, correlationId: 7 })).toThrow()
+  })
+
   it("rejects a task kind outside the closed list", () => {
     expect(() => Schema.decodeUnknownSync(TaskSpec)({ ...minimalTask, kind: "deploy" })).toThrow()
   })

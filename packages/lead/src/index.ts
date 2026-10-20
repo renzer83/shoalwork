@@ -1,34 +1,14 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import type { NotFound, SchemaViolation, TaskId, TaskSpec, TaskState, Verdict } from "@shoalwork/contracts"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
 import { Tank } from "@shoalwork/tank"
-import { Context, Effect, Layer, type Scope } from "effect"
+import { Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import type { SqlError } from "effect/sql/SqlError"
 import { makeIntake } from "./intake.js"
+import { Lead } from "./lead.js"
 import { DEFAULT_LEAD_CONFIG, type LeadConfig, makeRunner } from "./runner.js"
 import { TaskStore, TaskStoreLive } from "./tasks.js"
 import { makeWorker } from "./worker.js"
-
-export interface LeadShape {
-  readonly intake: (
-    spec: Omit<TaskSpec, "id">,
-  ) => Effect.Effect<TaskSpec, SchemaViolation | NotFound | SqlError>
-  readonly get: (
-    id: TaskId,
-  ) => Effect.Effect<{ spec: TaskSpec; state: TaskState; verdict?: Verdict }, NotFound | SqlError>
-  // Never fails: every error becomes a Verdict (blocked, failed, budget_exceeded or needs_approval).
-  readonly runOnce: (id: TaskId) => Effect.Effect<Verdict, never>
-  // Closes a task that will never get a verdict (idempotent for a task already settled); never fails.
-  readonly abandon: (id: TaskId, reason: string) => Effect.Effect<void>
-  readonly startWorker: (opts: {
-    readonly concurrency: number
-    readonly pollMs: number
-  }) => Effect.Effect<void, never, Scope.Scope>
-}
-
-export class Lead extends Context.Service<Lead, LeadShape>()("@shoalwork/Lead") {}
 
 // `tiers` is config/model-tiers.yaml (validated by the composition root): it decides the executor of every task.
 export const LeadLive = (
@@ -49,7 +29,7 @@ export const LeadLive = (
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       return {
         abandon,
-        intake: makeIntake({ sql, beacon, bots, tasks }),
+        intake: makeIntake({ sql, beacon, bots, tasks, routing: tiers.routing }),
         get: (id) =>
           tasks.get(id).pipe(
             Effect.map(({ spec, state, verdict }) => ({
@@ -71,7 +51,22 @@ export const LeadWithStore = (
 ): Layer.Layer<Lead, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
   Layer.provide(LeadLive(tiers, overrides), TaskStoreLive)
 
+export { type Chat, ChatFailure, makeChat } from "./chat.js"
+export {
+  Conversation,
+  ConversationLive,
+  type ConversationOptions,
+  type ConversationShape,
+} from "./conversation.js"
+export { ESCALATION_MIN_CHARS, escalate, parseChoice } from "./escalation.js"
+export {
+  CONSOLIDATE_QUEUE,
+  type ConsolidateHookOptions,
+  executorConsolidationModel,
+  startConsolidateHook,
+} from "./hooks/consolidate.js"
 export { TASKS_QUEUE } from "./intake.js"
+export { Lead, type LeadShape } from "./lead.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

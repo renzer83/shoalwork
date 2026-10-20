@@ -70,15 +70,17 @@ const outcomeEvent = (
   correlationId,
 })
 
-// Outcomes of the Reflex decisions that share the task's correlationId (the task's own events carry taskId).
-// Called by the lifecycle on the terminal transition; a decision that already has an outcome is left alone.
+// Outcomes of the Reflex decisions that belong to a task: those whose correlationId is the id of the message that
+// originated it (TaskSpec.correlationId) or, as a fallback, the task id itself. Called by the lifecycle on the
+// terminal transition; a decision that already has an outcome is left alone.
 export const makeOutcomes = (beacon: BeaconShape) => {
   const recordTaskOutcomes = (
-    correlationId: string,
+    correlationIds: string | ReadonlyArray<string>,
     state: TaskState,
   ): Effect.Effect<number, SqlError | Conflict | SchemaViolation> =>
     Effect.gen(function* () {
-      const decisions = (yield* readDecisions(beacon)).filter((row) => row.correlationId === correlationId)
+      const wanted = typeof correlationIds === "string" ? [correlationIds] : correlationIds
+      const decisions = (yield* readDecisions(beacon)).filter((row) => wanted.includes(row.correlationId))
       if (decisions.length === 0) {
         return 0
       }
@@ -89,7 +91,7 @@ export const makeOutcomes = (beacon: BeaconShape) => {
       }
       yield* beacon.appendMany(
         pending.map((row) =>
-          outcomeEvent(correlationId, row.payload.decisionId, outcomeFor(row.payload.questionId, state)),
+          outcomeEvent(row.correlationId, row.payload.decisionId, outcomeFor(row.payload.questionId, state)),
         ),
       )
       return pending.length

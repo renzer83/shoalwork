@@ -2,12 +2,21 @@ import { fileURLToPath } from "node:url"
 import { NodeRuntime } from "@effect/platform-node"
 import { BotRegistry } from "@shoalwork/bots"
 import { runMigrations } from "@shoalwork/db"
+import { loadReflexConfig } from "@shoalwork/reflex"
 import { Data, Effect, Fiber, type LogLevel, type Redacted, References } from "effect"
-import { AppConfig, REPO_ROOT } from "./config.js"
+import { AppConfig, type AppConfigShape, REPO_ROOT } from "./config.js"
 import { makeApp } from "./http/app.js"
 import { serve } from "./http/serve.js"
 import { loadModelTiers } from "./model-tiers.js"
-import { disposeRuntime, runEffect, startLeadWorker, startWatchdogFiber } from "./runtime.js"
+import {
+  disposeRuntime,
+  runEffect,
+  startConsolidateFiber,
+  startConversationFiber,
+  startLeadWorker,
+  startWatchdogFiber,
+} from "./runtime.js"
+import { telegramSettings } from "./telegram.js"
 import type { WatchdogConfig } from "./watchdog.js"
 
 class BootError extends Data.TaggedError("BootError")<{
@@ -50,7 +59,14 @@ const syncBots = Effect.gen(function* () {
 const serveUntilInterrupted = (
   port: number,
   apiToken: Redacted.Redacted<string>,
-  modelTiersPath: string,
+  settings: Pick<
+    AppConfigShape,
+    | "modelTiersPath"
+    | "reflexConfigPath"
+    | "telegramBotToken"
+    | "telegramAllowedUserIds"
+    | "telegramForumChatId"
+  >,
   watchdog: WatchdogConfig,
 ) =>
   Effect.gen(function* () {
@@ -60,9 +76,17 @@ const serveUntilInterrupted = (
       ),
     )
     // A broken tier table stops the boot here, under its own step name (the file is read again when the layer builds).
-    yield* loadModelTiers(modelTiersPath).pipe(
+    yield* loadModelTiers(settings.modelTiersPath).pipe(
       Effect.mapError((cause) => new BootError({ step: "model-tiers", cause })),
     )
+    // Same for the Reflex rules and for an incomplete Telegram setup (a token without allowlist or forum chat).
+    yield* loadReflexConfig(settings.reflexConfigPath).pipe(
+      Effect.mapError((cause) => new BootError({ step: "reflex-config", cause })),
+    )
+    const telegram = yield* telegramSettings(settings).pipe(
+      Effect.mapError((cause) => new BootError({ step: "telegram", cause })),
+    )
+    yield* Effect.logInfo(telegram === undefined ? "telegram: off (no token)" : "telegram: on")
     const applied = yield* Effect.tryPromise({
       try: () => runEffect(runMigrations),
       catch: (cause) => new BootError({ step: "migrations", cause }),
@@ -81,7 +105,16 @@ const serveUntilInterrupted = (
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(recovery).pipe(Effect.andThen(Effect.logInfo("shutdown: watchdog stopped"))),
     )
-    yield* serve(makeApp({ apiToken, runEffect }), port)
+    const consolidation = startConsolidateFiber({ pollMs: 1000, heartbeatMs: 30_000 })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(consolidation).pipe(Effect.andThen(Effect.logInfo("shutdown: consolidation stopped"))),
+    )
+    // Without TELEGRAM_BOT_TOKEN this fiber ends at once (the Telegram layer is a no-op).
+    const conversation = startConversationFiber()
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(conversation).pipe(Effect.andThen(Effect.logInfo("shutdown: conversation stopped"))),
+    )
+    yield* serve(makeApp({ apiToken, runEffect, runMemory: runEffect }), port)
     yield* Effect.logInfo(`listening on port ${port}`)
     yield* Effect.never
   }).pipe(Effect.scoped)
@@ -93,7 +126,7 @@ const main = Effect.gen(function* () {
     staleMinutes: config.watchdogStaleMinutes,
     maxProcessMinutes: config.watchdogMaxProcessMinutes,
   }
-  return yield* serveUntilInterrupted(config.port, config.apiToken, config.modelTiersPath, watchdog).pipe(
+  return yield* serveUntilInterrupted(config.port, config.apiToken, config, watchdog).pipe(
     Effect.provideService(References.MinimumLogLevel, LOG_LEVELS[config.logLevel]),
   )
 })

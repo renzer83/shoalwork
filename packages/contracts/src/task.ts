@@ -34,5 +34,7 @@ export const TaskSpec = Schema.Struct({
   tier: ModelTier,
   origin: TaskOrigin,
   parent: Schema.optional(Schema.Struct({ planId: PlanId, stepId: StepId })),
+  // Id of the message that originated the task (the Reflex decisions of that message share it as correlationId).
+  correlationId: Schema.optional(Schema.String),
 })
 export type TaskSpec = typeof TaskSpec.Type

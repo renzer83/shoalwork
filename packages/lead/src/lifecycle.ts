@@ -47,10 +47,13 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
     )
 
   const outcomes = makeOutcomes(beacon)
+  // The decisions of the originating message first, then the ones keyed by the task id.
+  const correlationIdsOf = (spec: TaskSpec): ReadonlyArray<string> =>
+    spec.correlationId === undefined ? [spec.id] : [spec.correlationId, spec.id]
 
   // Outcomes are derived data: a failure to write them is reported as an error event, never a failed task.
   const recordOutcomes = (spec: TaskSpec, state: TaskState): Effect.Effect<void> =>
-    outcomes.recordTaskOutcomes(spec.id, state).pipe(
+    outcomes.recordTaskOutcomes(correlationIdsOf(spec), state).pipe(
       Effect.asVoid,
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)

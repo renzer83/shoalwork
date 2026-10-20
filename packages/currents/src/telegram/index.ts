@@ -19,14 +19,14 @@ export interface TelegramConfig {
   readonly apiRoot?: string
 }
 
-// Handlers for these commands arrive with the core composition (T-024, T-028).
+// Menu texts shown to Renan, in Portuguese. /status, /help and /start are answered by the conversation (T-024); the rest by T-028.
 const COMMANDS = [
-  { command: "start", description: "Start a conversation" },
-  { command: "status", description: "Show Bot status" },
-  { command: "stop", description: "Stop the current task" },
-  { command: "pause", description: "Pause a Bot" },
-  { command: "resume", description: "Resume a Bot" },
-  { command: "help", description: "Show available commands" },
+  { command: "start", description: "Começar a conversar" },
+  { command: "status", description: "Mostrar Bots e tarefas" },
+  { command: "stop", description: "Parar a tarefa atual" },
+  { command: "pause", description: "Pausar um Bot" },
+  { command: "resume", description: "Retomar um Bot" },
+  { command: "help", description: "Mostrar os comandos" },
 ]
 
 // Updates already fetched are still being handled after stop(); wait for them, up to 10 s.

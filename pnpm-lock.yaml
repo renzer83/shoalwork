@@ -252,6 +252,9 @@ importers:
       '@shoalwork/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@shoalwork/currents':
+        specifier: workspace:*
+        version: link:../currents
       '@shoalwork/db':
         specifier: workspace:*
         version: link:../db
@@ -261,6 +264,9 @@ importers:
       '@shoalwork/reef':
         specifier: workspace:*
         version: link:../reef
+      '@shoalwork/reflex':
+        specifier: workspace:*
+        version: link:../reflex
       '@shoalwork/tank':
         specifier: workspace:*
         version: link:../tank
@@ -367,6 +373,9 @@ importers:
       '@shoalwork/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@shoalwork/currents':
+        specifier: workspace:*
+        version: link:../../packages/currents
       '@shoalwork/db':
         specifier: workspace:*
         version: link:../../packages/db

@@ -6,6 +6,7 @@ import { ExecutorId } from "@shoalwork/contracts"
 import { makeDbLayer } from "@shoalwork/db"
 import {
   CHAT_ID,
+  ChatSessionsLive,
   defaultChatMapTier,
   defaultMapTier,
   type Executor,
@@ -16,11 +17,23 @@ import {
   type TierConfig,
   tierMappingFrom,
 } from "@shoalwork/executors"
-import { Lead, LeadWithStore } from "@shoalwork/lead"
+import {
+  type ConsolidateHookOptions,
+  Conversation,
+  ConversationLive,
+  executorConsolidationModel,
+  Lead,
+  LeadLive,
+  startConsolidateHook,
+  TaskStoreLive,
+} from "@shoalwork/lead"
+import { EmbedderOllamaLive, ReefLive } from "@shoalwork/reef"
+import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { AppConfig, type AppConfigShape, hostEnvSnapshot } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
+import { TelegramFromSettings, TelegramStatus, telegramSettings } from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
 
 // `which` without a shell: walks PATH and checks the execute bit. A lookup failure just means "not installed".
@@ -78,14 +91,30 @@ const DomainLive = (config: AppConfigShape, tiers: TierConfig) =>
     Layer.provideMerge(PersistenceLive),
   )
 
-// The tier table is read once per boot and feeds both the adapters and the Lead. A broken file fails this layer,
-// so the core does not boot; the failure is a ConfigError naming the file.
-// Everything the HTTP handlers and the Lead worker can reach. Outputs include SqlClient, Beacon, Lead and the rest.
+// The tier table and the Reflex rules are read once per boot. A broken file fails this layer, so the core does not
+// boot; the failure is a ConfigError (tiers) or a SchemaViolation (Reflex) naming the file.
+// Everything the HTTP handlers, the Lead worker, the conversation and the memory hooks can reach.
 export const AppLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* AppConfig
     const tiers = yield* loadModelTiers(config.modelTiersPath)
-    return LeadWithStore(tiers).pipe(Layer.provideMerge(DomainLive(config, tiers)))
+    const reflexConfig = yield* loadReflexConfig(config.reflexConfigPath)
+    const telegram = yield* telegramSettings(config)
+    const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
+    const withLead = LeadLive(tiers).pipe(Layer.provideMerge(withStore))
+    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
+    const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
+    // No connection to Ollama until a memory is saved or searched, so the core boots without it.
+    const withEmbedder = EmbedderOllamaLive({
+      baseUrl: config.ollamaUrl,
+      model: config.ollamaEmbedModel,
+    }).pipe(Layer.provideMerge(withSessions))
+    const withReef = ReefLive().pipe(Layer.provideMerge(withEmbedder))
+    const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withReef))
+    const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
+    return ConversationLive(tiers, reflexConfig, {
+      warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },
+    }).pipe(Layer.provideMerge(withTelegram))
   }),
 )
 export type AppServices = Layer.Success<typeof AppLayer>
@@ -111,6 +140,29 @@ export const startWatchdogFiber = (config: WatchdogConfig) =>
   appRuntime.runFork(
     Effect.gen(function* () {
       yield* startWatchdog(config)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// The conversation (inbound messages and task narration) runs in its own fiber. Resolves to undefined when Telegram is off.
+export const startConversationFiber = () =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      const status = yield* TelegramStatus
+      if (!status.enabled) {
+        return
+      }
+      const conversation = yield* Conversation
+      yield* conversation.start
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// Memory consolidation of finished tasks, in its own fiber like the worker.
+export const startConsolidateFiber = (options: ConsolidateHookOptions) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      yield* startConsolidateHook(options)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

@@ -58,7 +58,9 @@ const TestLayer = LeadWithStore(DEFAULT_TIERS).pipe(
 )
 
 const runtime = ManagedRuntime.make(TestLayer)
-const runEffect: RunEffect = (eff) => runtime.runPromise(eff)
+// The runner is typed for the services this test provides; RunEffect accepts it (bivariant parameter).
+const runEffect: RunEffect = <A, E>(eff: Effect.Effect<A, E, Layer.Success<typeof TestLayer>>) =>
+  runtime.runPromise(eff)
 
 const app = makeApp({ apiToken: Redacted.make(TOKEN), runEffect })
 
