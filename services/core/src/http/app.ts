@@ -4,9 +4,10 @@ import { Effect, Redacted } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Hono } from "hono"
 import { APP_VERSION } from "../config.js"
-
-// Handlers run Effects through this; tests inject a runtime over a temp database.
-export type RunEffect = <A, E>(eff: Effect.Effect<A, E, SqlClient>) => Promise<A>
+import { registerBotRoutes } from "./routes/bots.js"
+import { registerEventRoutes } from "./routes/events.js"
+import type { RunEffect } from "./routes/respond.js"
+import { registerTaskRoutes } from "./routes/tasks.js"
 
 export interface DbProbe {
   readonly dbPath: string
@@ -96,6 +97,10 @@ export const makeApp = (deps: AppDeps): Hono => {
     }
     return c.json(body, db.db === "ok" ? 200 : 503)
   })
+
+  registerBotRoutes(app, deps.runEffect)
+  registerTaskRoutes(app, deps.runEffect)
+  registerEventRoutes(app, deps.runEffect)
 
   return app
 }

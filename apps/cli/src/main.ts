@@ -1,78 +1,87 @@
 #!/usr/bin/env node
 import type { SchemaViolation } from "@shoalwork/contracts"
-import { Console, Data, Effect } from "effect"
+import { Console, Effect } from "effect"
+import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
-
-class UsageError extends Data.TaggedError("UsageError")<{ readonly message: string }> {}
+import { eventsList } from "./commands/events.js"
+import { taskSend, taskShow } from "./commands/task.js"
 
 type CliError = UsageError | HttpError | SchemaViolation
 
 const USAGE = [
   "usage: shoalwork health [--url <base-url>] [--token <token>]",
-  "  flags override the APP_URL and API_TOKEN environment variables",
+  "       shoalwork task send --bot <bot id> --prompt <text> [--kind <kind>] [--repo <url> [--base <branch>]] [--tier <tier>]",
+  "       shoalwork task show <task id>",
+  "       shoalwork events --stream <stream id> [--after <version>]",
+  "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
-interface Invocation {
-  readonly url: string | undefined
-  readonly token: string | undefined
-}
-
-interface Settings {
-  readonly url: string
-  readonly token: string
-}
+const TASK_SEND_FLAGS = ["bot", "prompt", "kind", "repo", "base", "tier", "url", "token"]
+const SETTINGS_FLAGS = ["url", "token"]
 
 // Hand-rolled parser: effect/cli is unstable in Effect 4.
-const parseArgs = (argv: ReadonlyArray<string>): Effect.Effect<Invocation, UsageError> => {
-  const [command, ...rest] = argv
-  if (command !== "health") {
-    return Effect.fail(
-      new UsageError({ message: command === undefined ? "missing command" : `unknown command: ${command}` }),
-    )
-  }
-  let url: string | undefined
-  let token: string | undefined
-  for (let i = 0; i < rest.length; i += 2) {
-    const flag = rest[i] ?? ""
-    const value = rest[i + 1]
-    if (flag !== "--url" && flag !== "--token") {
-      return Effect.fail(new UsageError({ message: `unknown argument: ${flag}` }))
-    }
-    if (value === undefined || value.startsWith("--")) {
-      return Effect.fail(new UsageError({ message: `${flag} needs a value` }))
-    }
-    if (flag === "--url") {
-      url = value
-    } else {
-      token = value
-    }
-  }
-  return Effect.succeed({ url, token })
-}
-
-const resolveSettings = (invocation: Invocation): Effect.Effect<Settings, UsageError> => {
-  const url = invocation.url ?? process.env.APP_URL
-  const token = invocation.token ?? process.env.API_TOKEN
-  if (url === undefined || url === "") {
-    return Effect.fail(new UsageError({ message: "missing base URL: pass --url or set APP_URL" }))
-  }
-  if (token === undefined || token === "") {
-    return Effect.fail(new UsageError({ message: "missing token: pass --token or set API_TOKEN" }))
-  }
-  return Effect.succeed({ url, token })
-}
-
-const health = (settings: Settings): Effect.Effect<void, HttpError | SchemaViolation> =>
-  new ApiClient(settings.url, settings.token)
-    .get("/health", Health)
-    .pipe(Effect.flatMap((body) => Console.log(JSON.stringify(body, null, 2))))
-
-const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
+const health = (argv: ReadonlyArray<string>) =>
   Effect.gen(function* () {
-    const invocation = yield* parseArgs(argv)
-    const settings = yield* resolveSettings(invocation)
-    yield* health(settings)
+    const { flags } = yield* parseArgs(argv, SETTINGS_FLAGS)
+    const settings = yield* resolveSettings(flags, process.env)
+    const body = yield* new ApiClient(settings.url, settings.token).get("/health", Health)
+    yield* Console.log(JSON.stringify(body, null, 2))
   })
+
+const task = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError | UsageError> => {
+  const [sub, ...rest] = argv
+  if (sub === "send") {
+    return Effect.gen(function* () {
+      const { flags } = yield* parseArgs(rest, TASK_SEND_FLAGS)
+      const settings = yield* resolveSettings(flags, process.env)
+      const created = yield* taskSend(settings, flags)
+      yield* Console.log(JSON.stringify(created))
+    })
+  }
+  if (sub === "show") {
+    return Effect.gen(function* () {
+      const { flags, positionals } = yield* parseArgs(rest, SETTINGS_FLAGS)
+      const [id] = positionals
+      if (id === undefined) {
+        return yield* Effect.fail(new UsageError({ message: "missing task id: task show <task id>" }))
+      }
+      const settings = yield* resolveSettings(flags, process.env)
+      const view = yield* taskShow(settings, id)
+      yield* Console.log(JSON.stringify(view, null, 2))
+    })
+  }
+  return Effect.fail(
+    new UsageError({
+      message: sub === undefined ? "missing task subcommand (send|show)" : `unknown task subcommand: ${sub}`,
+    }),
+  )
+}
+
+const events = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const { flags } = yield* parseArgs(argv, ["stream", "after", ...SETTINGS_FLAGS])
+    const settings = yield* resolveSettings(flags, process.env)
+    const body = yield* eventsList(settings, flags)
+    yield* Console.log(JSON.stringify(body, null, 2))
+  })
+
+const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
+  const [command, ...rest] = argv
+  switch (command) {
+    case "health":
+      return health(rest)
+    case "task":
+      return task(rest)
+    case "events":
+      return events(rest)
+    default:
+      return Effect.fail(
+        new UsageError({
+          message: command === undefined ? "missing command" : `unknown command: ${command}`,
+        }),
+      )
+  }
+}
 
 const describe = (error: CliError): string => {
   switch (error._tag) {
