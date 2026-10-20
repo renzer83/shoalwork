@@ -50,6 +50,11 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "bot.proposal_resolved",
   "context.assembled",
   "agent.msg",
+  "github.issues",
+  "github.pull_request",
+  "github.workflow_run",
+  "github.check_suite",
+  "github.push",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -116,6 +121,56 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     dropped: [{ block: "code", items: 2 }],
   },
   "agent.msg": { kind: "result", from: BOT, taskId: TASK, verdict: fixture("verdict.json"), artifacts: [] },
+  "github.issues": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    repo: "renzer83/shoalwork",
+    action: "opened",
+    sender: "renzer83",
+    url: "https://github.com/renzer83/shoalwork/pull/7",
+    botAuthored: false,
+    number: 3,
+    title: "Add sum",
+  },
+  "github.pull_request": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    repo: "renzer83/shoalwork",
+    action: "opened",
+    sender: "renzer83",
+    url: "https://github.com/renzer83/shoalwork/pull/7",
+    botAuthored: false,
+    number: 7,
+    title: "Add sum",
+    state: "open",
+    headBranch: "bot/dev/step_1",
+  },
+  "github.workflow_run": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    repo: "renzer83/shoalwork",
+    action: "opened",
+    sender: "renzer83",
+    url: "https://github.com/renzer83/shoalwork/pull/7",
+    botAuthored: false,
+    conclusion: "success",
+    headBranch: "main",
+  },
+  "github.check_suite": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    repo: "renzer83/shoalwork",
+    action: "opened",
+    sender: "renzer83",
+    url: "https://github.com/renzer83/shoalwork/pull/7",
+    botAuthored: false,
+    conclusion: "failure",
+  },
+  "github.push": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    repo: "renzer83/shoalwork",
+    action: "opened",
+    sender: "renzer83",
+    url: "https://github.com/renzer83/shoalwork/pull/7",
+    botAuthored: false,
+    ref: "refs/heads/main",
+  },
 }
 
 // One required field per type; removing it must reject the payload.
@@ -148,6 +203,11 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "bot.proposal_resolved": "status",
   "context.assembled": "level",
   "agent.msg": "kind",
+  "github.issues": "number",
+  "github.pull_request": "number",
+  "github.workflow_run": "deliveryId",
+  "github.check_suite": "repo",
+  "github.push": "ref",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -168,8 +228,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 28 types", () => {
-    expect(EVENT_TYPES).toHaveLength(28)
+  it("EventType is exactly the 33 types", () => {
+    expect(EVENT_TYPES).toHaveLength(33)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

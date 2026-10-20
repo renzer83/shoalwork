@@ -1,6 +1,7 @@
 import type { BeaconShape } from "@shoalwork/beacon"
 import type { BotRegistryShape } from "@shoalwork/bots"
 import { type TaskId, type TaskSpec, type Verdict, ZERO_USAGE } from "@shoalwork/contracts"
+import type { GhClientShape } from "@shoalwork/currents"
 import type { ExecutorContext, ExecutorRegistry, TierConfig } from "@shoalwork/executors"
 import type { IndexerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
@@ -76,6 +77,8 @@ export interface RunnerDeps {
   readonly tasks: TaskStoreShape
   readonly bots: BotRegistryShape
   readonly tank: TankShape
+  // Opens the PR of a delivered code task (git-delivery.ts).
+  readonly gh: GhClientShape
   readonly executors: typeof ExecutorRegistry.Service
   // config/model-tiers.yaml (or its defaults): decides which executor serves each task tier.
   readonly tiers: TierConfig
@@ -99,7 +102,7 @@ export const makeRunner = (deps: RunnerDeps) => {
     bots,
   })
   const consume = makeConsume({ taskEvent, raiseError, tank, tasks })
-  const deliver = makeDeliver({ tank, raiseError })
+  const deliver = makeDeliver({ tank, gh: deps.gh, raiseError })
   const setup = makeRunSetup({
     sql,
     bots,

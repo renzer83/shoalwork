@@ -1,0 +1,19 @@
+{
+  "action": "opened",
+  "issue": {
+    "url": "https://api.github.com/repos/renzer83/shoalwork-sandbox/issues/3",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox/issues/3",
+    "number": 3,
+    "title": "Add sum helper",
+    "state": "open",
+    "body": "Full issue body that must never be stored in the event log.",
+    "labels": [{ "name": "enhancement" }],
+    "user": { "login": "renzer83", "type": "User" }
+  },
+  "repository": {
+    "full_name": "renzer83/shoalwork-sandbox",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox",
+    "private": false
+  },
+  "sender": { "login": "renzer83", "type": "User" }
+}

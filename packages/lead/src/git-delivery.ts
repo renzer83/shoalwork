@@ -1,4 +1,5 @@
 import type { Artifact } from "@shoalwork/contracts"
+import type { GhClientShape } from "@shoalwork/currents"
 import type { ExecResult, TankContext, TankShape } from "@shoalwork/tank"
 import { Data, Effect } from "effect"
 import { clip, type DeliveryStep, describeFailure, EVIDENCE_MAX } from "./verdict.js"
@@ -34,15 +35,6 @@ export const deliveryBody = (taskId: string, issue: number | undefined): string 
 const redact = (text: string): string => text.replace(/:\/\/[^@/\s]+@/g, "://***@")
 
 const firstLine = (text: string): string => clip(redact(text.trim().split("\n")[0] ?? ""), EVIDENCE_MAX)
-
-const PULL_REQUEST_URL = /^https:\/\/\S+\/pull\/\d+$/
-
-// gh prints the URL of the PR it created as a line of its own.
-export const pullRequestUrl = (stdout: string): string | undefined =>
-  stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => PULL_REQUEST_URL.test(line))
 
 const exitMessage = (argv: ReadonlyArray<string>, result: ExecResult): string => {
   // Identity options (-c key=value) are not part of the program name in the message.
@@ -92,12 +84,13 @@ export const commitArgv = (botName: string, title: string): ReadonlyArray<string
   `--message=${title}`,
 ]
 
-// Commits everything the Bot changed in its worktree, pushes the branch and opens the PR. Commands are argv
-// only (no shell). Runs in the Bot's Tank: its HOME carries the git and gh credentials, not the Lead's.
+// Commits everything the Bot changed in its worktree, pushes the branch and opens the PR. Git commands are argv
+// only (no shell) and run in the Bot's Tank; the PR goes through GhClient, which runs gh with the Bot's env.
 export const deliverCode = (
   tank: TankShape,
   ctx: TankContext,
   input: DeliveryInput,
+  gh: GhClientShape,
 ): Effect.Effect<Artifact, DeliveryFailed> =>
   Effect.gen(function* () {
     const branch = ctx.worktree?.branch
@@ -122,17 +115,8 @@ export const deliverCode = (
     // The commit identity is the Bot's, passed per command: the Bot's HOME has no git config of its own.
     yield* mustSucceed(tank, ctx, "commit", commitArgv(ctx.botName, title))
     yield* mustSucceed(tank, ctx, "push", ["git", "push", "-u", "origin", branch])
-    const pr = yield* mustSucceed(tank, ctx, "pr", [
-      "gh",
-      "pr",
-      "create",
-      `--title=${title}`,
-      `--body=${body}`,
-      `--base=${input.base}`,
-    ])
-    const url = pullRequestUrl(pr.stdout)
-    if (url === undefined) {
-      return yield* Effect.fail(new DeliveryFailed({ step: "pr", message: "gh printed no pull request URL" }))
-    }
-    return { kind: "pr", ref: url }
+    const pr = yield* gh
+      .prCreate(ctx, { title, body, base: input.base })
+      .pipe(Effect.mapError((error) => new DeliveryFailed({ step: "pr", message: error.message })))
+    return { kind: "pr", ref: pr.url }
   })

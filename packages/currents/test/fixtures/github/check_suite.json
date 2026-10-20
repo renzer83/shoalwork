@@ -1,0 +1,24 @@
+{
+  "action": "completed",
+  "check_suite": {
+    "id": 5001,
+    "head_branch": "bot/dev-demo/step_00000000-0000-4000-8000-000000000002",
+    "head_sha": "0000000000000000000000000000000000000001",
+    "status": "completed",
+    "conclusion": "failure",
+    "app": {
+      "slug": "github-actions"
+    },
+    "head_repository": {
+      "full_name": "renzer83/shoalwork-sandbox"
+    }
+  },
+  "repository": {
+    "full_name": "renzer83/shoalwork-sandbox",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox"
+  },
+  "sender": {
+    "login": "github-actions[bot]",
+    "type": "Bot"
+  }
+}

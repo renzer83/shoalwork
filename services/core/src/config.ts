@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Config, Schema } from "effect"
+import { Config, Redacted, Schema } from "effect"
 
 const orDefault = (fallback: string) => (value: string) => (value.trim() === "" ? fallback : value.trim())
 
@@ -87,6 +87,11 @@ export const AppConfig = Config.all({
   contextConfigPath: Config.String("CONTEXT_CONFIG_PATH").pipe(
     Config.withDefault("config/context.yaml"),
     Config.map((configured) => resolveRepoPath(configured)),
+  ),
+  // GitHub webhook (T-045): the route answers 503 until a secret is set. A blank value counts as unset.
+  githubWebhookSecret: Config.String("GITHUB_WEBHOOK_SECRET").pipe(
+    Config.withDefault(""),
+    Config.map((value) => (value.trim() === "" ? undefined : Redacted.make(value.trim()))),
   ),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(

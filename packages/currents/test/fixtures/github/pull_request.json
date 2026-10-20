@@ -1,0 +1,32 @@
+{
+  "action": "opened",
+  "number": 7,
+  "pull_request": {
+    "url": "https://api.github.com/repos/renzer83/shoalwork-sandbox/pulls/7",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox/pull/7",
+    "number": 7,
+    "state": "open",
+    "title": "Add sum helper",
+    "body": "Closes #3",
+    "merged": false,
+    "head": {
+      "ref": "bot/dev-demo/step_00000000-0000-4000-8000-000000000002",
+      "sha": "0000000000000000000000000000000000000001",
+      "repo": {
+        "full_name": "renzer83/shoalwork-sandbox",
+        "html_url": "https://github.com/renzer83/shoalwork-sandbox"
+      }
+    },
+    "base": {
+      "ref": "main"
+    }
+  },
+  "repository": {
+    "full_name": "renzer83/shoalwork-sandbox",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox"
+  },
+  "sender": {
+    "login": "renzer83",
+    "type": "User"
+  }
+}

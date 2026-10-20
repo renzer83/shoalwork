@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { BeaconLive } from "@shoalwork/beacon"
 import { BotRegistryLive } from "@shoalwork/bots"
 import { ExecutorId } from "@shoalwork/contracts"
+import { GhClientLive } from "@shoalwork/currents"
 import { makeDbLayer } from "@shoalwork/db"
 import {
   CHAT_ID,
@@ -124,8 +125,11 @@ export const AppLayer = Layer.unwrap(
     const withIndexer = IndexerLive().pipe(Layer.provideMerge(withReef))
     // The reef MCP server of a Bot run: its entrypoint and the origin of this core (T-168).
     const mcp = { serverEntry: config.reefMcpEntry, api: coreApiOrigin(config.appUrl, config.port) }
+    // gh opens the PR of a delivered code task (T-045). Host calls get an allowlisted env, never the core's full one.
+    const withGh = GhClientLive({ baseEnv: hostEnvSnapshot() })
     const withLead = LeadLive(tiers, { botBudgetWindowMs, mcp, context: contextConfig }).pipe(
       Layer.provideMerge(withIndexer),
+      Layer.provideMerge(withGh),
     )
     // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))

@@ -23,6 +23,7 @@ import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
 import { registerTideRoutes } from "./routes/tides.js"
 import { GENERIC_WEBHOOK_PATH, registerGenericWebhookRoutes } from "./routes/webhooks-generic.js"
+import { GITHUB_WEBHOOK_PATH, registerGithubWebhookRoutes } from "./routes/webhooks-github.js"
 import { html } from "./ui.js"
 
 export interface DbProbe {
@@ -40,6 +41,8 @@ export interface AppDeps {
   readonly runMemory?: RunMemory | undefined
   // Code search, chunk read and execution-token checks. Without it, execution tokens are refused everywhere.
   readonly runMcp?: RunMcp | undefined
+  // GITHUB_WEBHOOK_SECRET (config.ts). Unset: the GitHub route answers 503 and processes nothing.
+  readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
 }
 
 export interface HealthBody {
@@ -108,7 +111,12 @@ export const makeApp = (deps: AppDeps): Hono => {
   app.use("*", async (c, next) => {
     // The page holds no secret; it asks for the token in the browser and sends it on each request. A generic webhook
     // is authenticated by its Tide's secret (X-Webhook-Secret), not by the API token.
-    if (c.req.path === "/health" || c.req.path === "/" || GENERIC_WEBHOOK_PATH.test(c.req.path)) {
+    if (
+      c.req.path === "/health" ||
+      c.req.path === "/" ||
+      GENERIC_WEBHOOK_PATH.test(c.req.path) ||
+      c.req.path === GITHUB_WEBHOOK_PATH
+    ) {
       return next()
     }
     const header = c.req.header("authorization")
@@ -150,6 +158,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerTaskRoutes(app, deps.runEffect)
   registerTideRoutes(app, deps.runEffect)
   registerGenericWebhookRoutes(app, deps.runEffect)
+  registerGithubWebhookRoutes(app, deps.runEffect, deps.githubWebhookSecret)
   registerControlRoutes(app, deps.runEffect)
   registerCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)

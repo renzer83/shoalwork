@@ -39,6 +39,11 @@ export const EventType = Schema.Literals([
   "bot.proposal_resolved",
   "context.assembled",
   "agent.msg",
+  "github.issues",
+  "github.pull_request",
+  "github.workflow_run",
+  "github.check_suite",
+  "github.push",
 ])
 export type EventType = typeof EventType.Type
 
@@ -258,6 +263,51 @@ const ContextAssembledPayload = Schema.Struct({
 // A message between Bots (handoff, result, status), written to the stream of the task it belongs to (T-046).
 const AgentMsgPayload = AgentMsg
 
+// GitHub events (T-045): minimal fields only. The webhook cuts and redacts titles and branch names before they get
+// here, and no issue or PR body is ever stored. Third-party text is data (R14): nothing here is an instruction.
+// botAuthored marks the Bot's own work (a PR or push from a Bot branch) so a Tide can filter it out.
+const GithubCommonFields = {
+  deliveryId: Schema.String,
+  repo: Schema.String,
+  action: Schema.String,
+  sender: Schema.String,
+  url: Schema.String,
+  botAuthored: Schema.Boolean,
+}
+
+const GithubIssuesPayload = Schema.Struct({
+  ...GithubCommonFields,
+  number: Schema.Int,
+  title: Schema.String,
+  state: Schema.optional(Schema.String),
+})
+
+const GithubPullRequestPayload = Schema.Struct({
+  ...GithubCommonFields,
+  number: Schema.Int,
+  title: Schema.String,
+  state: Schema.optional(Schema.String),
+  headBranch: Schema.optional(Schema.String),
+})
+
+const GithubWorkflowRunPayload = Schema.Struct({
+  ...GithubCommonFields,
+  title: Schema.optional(Schema.String),
+  headBranch: Schema.optional(Schema.String),
+  conclusion: Schema.optional(Schema.String),
+})
+
+const GithubCheckSuitePayload = Schema.Struct({
+  ...GithubCommonFields,
+  headBranch: Schema.optional(Schema.String),
+  conclusion: Schema.optional(Schema.String),
+})
+
+const GithubPushPayload = Schema.Struct({
+  ...GithubCommonFields,
+  ref: Schema.String,
+})
+
 // One payload schema per event type; `satisfies` keeps the map exhaustive.
 export const EventPayloads = {
   "task.received": TaskReceivedPayload,
@@ -288,6 +338,11 @@ export const EventPayloads = {
   "bot.proposal_resolved": BotProposalResolvedPayload,
   "context.assembled": ContextAssembledPayload,
   "agent.msg": AgentMsgPayload,
+  "github.issues": GithubIssuesPayload,
+  "github.pull_request": GithubPullRequestPayload,
+  "github.workflow_run": GithubWorkflowRunPayload,
+  "github.check_suite": GithubCheckSuitePayload,
+  "github.push": GithubPushPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

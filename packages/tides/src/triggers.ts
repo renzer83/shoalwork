@@ -1,21 +1,29 @@
-import type { Event } from "@shoalwork/contracts"
+import type { Event, Tide } from "@shoalwork/contracts"
 import { Cause, Effect, type Scope, Stream } from "effect"
 import { fireTide, handleTideFailure, type TideDeps } from "./fire.js"
-import { tideMatches } from "./render.js"
+import { lookupPath, tideMatches } from "./render.js"
 import { BrokenTide, decodeTideRows, type TideRow, tideFromRow } from "./row.js"
 
 const logDefect = (cause: Cause.Cause<unknown>) =>
   Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.logError("event tide handler failed")
 
+// The Bot's own GitHub work (a PR, push or check from its own branch in this repo, T-045) is marked by the flag.
+export const isBotOwnEvent = (event: Event): boolean => lookupPath(event, "payload.botAuthored") === true
+
 // Events the tides themselves write, and tide.fired, never trigger a tide: a tide on its own output would loop.
+// The Bot's own work counts as feedback too, and a Tide reacts to it only by opting in (see optsInToBotOwn).
 export const isFeedback = (event: Event): boolean =>
-  event.actor.startsWith("system:tides") || event.type === "tide.fired"
+  event.actor.startsWith("system:tides") || event.type === "tide.fired" || isBotOwnEvent(event)
+
+// Opt-in for feedback of the Bot's own work: the filter must name the flag with true, e.g. {"payload.botAuthored": true}.
+export const optsInToBotOwn = (tide: Pick<Tide, "eventFilter">, event: Event): boolean =>
+  !isBotOwnEvent(event) || tide.eventFilter?.["payload.botAuthored"] === true
 
 // One tide of one event. Its own failures are isolated: a broken tide is disabled and the next one still runs.
 const fireOnEvent = (deps: TideDeps, row: TideRow, event: Event): Effect.Effect<void> =>
   Effect.gen(function* () {
     const tide = yield* tideFromRow(row)
-    if (!tideMatches(tide, event)) {
+    if (!tideMatches(tide, event) || !optsInToBotOwn(tide, event)) {
       return
     }
     yield* deps.sql.withTransaction(fireTide(deps, tide, event))
@@ -35,7 +43,7 @@ const fireOnEvent = (deps: TideDeps, row: TideRow, event: Event): Effect.Effect<
 // Each enabled event Tide of this event's type is checked against its filter. The event types are in memory
 // (eventTypes), so an event nobody listens to costs no query. Never fails.
 export const handleEvent = (deps: TideDeps, event: Event): Effect.Effect<void> => {
-  if (isFeedback(event) || !deps.eventTypes.has(event.type)) {
+  if (!deps.eventTypes.has(event.type) || (isFeedback(event) && !isBotOwnEvent(event))) {
     return Effect.void
   }
   return Effect.gen(function* () {

@@ -5,6 +5,7 @@ import { it } from "@effect/vitest"
 import { Beacon, BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { type Bot, NewBot, type TaskId, type TaskSpec } from "@shoalwork/contracts"
+import { GhClientTest } from "@shoalwork/currents"
 import { Jobs } from "@shoalwork/db"
 import { withTempDb } from "@shoalwork/db/testing"
 import { makeRegistry } from "@shoalwork/executors"
@@ -25,7 +26,12 @@ afterAll(() => {
 // Real database, real Beacon, real Lead (with its store) and the real local Tank; each test builds its own copy.
 const TestLayer = LeadWithStore(DEFAULT_TIERS).pipe(
   Layer.provideMerge(
-    Layer.mergeAll(BotRegistryLive, TankLocalLive({ root: tankRoot, baseEnv: {} }), makeRegistry([])),
+    Layer.mergeAll(
+      BotRegistryLive,
+      TankLocalLive({ root: tankRoot, baseEnv: {} }),
+      makeRegistry([]),
+      GhClientTest().layer,
+    ),
   ),
   Layer.provideMerge(Layer.provideMerge(BeaconLive, withTempDb())),
 )

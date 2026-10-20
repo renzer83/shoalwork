@@ -30,6 +30,7 @@ describe("runMigrations", () => {
         "0010_task_processes.sql",
         "0011_mcp_tokens.sql",
         "0012_tides.sql",
+        "0013_webhook_deliveries.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

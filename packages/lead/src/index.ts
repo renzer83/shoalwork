@@ -1,6 +1,7 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import type { TaskId } from "@shoalwork/contracts"
+import { GhClient } from "@shoalwork/currents"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
 import { Indexer, Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
@@ -22,7 +23,7 @@ export const LeadLive = (
 ): Layer.Layer<
   Lead | Control,
   never,
-  SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry | TaskStore | McpTokens
+  SqlClient | Beacon | BotRegistry | Tank | GhClient | ExecutorRegistry | TaskStore | McpTokens
 > =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -30,6 +31,7 @@ export const LeadLive = (
       const beacon = yield* Beacon
       const bots = yield* BotRegistry
       const tank = yield* Tank
+      const gh = yield* GhClient
       const executors = yield* ExecutorRegistry
       const tasks = yield* TaskStore
       const tokens = yield* McpTokens
@@ -60,6 +62,7 @@ export const LeadLive = (
         tasks,
         bots,
         tank,
+        gh,
         executors,
         tiers,
         config,
@@ -103,8 +106,11 @@ export const LeadLive = (
 export const LeadWithStore = (
   tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
-): Layer.Layer<Lead | Control, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
-  Layer.provide(LeadLive(tiers, overrides), Layer.merge(TaskStoreLive, McpTokensLive))
+): Layer.Layer<
+  Lead | Control,
+  never,
+  SqlClient | Beacon | BotRegistry | Tank | GhClient | ExecutorRegistry
+> => Layer.provide(LeadLive(tiers, overrides), Layer.merge(TaskStoreLive, McpTokensLive))
 
 export {
   type BotFactoryConfig,

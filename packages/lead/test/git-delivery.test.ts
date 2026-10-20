@@ -1,16 +1,10 @@
 import { it } from "@effect/vitest"
 import { BotId, RepoRef } from "@shoalwork/contracts"
+import { GhClientTest, GhError, pullRequestFromOutput } from "@shoalwork/currents"
 import type { ExecResult, TankContext } from "@shoalwork/tank"
 import { Effect, Schema } from "effect"
 import { describe, expect } from "vitest"
-import {
-  cleanText,
-  DeliveryFailed,
-  deliverCode,
-  deliveryBody,
-  deliveryTitle,
-  pullRequestUrl,
-} from "../src/git-delivery.js"
+import { cleanText, DeliveryFailed, deliverCode, deliveryBody, deliveryTitle } from "../src/git-delivery.js"
 import { Lead } from "../src/index.js"
 import {
   createBot,
@@ -47,15 +41,19 @@ const result = (exitCode: number, stdout = "", stderr = ""): ExecResult => ({
   timedOut: false,
 })
 
-const deliver = (title: string, exec: (argv: ReadonlyArray<string>) => ExecResult = HEALTHY_EXEC) => {
+const deliver = (
+  title: string,
+  exec: (argv: ReadonlyArray<string>) => ExecResult = HEALTHY_EXEC,
+  gh = GhClientTest(),
+) => {
   const tank = makeFakeTank({ exec })
-  const effect = deliverCode(tank.shape, worktreeCtx(), {
-    taskId: TASK_ID,
-    title,
-    base: "main",
-    issue: 1,
-  })
-  return { tank, effect }
+  const effect = deliverCode(
+    tank.shape,
+    worktreeCtx(),
+    { taskId: TASK_ID, title, base: "main", issue: 1 },
+    gh.shape,
+  )
+  return { tank, gh, effect }
 }
 
 describe("delivery text filter", () => {
@@ -85,10 +83,11 @@ describe("delivery text filter", () => {
 
   it.effect("finds the PR URL among gh output lines and reports none when absent", () =>
     Effect.sync(() => {
-      expect(pullRequestUrl("warning: x\nhttps://github.com/a/b/pull/12\n")).toBe(
-        "https://github.com/a/b/pull/12",
-      )
-      expect(pullRequestUrl("created something else")).toBeUndefined()
+      expect(pullRequestFromOutput("warning: x\nhttps://github.com/a/b/pull/12\n")).toEqual({
+        url: "https://github.com/a/b/pull/12",
+        number: 12,
+      })
+      expect(pullRequestFromOutput("created something else")).toBeUndefined()
     }),
   )
 
@@ -107,33 +106,42 @@ describe("delivery text filter", () => {
 })
 
 describe("deliverCode", () => {
-  it.effect("runs add, commit, push and gh pr create as argv in the Bot's worktree, in order", () => {
-    const { tank, effect } = deliver("Add sum")
-    return Effect.gen(function* () {
-      const artifact = yield* effect
-      expect(artifact).toEqual({ kind: "pr", ref: "https://github.com/renzer83/shoalwork-sandbox/pull/1" })
-      expect(tank.commands).toEqual([
-        ["git", "add", "-A"],
-        ["git", "diff", "--cached", "--quiet"],
-        [
-          "git",
-          "-c",
-          "user.name=dev-demo",
-          "-c",
-          "user.email=dev-demo@bots.shoalwork.invalid",
-          "commit",
-          "--message=Add sum",
-        ],
-        ["git", "push", "-u", "origin", BRANCH],
-        ["gh", "pr", "create", "--title=Add sum", "--body=Closes #1", "--base=main"],
-      ])
-    })
-  })
+  it.effect(
+    "runs add, commit and push as argv in the Bot's worktree, then opens the PR through GhClient",
+    () => {
+      const { tank, gh, effect } = deliver("Add sum")
+      return Effect.gen(function* () {
+        const artifact = yield* effect
+        expect(artifact).toEqual({ kind: "pr", ref: "https://github.com/renzer83/shoalwork-sandbox/pull/1" })
+        expect(gh.calls).toEqual([
+          {
+            method: "prCreate",
+            args: ["/tank/dev-demo/work/step", { title: "Add sum", body: "Closes #1", base: "main" }],
+          },
+        ])
+        expect(tank.commands).toEqual([
+          ["git", "add", "-A"],
+          ["git", "diff", "--cached", "--quiet"],
+          [
+            "git",
+            "-c",
+            "user.name=dev-demo",
+            "-c",
+            "user.email=dev-demo@bots.shoalwork.invalid",
+            "commit",
+            "--message=Add sum",
+          ],
+          ["git", "push", "-u", "origin", BRANCH],
+        ])
+      })
+    },
+  )
 
   it.effect("an unclean issue title never reaches the commit or the PR", () => {
-    const { tank, effect } = deliver("Fix Claude parser")
+    const { tank, gh, effect } = deliver("Fix Claude parser")
     return Effect.gen(function* () {
       yield* effect
+      expect(gh.calls[0]?.args[1]).toEqual({ title: "Resolve issue #1", body: "Closes #1", base: "main" })
       expect(tank.commands).toContainEqual([
         "git",
         "-c",
@@ -143,17 +151,10 @@ describe("deliverCode", () => {
         "commit",
         "--message=Resolve issue #1",
       ])
-      expect(tank.commands).toContainEqual([
-        "gh",
-        "pr",
-        "create",
-        "--title=Resolve issue #1",
-        "--body=Closes #1",
-        "--base=main",
-      ])
       for (const argv of tank.commands) {
         expect(argv.join(" ")).not.toMatch(/claude/i)
       }
+      expect(JSON.stringify(gh.calls)).not.toMatch(/claude/i)
     })
   })
 
@@ -229,9 +230,19 @@ describe("deliverCode", () => {
     })
   })
 
-  it.effect("gh that prints no PR URL fails at pr", () => {
-    const { effect } = deliver("Add sum", (argv) =>
-      argv.slice(0, 2).join(" ") === "gh pr" ? result(0, "done") : HEALTHY_EXEC(argv),
+  it.effect("a PR that GhClient cannot open fails at pr with its message", () => {
+    const gh = GhClientTest()
+    const refusing = {
+      ...gh.shape,
+      prCreate: () =>
+        Effect.fail(new GhError({ op: "gh pr create", message: "gh printed no pull request URL" })),
+    }
+    const tank = makeFakeTank()
+    const effect = deliverCode(
+      tank.shape,
+      worktreeCtx(),
+      { taskId: TASK_ID, title: "Add sum", base: "main", issue: 1 },
+      refusing,
     )
     return Effect.gen(function* () {
       const failure = yield* Effect.flip(effect)
@@ -260,7 +271,12 @@ describe("deliverCode", () => {
     }
     return Effect.gen(function* () {
       const failure = yield* Effect.flip(
-        deliverCode(tank.shape, bare, { taskId: TASK_ID, title: "x", base: "main", issue: 1 }),
+        deliverCode(
+          tank.shape,
+          bare,
+          { taskId: TASK_ID, title: "x", base: "main", issue: 1 },
+          GhClientTest().shape,
+        ),
       )
       expect(failure).toMatchObject({ step: "commit", message: "no worktree to deliver" })
       expect(tank.commands).toEqual([])
@@ -283,7 +299,7 @@ describe("Lead delivers code tasks after an ok run", () => {
           kind: "ok",
           evidence: ["https://github.com/renzer83/shoalwork-sandbox/pull/1"],
         })
-        expect(tank.commands.map((argv) => argv[0])).toEqual(["git", "git", "git", "git", "gh"])
+        expect(tank.commands.map((argv) => argv[0])).toEqual(["git", "git", "git", "git"])
         expect(tank.released).toEqual([{ keepWorktree: false }])
         expect(runs[0]?.allowedTools).toContain("Bash(pnpm *)")
       }).pipe(Effect.provide(leadLayer({ executor: fakeExecutor(eventsOf(OK_EVENTS), runs), tank })))

@@ -12,6 +12,7 @@ import {
   type TaskSpec,
   WorktreeConflict,
 } from "@shoalwork/contracts"
+import { GhClientTest } from "@shoalwork/currents"
 import { withTempDb } from "@shoalwork/db/testing"
 import { type Executor, ExecutorRegistry, makeRegistry, TierConfig } from "@shoalwork/executors"
 import { type ExecResult, Tank, type TankContext, type TankShape } from "@shoalwork/tank"
@@ -264,7 +265,12 @@ export const leadLayer = (opts: {
     McpTokens,
     Effect.map(SqlClient, (sql) => wrapTokens(makeMcpTokens(sql))),
   )
-  const deps = Layer.provideMerge(Layer.mergeAll(Layer.succeed(Tank, tank.shape), registry, tokens), store)
+  // gh is faked: a code task's PR is the default one of GhClientTest (sandbox PR #1).
+  const gh = GhClientTest()
+  const deps = Layer.provideMerge(
+    Layer.mergeAll(Layer.succeed(Tank, tank.shape), gh.layer, registry, tokens),
+    store,
+  )
   return Layer.provideMerge(LeadLive(opts.tiers ?? TEST_TIERS, opts.config), deps)
 }
 

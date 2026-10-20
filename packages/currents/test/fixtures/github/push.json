@@ -1,0 +1,12 @@
+{
+  "ref": "refs/heads/main",
+  "before": "0000000000000000000000000000000000000003",
+  "after": "0000000000000000000000000000000000000002",
+  "deleted": false,
+  "commits": [{ "id": "0000000000000000000000000000000000000002", "message": "Merge pull request #7" }],
+  "repository": {
+    "full_name": "renzer83/shoalwork-sandbox",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox"
+  },
+  "sender": { "login": "renzer83", "type": "User" }
+}

@@ -1,0 +1,24 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 30433642,
+    "name": "CI",
+    "head_branch": "main",
+    "head_sha": "0000000000000000000000000000000000000002",
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox/actions/runs/30433642",
+    "event": "push",
+    "head_repository": {
+      "full_name": "renzer83/shoalwork-sandbox"
+    }
+  },
+  "repository": {
+    "full_name": "renzer83/shoalwork-sandbox",
+    "html_url": "https://github.com/renzer83/shoalwork-sandbox"
+  },
+  "sender": {
+    "login": "renzer83",
+    "type": "User"
+  }
+}

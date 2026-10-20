@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { type Bot, ExecutorId, NewBot } from "@shoalwork/contracts"
+import { GhClientTest } from "@shoalwork/currents"
 import { withTempDb } from "@shoalwork/db/testing"
 import { type Executor, makeRegistry } from "@shoalwork/executors"
 import { Lead, LeadWithStore } from "@shoalwork/lead"
@@ -47,7 +48,12 @@ const executor: Executor = {
 const tankRoot = mkdtempSync(join(tmpdir(), "shoalwork-control-tank-"))
 const TestLayer = LeadWithStore(DEFAULT_TIERS).pipe(
   Layer.provideMerge(
-    Layer.mergeAll(BotRegistryLive, TankLocalLive({ root: tankRoot, baseEnv: {} }), makeRegistry([executor])),
+    Layer.mergeAll(
+      BotRegistryLive,
+      TankLocalLive({ root: tankRoot, baseEnv: {} }),
+      makeRegistry([executor]),
+      GhClientTest().layer,
+    ),
   ),
   Layer.provideMerge(Layer.provideMerge(BeaconLive, withTempDb())),
 )
