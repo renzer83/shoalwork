@@ -3,7 +3,7 @@ import { lstat, realpath } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Semaphore } from "effect"
-import { ensureClone, worktreeAdd, worktreeRemove } from "./git.js"
+import { ensureClone, worktreeAdd, worktreeRemove, worktreeReuse } from "./git.js"
 import { type BotOps, localOps } from "./ops.js"
 import { Tank, type TankContext, type TankShape } from "./tank.js"
 
@@ -182,6 +182,16 @@ export const makeBotTank = (
       const { url, base: baseBranch } = step.repo
       const repoDir = join(botDir, "repos", slugRepoUrl(url))
       const branch = `bot/${bot.name}/${step.stepId}`
+      if (step.reuse !== undefined) {
+        // Only the worktree this very step owns can be continued: same path and branch the step would create.
+        if (step.reuse.path !== workPath || step.reuse.branch !== branch) {
+          return yield* Effect.fail(new TankError({ op: "prepare", cause: "reuse does not match the step" }))
+        }
+        yield* lockFor(repoDir).withPermits(1)(
+          worktreeReuse(repoDir, workPath, branch, join(botDir, "work"), env, ops),
+        )
+        return { ...base, cwd: workPath, worktree: { path: workPath, branch, repoDir } }
+      }
       yield* ops.mkdirp(dirname(workPath))
       yield* lockFor(repoDir).withPermits(1)(
         Effect.gen(function* () {

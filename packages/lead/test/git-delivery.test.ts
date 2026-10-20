@@ -328,7 +328,8 @@ describe("Lead delivers code tasks after an ok run", () => {
       const verdict = yield* lead.runOnce(spec.id)
       expect(verdict.kind).toBe("blocked")
       expect(tank.commands).toEqual([])
-      expect(tank.released).toEqual([{ keepWorktree: true }])
+      // protocol is retryable: two runs, each keeps its worktree for the next one.
+      expect(tank.released).toEqual([{ keepWorktree: true }, { keepWorktree: true }])
     }).pipe(
       Effect.provide(
         leadLayer({

@@ -105,7 +105,8 @@ describe("Lead.runOnce", () => {
       const verdict = yield* lead.runOnce(spec.id)
       expect(verdict).toMatchObject({ kind: "failed", summary: "reached the turn limit" })
       expect((yield* lead.get(spec.id)).state).toBe("failed")
-      expect(tank.released).toEqual([{ keepWorktree: true }])
+      // max_turns is retried once (retry.test.ts covers the rest); every run keeps its worktree.
+      expect(tank.released).toEqual([{ keepWorktree: true }, { keepWorktree: true }])
     }).pipe(Effect.provide(leadLayer({ executor: fakeExecutor(eventsOf(events)), tank })))
   })
 
@@ -197,7 +198,8 @@ describe("Lead.runOnce", () => {
       const text = JSON.stringify([spawnVerdict, protocolVerdict, yield* allEvents])
       expect(text).not.toContain("SECRET-LINE")
       expect(text).not.toContain("SECRET-CAUSE")
-      expect((yield* allEvents).filter((event) => event.type === "error.raised")).toHaveLength(2)
+      // spawn is never retried (1 error); protocol is retried once (2 runs, 2 errors).
+      expect((yield* allEvents).filter((event) => event.type === "error.raised")).toHaveLength(3)
     }).pipe(
       Effect.provide(
         leadLayer({

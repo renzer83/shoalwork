@@ -7,6 +7,7 @@ import {
   type ExecutorTask,
   NewBot,
   SessionId,
+  type StepId,
   TankError,
   type TaskSpec,
   WorktreeConflict,
@@ -113,6 +114,16 @@ export const HEALTHY_EXEC = (argv: ReadonlyArray<string>): ExecResult => {
   return result(0)
 }
 
+// The context a reuse of a kept worktree gets back: same path and branch the step owns.
+const reusedContext = (bot: Bot, stepId: StepId): TankContext => ({
+  botId: bot.id,
+  botName: bot.name,
+  cwd: "/work/wt",
+  home: "/work/home",
+  env: {},
+  worktree: { path: "/work/wt", branch: `bot/${bot.name}/${stepId}`, repoDir: "/work/repo" },
+})
+
 export const makeFakeTank = (
   opts: {
     readonly failPrepare?: boolean
@@ -134,29 +145,37 @@ export const makeFakeTank = (
         ? Effect.fail(new TankError({ op: "prepare", cause: "disk full" }))
         : opts.hangPrepare === true
           ? Effect.never
-          : step.repo !== undefined && worktrees.has(step.stepId)
-            ? Effect.fail(
-                new WorktreeConflict({ branch: `bot/${bot.name}/${step.stepId}`, path: "/work/wt" }),
-              )
-            : Effect.sync((): TankContext => {
-                prepared.push(step.stepId)
-                if (step.repo !== undefined) {
-                  worktrees.add(step.stepId)
-                }
-                if (step.repo !== undefined) {
-                  // Like the real Tank: a repo step runs in its own worktree on the Bot's branch.
-                  const branch = `bot/${bot.name}/${step.stepId}`
-                  return {
-                    botId: bot.id,
-                    botName: bot.name,
-                    cwd: "/work/wt",
-                    home: "/work/home",
-                    env: {},
-                    worktree: { path: "/work/wt", branch, repoDir: "/work/repo" },
+          : step.reuse !== undefined
+            ? // Like the real Tank: a reuse continues a kept worktree and fails when there is none.
+              worktrees.has(step.stepId)
+              ? Effect.sync((): TankContext => {
+                  prepared.push(step.stepId)
+                  return reusedContext(bot, step.stepId)
+                })
+              : Effect.fail(new TankError({ op: "prepare", cause: "no kept worktree" }))
+            : step.repo !== undefined && worktrees.has(step.stepId)
+              ? Effect.fail(
+                  new WorktreeConflict({ branch: `bot/${bot.name}/${step.stepId}`, path: "/work/wt" }),
+                )
+              : Effect.sync((): TankContext => {
+                  prepared.push(step.stepId)
+                  if (step.repo !== undefined) {
+                    worktrees.add(step.stepId)
                   }
-                }
-                return { botId: bot.id, botName: bot.name, cwd: "/work/cwd", home: "/work/home", env: {} }
-              }),
+                  if (step.repo !== undefined) {
+                    // Like the real Tank: a repo step runs in its own worktree on the Bot's branch.
+                    const branch = `bot/${bot.name}/${step.stepId}`
+                    return {
+                      botId: bot.id,
+                      botName: bot.name,
+                      cwd: "/work/wt",
+                      home: "/work/home",
+                      env: {},
+                      worktree: { path: "/work/wt", branch, repoDir: "/work/repo" },
+                    }
+                  }
+                  return { botId: bot.id, botName: bot.name, cwd: "/work/cwd", home: "/work/home", env: {} }
+                }),
     exec: (_ctx, cmd) =>
       Effect.sync(() => {
         commands.push(cmd)

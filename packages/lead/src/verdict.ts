@@ -64,6 +64,12 @@ export interface Progress {
   readonly outcome: Outcome
   // Artifacts the Lead produced itself (the PR of a delivered code task).
   readonly artifacts: ReadonlyArray<Artifact>
+  // tasks.attempts when this run started: 1 for the first run of the task.
+  readonly attempt: number
+  // Executor events handled in this run (a resume that fails at once is recognised by this).
+  readonly events: number
+  // Text of the last text event: the tail the next attempt starts from.
+  readonly lastText: string
 }
 
 export const withOutcome =
@@ -80,6 +86,9 @@ export const INITIAL: Progress = {
   stepId: undefined,
   outcome: { _tag: "Pending" },
   artifacts: [],
+  attempt: 0,
+  events: 0,
+  lastText: "",
 }
 
 export const clip = (text: string, max: number): string => (text.length > max ? text.slice(0, max) : text)

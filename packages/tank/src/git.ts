@@ -134,6 +134,63 @@ export const worktreeAdd = (
     return yield* Effect.fail(gitError("git worktree add", r.stderr.trim()))
   })
 
+const within = (parent: string, child: string): boolean => child === parent || child.startsWith(`${parent}/`)
+
+// Real path as the Tank's own user resolves it; a path that does not resolve is refused.
+const realPathOf = (
+  ops: BotOps,
+  repoDir: string,
+  env: GitEnv,
+  path: string,
+): Effect.Effect<string, TankError> =>
+  ops
+    .run(["realpath", "--", path], { cwd: repoDir, env: gitEnv(env) })
+    .pipe(
+      Effect.flatMap((r) =>
+        r.exitCode === 0
+          ? Effect.succeed(r.stdout.trim())
+          : Effect.fail(gitError("git worktree reuse", `cannot resolve ${JSON.stringify(path)}`)),
+      ),
+    )
+
+// Continues a worktree kept by an earlier attempt. It is reused only when the branch is registered in repoDir at this
+// very path, the path is not a symlink and resolves inside workDir. Nothing is created or reset.
+export const worktreeReuse = (
+  repoDir: string,
+  path: string,
+  branch: string,
+  workDir: string,
+  env: GitEnv,
+  ops: BotOps = localOps,
+): Effect.Effect<void, TankError> =>
+  Effect.gen(function* () {
+    yield* ensureSafeRef("branch", branch)
+    yield* ensureSafeRef("path", path)
+    const link = yield* ops.run(["test", "-L", path], { cwd: repoDir, env: gitEnv(env) })
+    if (link.exitCode === 0) {
+      return yield* Effect.fail(gitError("git worktree reuse", "kept worktree path is a symlink"))
+    }
+    const realPath = yield* realPathOf(ops, repoDir, env, path)
+    const realWork = yield* realPathOf(ops, repoDir, env, workDir)
+    if (realPath === realWork || !within(realWork, realPath)) {
+      return yield* Effect.fail(
+        gitError("git worktree reuse", "kept worktree path escapes the work directory"),
+      )
+    }
+    const registered = (yield* worktreeList(repoDir, env, ops)).filter(
+      (worktree) => worktree.branch === branch,
+    )
+    const same = yield* Effect.forEach(registered, (worktree) =>
+      realPathOf(ops, repoDir, env, worktree.path).pipe(
+        Effect.catch(() => Effect.succeed(undefined)),
+        Effect.map((resolved) => resolved === realPath),
+      ),
+    )
+    if (!same.some(Boolean)) {
+      return yield* Effect.fail(gitError("git worktree reuse", `no kept worktree for ${branch} at this path`))
+    }
+  })
+
 // Idempotent: a worktree/branch that is already gone is not an error.
 export const worktreeRemove = (
   repoDir: string,

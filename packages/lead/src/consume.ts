@@ -34,7 +34,13 @@ export const makeConsume =
     const handle = (event: ExecutorEvent): Effect.Effect<boolean> =>
       Effect.gen(function* () {
         yield* taskEvent(spec.id, "executor.event", { ...ids, event })
+        yield* Ref.update(progress, (p) => ({ ...p, events: p.events + 1 }))
         switch (event.kind) {
+          case "text": {
+            const text = event.text
+            yield* Ref.update(progress, (p) => ({ ...p, lastText: text }))
+            return true
+          }
           case "started": {
             if (event.sessionId !== undefined) {
               const sessionId = event.sessionId

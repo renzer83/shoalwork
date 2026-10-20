@@ -45,17 +45,42 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       Effect.catchCause(() => Effect.void),
     )
 
-  const transition = (spec: TaskSpec, to: TaskState, patch: Parameters<TaskStoreShape["update"]>[1] = {}) =>
+  const transition = (
+    spec: TaskSpec,
+    to: TaskState,
+    patch: Parameters<TaskStoreShape["update"]>[1] = {},
+    reason?: string,
+  ) =>
     Effect.gen(function* () {
       const from = yield* tasks.update(spec.id, { ...patch, state: to })
       if (from !== to) {
-        yield* taskEvent(spec.id, "task.state_changed", { taskId: spec.id, from, to })
+        yield* taskEvent(spec.id, "task.state_changed", {
+          taskId: spec.id,
+          from,
+          to,
+          ...(reason === undefined ? {} : { reason }),
+        })
       }
     })
 
-  const finish = (spec: TaskSpec, verdict: Verdict, durationMs: number, progress: Progress) =>
+  // "retry": this run failed in a way another attempt may fix; the task stays running.
+  // "exhausted": a retryable failure with no attempt left; the task fails and the Bot is blocked.
+  // "settle": the verdict is final in the ordinary way.
+  const finish = (
+    spec: TaskSpec,
+    verdict: Verdict,
+    durationMs: number,
+    progress: Progress,
+    closing: "retry" | "exhausted" | "settle" = "settle",
+  ) =>
     Effect.gen(function* () {
-      const final = finalTaskState(verdict)
+      const sessionPatch = verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }
+      if (closing === "retry") {
+        yield* recordAttempt(spec, verdict, durationMs, progress)
+        // No verdict is stored: the task is still running, and a stored verdict would read as final.
+        yield* tasks.update(spec.id, sessionPatch)
+        return
+      }
       if (verdict.kind === "budget_exceeded") {
         yield* taskEvent(spec.id, "budget.exceeded", {
           scope: "task",
@@ -64,22 +89,29 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
           used: { ...usageToBudget(progress.usage), seconds: verdict.cost.seconds },
         })
       }
-      yield* taskEvent(spec.id, "executor.finished", {
-        taskId: spec.id,
-        ...(progress.stepId === undefined ? {} : { stepId: progress.stepId }),
-        botId: spec.botId,
-        verdict,
-        ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
-        durationMs,
-      })
-      yield* transition(spec, final, {
-        verdict,
-        ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
-      })
-      // The Bot is free only when none of its tasks is still running.
+      yield* recordAttempt(spec, verdict, durationMs, progress)
+      const exhausted = closing === "exhausted"
+      yield* transition(
+        spec,
+        finalTaskState(verdict),
+        { verdict, ...sessionPatch },
+        exhausted ? "max retries" : undefined,
+      )
+      // The Bot is free only when none of its tasks is still running; after exhausted retries it is blocked.
       if ((yield* tasks.countRunning(spec.botId)) === 0) {
-        yield* bots.setState(spec.botId, "idle", spec.id)
+        yield* bots.setState(spec.botId, exhausted ? "blocked" : "idle", spec.id)
       }
+    })
+
+  // One executor.finished per run, whatever the run ended with.
+  const recordAttempt = (spec: TaskSpec, verdict: Verdict, durationMs: number, progress: Progress) =>
+    taskEvent(spec.id, "executor.finished", {
+      taskId: spec.id,
+      ...(progress.stepId === undefined ? {} : { stepId: progress.stepId }),
+      botId: spec.botId,
+      verdict,
+      ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
+      durationMs,
     })
 
   // The queue gave up on the task's job (all attempts used, worker never reported back): close the task.

@@ -32,9 +32,15 @@ export type RunningProcess = {
 
 export interface TankShape {
   readonly mode: TankMode
+  // reuse: continue the worktree an earlier attempt of the same step kept (must still be registered for the Bot);
+  // without it, a worktree that already exists is a WorktreeConflict.
   readonly prepare: (
     bot: Bot,
-    step: { readonly stepId: StepId; readonly repo?: RepoRef },
+    step: {
+      readonly stepId: StepId
+      readonly repo?: RepoRef
+      readonly reuse?: { readonly path: string; readonly branch: string }
+    },
   ) => Effect.Effect<TankContext, TankError | WorktreeConflict>
   readonly exec: (
     ctx: TankContext,
