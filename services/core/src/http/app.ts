@@ -22,6 +22,7 @@ import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
 import { registerTideRoutes } from "./routes/tides.js"
+import { GENERIC_WEBHOOK_PATH, registerGenericWebhookRoutes } from "./routes/webhooks-generic.js"
 import { html } from "./ui.js"
 
 export interface DbProbe {
@@ -105,8 +106,9 @@ export const makeApp = (deps: AppDeps): Hono => {
   const probe = deps.probe ?? probeDatabase
 
   app.use("*", async (c, next) => {
-    // The page holds no secret; it asks for the token in the browser and sends it on each request.
-    if (c.req.path === "/health" || c.req.path === "/") {
+    // The page holds no secret; it asks for the token in the browser and sends it on each request. A generic webhook
+    // is authenticated by its Tide's secret (X-Webhook-Secret), not by the API token.
+    if (c.req.path === "/health" || c.req.path === "/" || GENERIC_WEBHOOK_PATH.test(c.req.path)) {
       return next()
     }
     const header = c.req.header("authorization")
@@ -147,6 +149,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
   registerTideRoutes(app, deps.runEffect)
+  registerGenericWebhookRoutes(app, deps.runEffect)
   registerControlRoutes(app, deps.runEffect)
   registerCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)

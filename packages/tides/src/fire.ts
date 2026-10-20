@@ -154,14 +154,21 @@ const recordSkip = (deps: TideDeps, tide: Tide, skip: Skip): Effect.Effect<void,
   })
 }
 
+// What one firing carries: the root the {{x.y}} placeholders read, the trigger recorded on tide.fired, and the
+// correlation of the task (the source event's, when there is one).
+export interface Firing {
+  readonly trigger: "cron" | "event"
+  readonly root: unknown
+  readonly correlationId?: string
+}
+
 // Creates the task of one Tide firing: checks pause, budget, cooldown and the hourly limit, intakes the task (origin
-// tide), records tide.fired and stamps last_run_at. `source` is the event of an event Tide: its payload feeds the
-// {{payload.x}} placeholders. Runs inside the caller's transaction. A skip is an outcome, not a failure, so the
-// caller's transaction still commits the record of it.
-export const fireTide = (
+// tide), records tide.fired and stamps last_run_at. Runs inside the caller's transaction. A skip is an outcome, not a
+// failure, so the caller's transaction still commits the record of it.
+export const fireTideWith = (
   deps: TideDeps,
   tide: Tide,
-  source?: Event,
+  firing: Firing,
 ): Effect.Effect<FireOutcome, NotFound | SchemaViolation | SqlError> =>
   Effect.gen(function* () {
     const now = deps.clock()
@@ -171,29 +178,40 @@ export const fireTide = (
       yield* recordSkip(deps, tide, skip)
       return { _tag: "skipped", reason: skip._tag } as const
     }
-    const root: unknown = source ?? {}
     const template = tide.taskTemplate
     const spec = yield* deps.lead.intake({
       botId: tide.botId,
-      title: renderTemplate(template.title, root),
-      prompt: renderTemplate(template.prompt, root),
+      title: renderTemplate(template.title, firing.root),
+      prompt: renderTemplate(template.prompt, firing.root),
       kind: template.kind,
       tier: template.tier,
       budget: template.budget,
       acceptance: [],
       origin: "tide",
       ...(template.repo === undefined ? {} : { repo: template.repo }),
-      ...(source === undefined ? {} : { correlationId: source.correlationId }),
+      ...(firing.correlationId === undefined ? {} : { correlationId: firing.correlationId }),
     })
     yield* appendEvent(deps.beacon, {
       streamId: streamIds.task(spec.id),
       type: "tide.fired",
-      payload: { tideId: tide.id, botId: tide.botId, trigger: tide.kind, taskId: spec.id },
+      payload: { tideId: tide.id, botId: tide.botId, trigger: firing.trigger, taskId: spec.id },
       actor: "system:tides",
       correlationId: spec.id,
     })
     yield* deps.sql`UPDATE tides SET last_run_at = ${now.toISOString()} WHERE id = ${tide.id}`
     return { _tag: "fired", spec } as const
+  })
+
+// A cron window or an event of an event Tide: `source` is the event, whose payload feeds the {{payload.x}} placeholders.
+export const fireTide = (
+  deps: TideDeps,
+  tide: Tide,
+  source?: Event,
+): Effect.Effect<FireOutcome, NotFound | SchemaViolation | SqlError> =>
+  fireTideWith(deps, tide, {
+    trigger: tide.kind,
+    root: source ?? {},
+    ...(source === undefined ? {} : { correlationId: source.correlationId }),
   })
 
 export type TideFailure = NotFound | SchemaViolation | ScheduleBroken | BrokenTide | SqlError

@@ -26,6 +26,7 @@ const USAGE = [
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
   "       shoalwork tide list [--bot <bot id or name>] | shoalwork tide add --bot <bot> --file <tide.json>",
   "       shoalwork tide enable|disable <tide id> | shoalwork tide run <tide id>",
+  "       shoalwork tide add ... --webhook (prints the secret once) | shoalwork tide webhook <tide id> (new secret)",
   "       shoalwork reflex export --out <file>",
   "       shoalwork memory import --dir <dir> --scope global|bot:<name> --kind semantic|procedural --source <label>",
   "       shoalwork memory search --bot <bot id or name> <query> [--k <1..100>] [--kinds <kind,kind>]",

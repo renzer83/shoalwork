@@ -14,10 +14,11 @@ import { Lead, type LeadShape } from "@shoalwork/lead"
 import { Context, Data, Effect, Layer, Option, type Scope } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
-import { fireTide, type SkipReason, type TideDeps } from "./fire.js"
+import { type FireOutcome, fireTide, fireTideWith, type SkipReason, type TideDeps } from "./fire.js"
 import { decodeTideRows, type TideRow, tideFromRow } from "./row.js"
 import { checkSchedule, makeScheduler, nextRunAfter } from "./scheduler.js"
 import { startEventTriggers } from "./triggers.js"
+import { generateWebhookSecret, hashWebhookSecret, secretMatches } from "./webhook.js"
 
 // Asked to run a Tide that a pause, the budget, the cooldown or the hourly limit holds back. Also recorded as an event.
 export class TideSkipped extends Data.TaggedError("TideSkipped")<{
@@ -46,6 +47,16 @@ export interface TidesShape {
   readonly tick: () => Effect.Effect<void>
   // The ids of the cron windows one pass would claim now: claimed rows keep their lock until fired or expired.
   readonly claimDue: () => Effect.Effect<ReadonlyArray<string>, SqlError>
+  // Replaces the Tide's webhook secret and returns the new one: the only time it is readable. Only its hash is stored.
+  readonly rotateWebhookSecret: (id: TideId) => Effect.Effect<string, NotFound | SqlError>
+  // True only for the current secret of an existing Tide. Unknown tide, no secret and wrong secret all answer false.
+  readonly checkWebhookSecret: (id: TideId, presented: string) => Effect.Effect<boolean, SqlError>
+  // Fires an enabled Tide from a webhook body: the body is the root of the {{payload.x}} placeholders. The caller checks
+  // the secret first. A disabled Tide is NotFound; a held-back one gets TideSkipped.
+  readonly fireFromWebhook: (
+    id: TideId,
+    payload: unknown,
+  ) => Effect.Effect<TaskSpec, NotFound | TideSkipped | SchemaViolation | SqlError>
 }
 
 export class Tides extends Context.Service<Tides, TidesShape>()("@shoalwork/Tides") {}
@@ -192,6 +203,37 @@ export const makeTides = (deps: TideDeps): TidesShape => {
       return outcome.spec
     })
 
+  const rotateWebhookSecret = (id: TideId) =>
+    Effect.gen(function* () {
+      yield* findById(id)
+      const secret = generateWebhookSecret()
+      yield* sql`UPDATE tides SET secret = ${hashWebhookSecret(secret)} WHERE id = ${id}`
+      return secret
+    })
+
+  const checkWebhookSecret = (id: TideId, presented: string) =>
+    sql<{ readonly secret: string | null }>`SELECT secret FROM tides WHERE id = ${id}`.pipe(
+      Effect.map((rows) => secretMatches(rows[0]?.secret ?? null, presented)),
+    )
+
+  const fireFromWebhook = (id: TideId, payload: unknown) =>
+    Effect.gen(function* () {
+      const row = yield* findById(id)
+      if (row.enabled !== 1) {
+        return yield* Effect.fail(new NotFound({ entity: "Tide", id }))
+      }
+      const tide = yield* tideFromRow(row).pipe(
+        Effect.mapError((broken) => new SchemaViolation({ where: `tide:${id}`, issue: broken.reason })),
+      )
+      const outcome: FireOutcome = yield* sql.withTransaction(
+        fireTideWith(deps, tide, { trigger: "event", root: { payload } }),
+      )
+      if (outcome._tag === "skipped") {
+        return yield* Effect.fail(new TideSkipped({ tideId: id, reason: outcome.reason }))
+      }
+      return outcome.spec
+    })
+
   const syncFromDir = (dir: string) =>
     Effect.gen(function* () {
       const entries = yield* loadBotEntries(dir)
@@ -224,6 +266,9 @@ export const makeTides = (deps: TideDeps): TidesShape => {
     syncFromDir,
     tick: () => scheduler.tick,
     claimDue: () => scheduler.claimDue(deps.clock()).pipe(Effect.map((rows) => rows.map((row) => row.id))),
+    rotateWebhookSecret,
+    checkWebhookSecret,
+    fireFromWebhook,
   }
 }
 
