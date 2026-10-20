@@ -30,6 +30,9 @@ export const EventType = Schema.Literals([
   "watchdog.recovered",
   "budget.exceeded",
   "error.raised",
+  "memory.added",
+  "memory.superseded",
+  "memory.forgotten",
 ])
 export type EventType = typeof EventType.Type
 
@@ -190,6 +193,30 @@ const ErrorRaisedPayload = Schema.Struct({
   botId: Schema.optional(BotId),
 })
 
+// Memory events carry ids and labels, never the content: the log is not a second copy of the memory.
+const MemoryScopeLabel = Schema.Literals(["bot", "pod", "global"])
+
+const MemoryAddedPayload = Schema.Struct({
+  id: Schema.String,
+  scope: MemoryScopeLabel,
+  ownerId: Schema.String,
+  kind: Schema.Literals(["working", "episodic", "semantic", "procedural"]),
+  source: Schema.String,
+})
+
+const MemorySupersededPayload = Schema.Struct({
+  id: Schema.String,
+  supersededBy: Schema.String,
+  scope: MemoryScopeLabel,
+  ownerId: Schema.String,
+})
+
+const MemoryForgottenPayload = Schema.Struct({
+  id: Schema.String,
+  scope: MemoryScopeLabel,
+  ownerId: Schema.String,
+})
+
 // One payload schema per event type; `satisfies` keeps the map exhaustive.
 export const EventPayloads = {
   "task.received": TaskReceivedPayload,
@@ -212,6 +239,9 @@ export const EventPayloads = {
   "watchdog.recovered": WatchdogRecoveredPayload,
   "budget.exceeded": BudgetExceededPayload,
   "error.raised": ErrorRaisedPayload,
+  "memory.added": MemoryAddedPayload,
+  "memory.superseded": MemorySupersededPayload,
+  "memory.forgotten": MemoryForgottenPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

@@ -42,6 +42,9 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "watchdog.recovered",
   "budget.exceeded",
   "error.raised",
+  "memory.added",
+  "memory.superseded",
+  "memory.forgotten",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -94,6 +97,9 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     used: { tokens: 60000, seconds: 100, usd: 0.4 },
   },
   "error.raised": { where: "tank.exec", tag: "TankError", message: "exit 1", taskId: TASK },
+  "memory.added": { id: "mem_1", scope: "bot", ownerId: BOT, kind: "semantic", source: "chat" },
+  "memory.superseded": { id: "mem_1", supersededBy: "mem_2", scope: "bot", ownerId: BOT },
+  "memory.forgotten": { id: "mem_1", scope: "global", ownerId: "global" },
 }
 
 // One required field per type; removing it must reject the payload.
@@ -118,6 +124,9 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "watchdog.recovered": "action",
   "budget.exceeded": "refId",
   "error.raised": "message",
+  "memory.added": "kind",
+  "memory.superseded": "supersededBy",
+  "memory.forgotten": "ownerId",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -138,8 +147,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 20 core types", () => {
-    expect(EVENT_TYPES).toHaveLength(20)
+  it("EventType is exactly the 23 core types", () => {
+    expect(EVENT_TYPES).toHaveLength(23)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)
