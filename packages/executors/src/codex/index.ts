@@ -1,0 +1,114 @@
+import {
+  type ExecutorEvent,
+  ExecutorId,
+  type ExecutorProtocolError,
+  ExecutorSpawnError,
+  type ExecutorTask,
+} from "@shoalwork/contracts"
+import { Tank, type TankContext } from "@shoalwork/tank"
+import { Duration, Effect, Schema, type Scope, Stream } from "effect"
+import type { Executor } from "../executor.js"
+import { parseNdjsonLines } from "../ndjson.js"
+import { makeQuotaCounter, type QuotaCounter } from "../quota.js"
+import { buildResumeArgs, buildRunArgs, type CodexModels, type CodexTarget, makeMapTier } from "./args.js"
+import { CodexEvent, makeCodexMapper } from "./events.js"
+
+export const CODEX_ID = Schema.decodeUnknownSync(ExecutorId)("codex")
+
+export type CodexOptions = {
+  // Fixed window for the local quota counter; the real subscription quota is F5 work.
+  readonly quotaWindowSeconds: number
+  readonly quotaSoftLimitTokens: number
+  // Model per tier. A missing tier uses the codex default (no -m: the model of the Bot's config.toml).
+  readonly models?: CodexModels
+}
+
+const spawnFailure = (cause: unknown): ExecutorSpawnError =>
+  new ExecutorSpawnError({ executor: "codex", cause })
+
+const isTerminal = (event: ExecutorEvent): boolean => event.kind === "done" || event.kind === "error"
+
+const one = (event: ExecutorEvent): Stream.Stream<ExecutorEvent> => Stream.make(event)
+
+const runCodex = (
+  task: ExecutorTask,
+  ctx: TankContext,
+  quota: QuotaCounter,
+  target: (tier: ExecutorTask["tier"]) => CodexTarget,
+): Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope> =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const tank = yield* Tank
+      const argv =
+        task.resumeSessionId === undefined
+          ? buildRunArgs(task, ctx.cwd, target(task.tier))
+          : buildResumeArgs(task.resumeSessionId, task.prompt)
+      const proc = yield* tank.spawnStream(ctx, ["codex", ...argv]).pipe(Effect.mapError(spawnFailure))
+      // codex exec reads extra input from stdin until it closes; the prompt is the only input.
+      yield* proc.closeStdin()
+
+      const mapper = makeCodexMapper(task.budget)
+      let secondsExpired = false
+      // Wall-clock budget: when it fires, the upstream is cut and the process is killed; `tail` reports it.
+      const deadline = Effect.sleep(Duration.seconds(task.budget.seconds)).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            secondsExpired = true
+          }),
+        ),
+        Effect.andThen(proc.kill()),
+      )
+      // Runs only when no terminal event was emitted: budget cut, non-zero exit, or silent exit 0 (the registry
+      // reports that last case as a protocol error).
+      const tail: Stream.Stream<ExecutorEvent> = Stream.unwrap(
+        Effect.suspend((): Effect.Effect<Stream.Stream<ExecutorEvent>> => {
+          if (mapper.finished()) return Effect.succeed(Stream.empty)
+          if (secondsExpired) {
+            return Effect.succeed(
+              one({
+                kind: "error",
+                code: "budget",
+                message: `wall-clock budget of ${task.budget.seconds}s exceeded`,
+              }),
+            )
+          }
+          return proc.exitCode.pipe(
+            Effect.map(
+              (code): Stream.Stream<ExecutorEvent> =>
+                code === 0
+                  ? Stream.empty
+                  : one({
+                      kind: "error",
+                      code: "unknown",
+                      message: `codex exited with code ${code} without a result`,
+                    }),
+            ),
+          )
+        }),
+      )
+
+      const parse = parseNdjsonLines(CodexEvent, "codex")
+      return parse(proc.stdout.pipe(Stream.mapError(spawnFailure))).pipe(
+        Stream.flatMap((event) => Stream.fromIterable(mapper.push(event))),
+        Stream.tap((event) =>
+          event.kind === "usage" ? Effect.sync(() => quota.record(event.usage)) : Effect.void,
+        ),
+        Stream.takeUntil(isTerminal),
+        Stream.interruptWhen(deadline),
+        Stream.concat(tail),
+        // Kills the process when the run ends early (terminal event, budget cut); a no-op after a normal exit.
+        Stream.ensuring(proc.kill()),
+      )
+    }),
+  )
+
+export const makeCodexExecutor = (options: CodexOptions): Executor => {
+  const quota = makeQuotaCounter(CODEX_ID, options.quotaWindowSeconds, options.quotaSoftLimitTokens)
+  const mapTier = makeMapTier(options.models)
+  return {
+    id: CODEX_ID,
+    mapTier,
+    quota: () => Effect.sync(() => quota.status()),
+    run: (task, ctx) => runCodex(task, ctx, quota, mapTier),
+  }
+}
