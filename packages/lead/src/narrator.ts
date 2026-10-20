@@ -165,3 +165,15 @@ export const failedPhrase = (reason: string, language: Lang = "pt"): string =>
 // Whether a progress message may go out now: the first one always, then one per window. Urgent ones always.
 export const mayNarrate = (nowMs: number, lastSentMs: number | undefined, urgent: boolean): boolean =>
   urgent || lastSentMs === undefined || nowMs - lastSentMs >= COALESCE_MS
+
+// Pod messages (T-049) go to the Pod's own topic, addressed by thread id (pods.ts). Portuguese only: the Pod is
+// Renan's view of his plan. Plan titles and summaries are model text, so they pass the same redaction and cut.
+export const podHeaderPhrase = (titles: ReadonlyArray<string>): string =>
+  [
+    `Plano com ${titles.length} passo(s):`,
+    ...titles.map((title, index) => `${index + 1}. ${safeLine(title, DIAGNOSIS_MAX)}`),
+  ].join("\n")
+
+export const podLinePhrase = (botName: string, text: string): string => `${botName}: ${text}`
+
+export const podClosedPhrase = (summary: string): string => `Pod fechado. ${safeLine(summary, SUMMARY_LONG)}`

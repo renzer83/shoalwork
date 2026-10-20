@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import type { InlineKeyboard } from "grammy"
 import { type TelegramError, telegramError } from "./errors.js"
+import { chunkText, escapeHtml } from "./format.js"
 
 // The subset of the grammY Api this package calls. grammY's `bot.api` satisfies it; tests pass a fake.
 export interface SendOptions {
@@ -122,3 +123,35 @@ export const findBotByTopic = (
     const [row] = yield* decodeBotIdRows(rows)
     return row?.bot_id
   }).pipe(Effect.mapError(telegramError("topic.lookup")))
+
+// Pod topics (T-049): one forum topic per plan, named after the first 6 characters of the task's id.
+// The Pod keeps the thread id itself (pods.thread_id), so nothing about Pods is cached in telegram_topics.
+export const podTopicName = (taskId: string): string =>
+  `pod-${taskId.slice("task_".length, "task_".length + 6)}`
+
+export const createPodTopic = (
+  api: TelegramApi,
+  forumChatId: string,
+  name: string,
+): Effect.Effect<TopicRef, TelegramError> =>
+  Effect.tryPromise({
+    try: () => api.createForumTopic(forumChatId, name),
+    catch: telegramError("createForumTopic"),
+  }).pipe(Effect.map((created) => ({ chatId: forumChatId, threadId: created.message_thread_id })))
+
+// Plain text into one topic, HTML-escaped and split at the Telegram limit; sent in order.
+export const postToTopic = (
+  api: TelegramApi,
+  topic: TopicRef,
+  text: string,
+): Effect.Effect<void, TelegramError> =>
+  Effect.forEach(chunkText(text), (chunk) =>
+    Effect.tryPromise({
+      try: () =>
+        api.sendMessage(topic.chatId, escapeHtml(chunk), {
+          parse_mode: "HTML",
+          message_thread_id: topic.threadId,
+        }),
+      catch: telegramError("sendMessage"),
+    }),
+  ).pipe(Effect.asVoid)
