@@ -36,6 +36,7 @@ export const EventType = Schema.Literals([
   "control.changed",
   "bot.proposed",
   "bot.proposal_resolved",
+  "context.assembled",
 ])
 export type EventType = typeof EventType.Type
 
@@ -242,6 +243,16 @@ const BotProposalResolvedPayload = Schema.Struct({
   status: Schema.Literals(["confirmed", "rejected", "expired", "failed"]),
 })
 
+// What went into the context of one run: ids and counts, never the text. `budget` is the room left after the
+// answer reserve; `dropped` lists the blocks that lost items to fit it.
+const ContextAssembledPayload = Schema.Struct({
+  taskId: TaskId,
+  level: Schema.Literals(["none", "top3", "full"]),
+  used: Schema.Int,
+  budget: Schema.Int,
+  dropped: Schema.Array(Schema.Struct({ block: Schema.String, items: Schema.Int })),
+})
+
 // One payload schema per event type; `satisfies` keeps the map exhaustive.
 export const EventPayloads = {
   "task.received": TaskReceivedPayload,
@@ -270,6 +281,7 @@ export const EventPayloads = {
   "control.changed": ControlChangedPayload,
   "bot.proposed": BotProposedPayload,
   "bot.proposal_resolved": BotProposalResolvedPayload,
+  "context.assembled": ContextAssembledPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

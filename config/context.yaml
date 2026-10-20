@@ -1,0 +1,30 @@
+# Context assembly (02-architecture §9.1). Tokens are estimated as chars / 4.
+# budget: tokens a model tier accepts as context; reserve_for_answer is subtracted before assembling.
+budget:
+  chat: 2000
+  decision: 2000
+  light: 8000
+  heavy: 24000
+reserve_for_answer: 300
+
+# Cap per block, in tokens. The fixed blocks (instructions, rules, acceptance, task) are trimmed to their cap when
+# they are built, and what is left out is reported; the others lose their lowest-ranked items until they fit.
+# The caps of the fixed blocks must add up to at most (smallest tier budget - reserve_for_answer): the file is
+# rejected otherwise.
+blocks:
+  instructions: 700
+  rules: 600
+  memory: 1500
+  code: 4000
+  working: 500
+  acceptance: 250
+  task: 150
+
+# Items asked by each level ("none" asks for nothing).
+levels:
+  top3:
+    memory: 3
+    code: 3
+  full:
+    memory: 8
+    code: 6

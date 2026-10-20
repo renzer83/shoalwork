@@ -23,7 +23,8 @@
     "@shoalwork/reef": "workspace:*",
     "@shoalwork/reflex": "workspace:*",
     "@shoalwork/tank": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

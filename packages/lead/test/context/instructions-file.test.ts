@@ -13,11 +13,17 @@ import {
 } from "../../src/context/instructions-file.js"
 import { localTank, orDie, prepareWorktree, removeDir, scratchRepo } from "./fixtures.js"
 
-const briefing: Briefing = {
-  role: "developer (test)\n\nDo the work you are given.",
-  memory: "- (semantic, bot) The deploy window is Tuesday.",
-  task: "- Title: Add a feature",
-  acceptance: "- tests pass",
+const briefing: Pick<Briefing, "text"> = {
+  text: [
+    "# Role",
+    "developer (test)",
+    "",
+    "# Project memory",
+    "- (semantic, bot) The deploy window is Tuesday.",
+    "",
+    "# Current task",
+    "- Title: Add a feature",
+  ].join("\n"),
 }
 
 // Runs one test in a scratch repo: `run` gets the real Tank and a prepared worktree, and the directory is removed after.
@@ -119,7 +125,7 @@ describe("writeInstructionFiles", () => {
     inWorktree({}, (_tank, ctx) =>
       Effect.gen(function* () {
         yield* writeInstructionFiles(ctx, briefing)
-        const second = yield* writeInstructionFiles(ctx, { ...briefing, memory: "- (semantic, bot) newer" })
+        const second = yield* writeInstructionFiles(ctx, { text: "# Role\nnewer" })
         expect(second).toEqual({ conflict: false })
         expect(readFileSync(join(ctx.cwd, "AGENTS.md"), "utf8")).toContain("newer")
       }),

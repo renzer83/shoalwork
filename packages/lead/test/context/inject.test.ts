@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { it } from "@effect/vitest"
-import { ExecutorId, type ExecutorTask } from "@shoalwork/contracts"
+import { ExecutorId, type ExecutorTask, TaskSpec } from "@shoalwork/contracts"
 import type { TankContext } from "@shoalwork/tank"
 import { Effect, Schema } from "effect"
 import { describe, expect } from "vitest"
 import type { BriefingMemory } from "../../src/context/briefing.js"
-import { makeInjector } from "../../src/context/inject.js"
+import { type ContextAssembled, makeInjector } from "../../src/context/inject.js"
 import { makeFakeTank } from "../support.js"
 import { bot, localTank, orDie, prepareWorktree, removeDir, scratchRepo, spec } from "./fixtures.js"
 
@@ -119,8 +119,94 @@ describe("makeInjector", () => {
     })
     return Effect.gen(function* () {
       const delivered = yield* Effect.scoped(inject(worktreeCtx, { spec, bot, task, executor: CLAUDE }))
-      expect(reported).toEqual(["lead.context"])
+      // The fake Tank cannot read the rules files either; that is reported as well and the run goes on.
+      expect(reported).toEqual(["lead.context.rules", "lead.context"])
       expect(delivered.systemAppend).toContain("# Role")
+    })
+  })
+
+  it.effect("records context.assembled with the level, the cost and what was dropped", () => {
+    const recorded: Array<ContextAssembled> = []
+    const inject = makeInjector({
+      tank: makeFakeTank().shape,
+      memory,
+      raiseError: () => Effect.void,
+      recordAssembled: (_spec, payload) =>
+        Effect.sync(() => {
+          recorded.push(payload)
+        }),
+    })
+    return Effect.gen(function* () {
+      yield* Effect.scoped(inject(scratchCtx, { spec, bot, task, executor: CLAUDE }))
+      expect(recorded).toHaveLength(1)
+      expect(recorded[0]).toMatchObject({ taskId: spec.id, level: "top3", dropped: [] })
+      expect(recorded[0]?.used).toBeGreaterThan(0)
+      expect(recorded[0]?.budget).toBe(7700)
+    })
+  })
+
+  it.effect("a chat task gets no memory, and a recorder that fails does not fail the run", () => {
+    const chat = Schema.decodeUnknownSync(TaskSpec)({
+      ...Schema.encodeSync(TaskSpec)(spec),
+      kind: "chat",
+      tier: "chat",
+    })
+    const reported: Array<string> = []
+    let searched = 0
+    const inject = makeInjector({
+      tank: makeFakeTank().shape,
+      memory: {
+        search: () =>
+          Effect.sync(() => {
+            searched += 1
+            return []
+          }),
+      },
+      raiseError: (_spec, where) =>
+        Effect.sync(() => {
+          reported.push(where)
+        }),
+      recordAssembled: () => Effect.fail("beacon down"),
+    })
+    return Effect.gen(function* () {
+      const delivered = yield* Effect.scoped(inject(scratchCtx, { spec: chat, bot, task, executor: CLAUDE }))
+      expect(searched).toBe(0)
+      expect(delivered.systemAppend).not.toContain("# Project memory")
+      expect(reported).toEqual(["lead.context"])
+    })
+  })
+
+  it.effect("a repo task carries the code the search returns", () => {
+    const repoSpec = Schema.decodeUnknownSync(TaskSpec)({
+      ...Schema.encodeSync(TaskSpec)(spec),
+      tier: "heavy",
+      repo: { url: "https://example.invalid/acme/demo.git", base: "main" },
+    })
+    const inject = makeInjector({
+      tank: makeFakeTank().shape,
+      memory,
+      code: () =>
+        Effect.succeed([
+          {
+            id: "c1",
+            path: "src/feature.ts",
+            startLine: 1,
+            endLine: 4,
+            lang: "ts",
+            symbols: [],
+            content: "export const feature = 1",
+            score: 0.1,
+            boosted: false,
+          },
+        ]),
+      raiseError: () => Effect.void,
+    })
+    return Effect.gen(function* () {
+      const delivered = yield* Effect.scoped(
+        inject(scratchCtx, { spec: repoSpec, bot, task, executor: CLAUDE }),
+      )
+      expect(delivered.systemAppend).toContain("src/feature.ts:1-4")
+      expect(delivered.systemAppend).toContain("export const feature = 1")
     })
   })
 })
