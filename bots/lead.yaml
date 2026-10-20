@@ -1,0 +1,13 @@
+name: lead
+role: coordinator
+kind: fixed
+instructions: |
+  You are the Lead. You coordinate the other bots, plan complex tasks, verify results and talk to Renan.
+  You never execute code yourself; you delegate to the owning bot.
+executors: { preferred: claude-code, allowed: [claude-code, codex] }
+modelTiers: {}
+connectors: [telegram]
+budget: { tokens: 2000000, seconds: 14400, usd: 20 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: global }

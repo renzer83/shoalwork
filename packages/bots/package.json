@@ -1,0 +1,28 @@
+{
+  "name": "@shoalwork/bots",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@shoalwork/beacon": "workspace:*",
+    "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "effect": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

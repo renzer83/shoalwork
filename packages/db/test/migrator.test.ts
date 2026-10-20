@@ -8,7 +8,7 @@ import { SqlClient } from "effect/sql/SqlClient"
 import { describe, expect } from "vitest"
 import { makeDbLayer } from "../src/client.js"
 import { runMigrations } from "../src/migrator.js"
-import { withRawTempDb, withTempDb } from "./helpers.js"
+import { withRawTempDb, withTempDb } from "../src/testing.js"
 
 const tableNames = (sql: SqlClient) =>
   sql<{ readonly name: string }>`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
@@ -17,7 +17,7 @@ describe("runMigrations", () => {
   it.effect("applies 0001 to a fresh database", () =>
     Effect.gen(function* () {
       const applied = yield* runMigrations
-      expect(applied).toEqual(["0001_events_jobs.sql"])
+      expect(applied).toEqual(["0001_events_jobs.sql", "0002_bots.sql"])
     }).pipe(Effect.provide(withRawTempDb())),
   )
 

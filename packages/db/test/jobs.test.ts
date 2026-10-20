@@ -4,7 +4,7 @@ import { SqlClient } from "effect/sql/SqlClient"
 import { describe, expect } from "vitest"
 import { Jobs } from "../src/index.js"
 import { nowIso } from "../src/now.js"
-import { withTempDb } from "./helpers.js"
+import { withTempDb } from "../src/testing.js"
 
 const QUEUE = "mail"
 const PAST = "2000-01-01T00:00:00.000Z"

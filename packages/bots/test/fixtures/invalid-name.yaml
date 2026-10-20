@@ -1,0 +1,12 @@
+name: Scout Bot
+role: researcher
+kind: auxiliary
+instructions: |
+  You research what the other bots ask for and report sources.
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }

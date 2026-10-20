@@ -5,9 +5,9 @@ import { join } from "node:path"
 import { it } from "@effect/vitest"
 import { Conflict, type Event, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
 import { makeDbLayer, runMigrations } from "@shoalwork/db"
+import { withTempDb } from "@shoalwork/db/testing"
 import { Effect, Layer, Option, Queue, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
-import { withTempDb } from "../../db/test/helpers.js"
 import { Beacon, BeaconLive, type BeaconShape } from "../src/index.js"
 
 // Real SQLite per test (fresh file, migrations applied).

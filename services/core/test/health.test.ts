@@ -1,7 +1,7 @@
+import { withTempDb } from "@shoalwork/db/testing"
 import { Effect, ManagedRuntime, Redacted } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import { afterAll, describe, expect, it } from "vitest"
-import { withTempDb } from "../../../packages/db/test/helpers.js"
 import { APP_VERSION } from "../src/config.js"
 import { makeApp, type ProbeEffect } from "../src/http/app.js"
 

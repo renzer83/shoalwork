@@ -3,8 +3,8 @@ import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer } from "effect"
-import { makeDbLayer } from "../src/client.js"
-import { runMigrations } from "../src/migrator.js"
+import { makeDbLayer } from "./client.js"
+import { runMigrations } from "./migrator.js"
 
 const removeDbFiles = (path: string): void => {
   for (const suffix of ["", "-wal", "-shm"]) {
