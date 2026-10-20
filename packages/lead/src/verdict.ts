@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import {
   type Artifact,
+  type Budget,
   type ExecutorErrorCode,
   type ModelTier,
   type Risk,
@@ -53,6 +54,13 @@ export type Outcome =
   | { readonly _tag: "Channel"; readonly tag: string; readonly executor: string }
   | { readonly _tag: "Failure"; readonly tag: string; readonly message: string }
   | { readonly _tag: "TimedOut" }
+  // The task's own budget (scope task) or its Bot's rolling window (scope bot) was exceeded; `used` is what counted.
+  | {
+      readonly _tag: "BudgetExceeded"
+      readonly scope: "task" | "bot"
+      readonly limit: Budget
+      readonly used: Budget
+    }
   // A person (or the watchdog) stopped the task: `by` says who.
   | { readonly _tag: "Stopped"; readonly by: string }
   | { readonly _tag: "Delivery"; readonly step: DeliveryStep; readonly message: string }
@@ -164,6 +172,13 @@ export const verdictFor = (progress: Progress, seconds: number): Verdict => {
       }
     case "TimedOut":
       return { kind: "budget_exceeded", summary: "task exceeded its time budget", evidence: [], ...base }
+    case "BudgetExceeded":
+      return {
+        kind: "budget_exceeded",
+        summary: `${outcome.scope} budget exceeded`,
+        evidence: [`budget scope: ${outcome.scope}`],
+        ...base,
+      }
     case "Stopped":
       return {
         kind: "blocked",

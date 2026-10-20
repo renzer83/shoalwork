@@ -29,6 +29,7 @@ interface Phrases {
   readonly needsYou: (diagnosis: string) => string
   readonly cancelled: string
   readonly budget: string
+  readonly botBudget: string
   readonly timeout: string
   readonly chatFailed: string
   readonly noOwner: string
@@ -49,6 +50,7 @@ const PHRASES: Record<Lang, Phrases> = {
     needsYou: (diagnosis) => `Precisa de você: ${diagnosis}`,
     cancelled: "Cancelado.",
     budget: "Estourou o orçamento da tarefa; parei.",
+    botBudget: "Orçamento do Bot estourado: esta tarefa não roda até você liberar o Bot.",
     timeout: "Demorei demais, tenta de novo.",
     chatFailed: "Não consegui responder agora, tenta de novo.",
     noOwner: "Não achei um Bot para isso.",
@@ -67,6 +69,7 @@ const PHRASES: Record<Lang, Phrases> = {
     needsYou: (diagnosis) => `Needs you: ${diagnosis}`,
     cancelled: "Cancelled.",
     budget: "The task budget ran out; I stopped.",
+    botBudget: "The Bot's budget ran out: this task will not run until you release the Bot.",
     timeout: "That took too long, try again.",
     chatFailed: "I could not answer right now, try again.",
     noOwner: "I found no Bot for that.",
@@ -85,6 +88,7 @@ const PHRASES: Record<Lang, Phrases> = {
     needsYou: (diagnosis) => `Te necesita: ${diagnosis}`,
     cancelled: "Cancelado.",
     budget: "Se agotó el presupuesto de la tarea; paré.",
+    botBudget: "Se agotó el presupuesto del Bot: esta tarea no se ejecuta hasta que liberes el Bot.",
     timeout: "Tardé demasiado, inténtalo de nuevo.",
     chatFailed: "No pude responder ahora, inténtalo de nuevo.",
     noOwner: "No encontré un Bot para eso.",
@@ -136,6 +140,7 @@ export const chatFailedPhrase = (language: Lang = "pt"): string => PHRASES[langu
 export const noOwnerPhrase = (language: Lang = "pt"): string => PHRASES[language].noOwner
 export const cancelledPhrase = (language: Lang = "pt"): string => PHRASES[language].cancelled
 export const budgetPhrase = (language: Lang = "pt"): string => PHRASES[language].budget
+export const botBudgetPhrase = (language: Lang = "pt"): string => PHRASES[language].botBudget
 
 // `attempt` is the number of the new run: the retry after the first failure is "2/2".
 export const retryingPhrase = (attempt: number, language: Lang = "pt"): string =>

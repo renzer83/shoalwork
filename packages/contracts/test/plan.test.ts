@@ -83,10 +83,31 @@ describe("plan", () => {
 
   it.effect("rejects a step with a negative budget", () =>
     Effect.gen(function* () {
-      const plan = decodePlan([step(A, []), step(B, [A], { tokens: -1, seconds: 60, usd: 0.01 })])
+      // Budget itself rejects a negative limit when decoded, so the plan is built in memory to reach validatePlan.
+      const base = decodePlan([step(A, []), step(B, [A])])
+      const plan = {
+        ...base,
+        steps: base.steps.map((s) =>
+          s.id === B ? { ...s, budget: { tokens: -1, seconds: 60, usd: 0.01 } } : s,
+        ),
+      }
       const error = yield* Effect.flip(validatePlan(plan))
       expect(error._tag).toBe("SchemaViolation")
       expect(error.issue).toContain("negative budget")
+    }),
+  )
+
+  it.effect("rejects a step with a NaN or infinite usd budget", () =>
+    Effect.gen(function* () {
+      const base = decodePlan([step(A, []), step(B, [A])])
+      for (const usd of [Number.NaN, Number.POSITIVE_INFINITY]) {
+        const plan = {
+          ...base,
+          steps: base.steps.map((s) => (s.id === B ? { ...s, budget: { tokens: 1, seconds: 60, usd } } : s)),
+        }
+        const error = yield* Effect.flip(validatePlan(plan))
+        expect(error._tag).toBe("SchemaViolation")
+      }
     }),
   )
 

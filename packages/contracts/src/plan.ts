@@ -27,8 +27,9 @@ export type Plan = typeof Plan.Type
 const fail = (issue: string): Effect.Effect<never, SchemaViolation> =>
   Effect.fail(new SchemaViolation({ where: "Plan.steps", issue }))
 
+// `!(x >= 0)` also catches NaN, which `x < 0` lets through; Number.isFinite rules out Infinity.
 const hasNegativeBudget = (budget: Budget): boolean =>
-  budget.tokens < 0 || budget.seconds < 0 || budget.usd < 0
+  !(budget.tokens >= 0) || !(budget.seconds >= 0) || !(budget.usd >= 0) || !Number.isFinite(budget.usd)
 
 // Kahn's algorithm, layered. Steps keep plan order inside each level.
 // Unknown or cyclic dependencies are never placed, so callers must validate first.

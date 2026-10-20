@@ -9,6 +9,7 @@ import {
 import type { TelegramOutShape } from "@shoalwork/currents"
 import { Cause, Clock, Effect, Option, Schema, type Scope, Semaphore, Stream } from "effect"
 import {
+  botBudgetPhrase,
   budgetPhrase,
   cancelledPhrase,
   commandPhrase,
@@ -181,18 +182,27 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
         deps.forget(payload.taskId)
       })
 
-    const onBudget = (payload: typeof Budget.Type) =>
+    // A task-scope event names the task in refId; a Bot-scope one names the Bot, and the task is the event's stream.
+    const onBudget = (payload: typeof Budget.Type, streamId: string) =>
       Effect.gen(function* () {
-        if (payload.scope !== "task") {
+        if (payload.scope === "pod") {
           return
         }
-        const taskId = Schema.decodeUnknownOption(TaskIdSchema)(payload.refId)
+        const taskId = Schema.decodeUnknownOption(TaskIdSchema)(
+          payload.scope === "bot" ? streamId.replace(/^task:/, "") : payload.refId,
+        )
         const found = Option.isNone(taskId)
           ? Option.none()
           : yield* deps.tasks.get(taskId.value).pipe(Effect.option)
         if (Option.isSome(found)) {
-          const { spec } = found.value
-          yield* say(spec.id, spec.botId, budgetPhrase(deps.languageOf(spec.id)), true)
+          const { spec, attempts } = found.value
+          // A Telegram task refused for its Bot's budget was answered in its topic (conversation-replies.ts).
+          if (payload.scope === "bot" && attempts === 0 && spec.origin === "telegram") {
+            return
+          }
+          const language = deps.languageOf(spec.id)
+          const phrase = payload.scope === "bot" ? botBudgetPhrase(language) : budgetPhrase(language)
+          yield* say(spec.id, spec.botId, phrase, true)
         }
       })
 
@@ -211,7 +221,10 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
             onSome: onStateChanged,
           })
         case "budget.exceeded":
-          return Option.match(decodeBudget(event.payload), { onNone: () => Effect.void, onSome: onBudget })
+          return Option.match(decodeBudget(event.payload), {
+            onNone: () => Effect.void,
+            onSome: (payload) => onBudget(payload, event.streamId),
+          })
         default:
           return Effect.void
       }

@@ -11,7 +11,9 @@ import {
   latestPerStream,
   readCostByTask,
   readTaskState,
+  readUsageForBotSince,
   taskState,
+  usageForBotSince,
 } from "../src/index.js"
 
 const TASK_A = Schema.decodeUnknownSync(TaskId)("task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d")
@@ -160,6 +162,35 @@ describe("projections", () => {
       Effect.gen(function* () {
         const events = yield* loadAll
         expect(events).toHaveLength(10)
+      }),
+    ),
+  )
+  it.effect("usageForBotSince counts only the Bot's usage inside the window", () =>
+    withFixture(
+      Effect.gen(function* () {
+        const events = yield* loadAll
+        // Every fixture event is recorded now: a window starting in the future holds nothing.
+        expect(usageForBotSince(events, BOT_B, 0).usd).toBeCloseTo(0.28, 10)
+        expect(usageForBotSince(events, BOT_B, Date.now() + 3_600_000).usd).toBe(0)
+        // Usage older than the window is left out, even when it sits in the log.
+        const first = events[1]
+        if (first === undefined) return expect.fail("fixture holds ten events")
+        const old: Event = {
+          ...first,
+          occurredAt: Schema.decodeUnknownSync(Schema.DateTimeUtcFromString)("2026-10-18T00:00:00.000Z"),
+        }
+        const since = Date.parse("2026-10-19T00:00:00.000Z")
+        expect(usageForBotSince([old, ...events.slice(2)], BOT_B, since).usd).toBeCloseTo(0.27, 10)
+      }),
+    ),
+  )
+
+  it.effect("readUsageForBotSince reads the Bot's usage from the log", () =>
+    withFixture(
+      Effect.gen(function* () {
+        const usage = yield* readUsageForBotSince(BOT_B, 0)
+        expect(usage.tokensIn).toBe(350)
+        expect(usage.usd).toBeCloseTo(0.28, 10)
       }),
     ),
   )

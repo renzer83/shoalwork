@@ -12,6 +12,7 @@ import type { BotFactoryDeps } from "./bot-factory.js"
 
 export type { BotFactoryOptions, ConversationOptions } from "./conversation-options.js"
 
+import { BOT_BUDGET_WINDOW_MS, botOverBudget } from "./budget.js"
 import { ChatFailure, makeChat } from "./chat.js"
 import { Control } from "./control.js"
 import { makeCommandAnswers } from "./conversation-commands.js"
@@ -163,8 +164,15 @@ export const ConversationLive = (
             const rule = ownerFor(decided, facts)
             const ownerConfidence = decided.answers.find((answer) => answer.id === "owner")?.confidence ?? 0
             const sure = rule !== undefined && !belowThreshold(reflexConfig, "owner", ownerConfidence)
-            yield* say(topicBot.id, sure ? ack(language, rule.name) : ackUnnamedPhrase(language), event.id)
-            acked = sure ? { sent: true, owner: rule.id } : { sent: true }
+            // An owner already over its budget gets no "passei para" ack: intake refuses the task (conversation-replies.ts).
+            const windowMs = options.botBudgetWindowMs ?? BOT_BUDGET_WINDOW_MS
+            const refusedOwner = sure
+              ? yield* botOverBudget(beacon, yield* bots.get(rule.id), windowMs)
+              : false
+            if (!refusedOwner) {
+              yield* say(topicBot.id, sure ? ack(language, rule.name) : ackUnnamedPhrase(language), event.id)
+              acked = sure ? { sent: true, owner: rule.id } : { sent: true }
+            }
           }
           const decision = yield* escalate(
             {

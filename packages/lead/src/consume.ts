@@ -9,6 +9,7 @@ import {
 } from "@shoalwork/contracts"
 import { Tank, type TankShape } from "@shoalwork/tank"
 import { Effect, Ref, type Scope, Stream } from "effect"
+import type { BudgetWatch } from "./budget.js"
 import type { Lifecycle } from "./lifecycle.js"
 import { type Progress, withOutcome } from "./verdict.js"
 
@@ -29,6 +30,8 @@ export const makeConsume =
     stepId: StepId,
     progress: Ref.Ref<Progress>,
     model: string,
+    // Told each usage event once it is recorded; it may cut the run (budget.ts).
+    watch: Pick<BudgetWatch, "observe">,
   ) => {
     const ids = { taskId: spec.id, stepId, botId: bot.id }
     const handle = (event: ExecutorEvent): Effect.Effect<boolean> =>
@@ -56,6 +59,7 @@ export const makeConsume =
               model,
               usage: event.usage,
             })
+            yield* watch.observe(event.usage)
             return true
           }
           case "approval_needed": {

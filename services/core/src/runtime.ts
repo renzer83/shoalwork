@@ -104,7 +104,8 @@ export const AppLayer = Layer.unwrap(
     const reflexConfig = yield* loadReflexConfig(config.reflexConfigPath)
     const telegram = yield* telegramSettings(config)
     const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
-    const withLead = LeadLive(tiers).pipe(Layer.provideMerge(withStore))
+    const botBudgetWindowMs = config.budgetBotWindowHours * 60 * 60 * 1000
+    const withLead = LeadLive(tiers, { botBudgetWindowMs }).pipe(Layer.provideMerge(withStore))
     const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     // No connection to Ollama until a memory is saved or searched, so the core boots without it.
@@ -116,6 +117,7 @@ export const AppLayer = Layer.unwrap(
     const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withReef))
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
     return ConversationLive(tiers, reflexConfig, {
+      botBudgetWindowMs,
       warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },
       botFactory: {
         botsDir: `${REPO_ROOT}bots`,

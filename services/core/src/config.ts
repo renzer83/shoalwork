@@ -51,6 +51,8 @@ export const AppConfig = Config.all({
   // Watchdog (T-030): a running task silent this long is stale; a Tank process alive this long is killed.
   watchdogStaleMinutes: Config.Int("WATCHDOG_STALE_MINUTES").pipe(Config.withDefault(20)),
   watchdogMaxProcessMinutes: Config.Int("WATCHDOG_MAX_PROCESS_MINUTES").pipe(Config.withDefault(45)),
+  // Budget (T-029): a Bot's usage counts against its budget over this rolling window of hours.
+  budgetBotWindowHours: Config.Int("BUDGET_BOT_WINDOW_HOURS").pipe(Config.withDefault(24)),
   // Telegram (T-024): the connector starts only when a token is set. A blank value counts as unset (.env.example).
   telegramBotToken: Config.Redacted("TELEGRAM_BOT_TOKEN").pipe(Config.option),
   telegramAllowedUserIds: Config.String("TELEGRAM_ALLOWED_USER_IDS").pipe(Config.withDefault("")),

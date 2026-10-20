@@ -44,7 +44,14 @@ export const LeadLive = (
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       const lead: LeadShape = {
         abandon,
-        intake: makeIntake({ sql, beacon, bots, tasks, routing: tiers.routing }),
+        intake: makeIntake({
+          sql,
+          beacon,
+          bots,
+          tasks,
+          routing: tiers.routing,
+          botBudgetWindowMs: config.botBudgetWindowMs,
+        }),
         get: (id) =>
           tasks.get(id).pipe(
             Effect.map(({ spec, state, verdict }) => ({

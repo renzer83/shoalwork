@@ -2,8 +2,16 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { it } from "@effect/vitest"
+import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import { BotId, EventPayloads, type ExecutorEvent, NotFound } from "@shoalwork/contracts"
+import {
+  BotId,
+  EventPayloads,
+  type ExecutorEvent,
+  NotFound,
+  newTaskId,
+  streamIds,
+} from "@shoalwork/contracts"
 import type { MemoryItem } from "@shoalwork/reef"
 import { Clock, Duration, Effect, Fiber, Schema, Stream } from "effect"
 import { TestClock } from "effect/testing"
@@ -482,6 +490,46 @@ describe("provisional acknowledgement", () => {
       ])
     }).pipe(Effect.provide(h.layer))
   })
+
+  it.effect(
+    "does not acknowledge a task refused for the owner's budget; the budget warning is the answer",
+    () => {
+      const h = harness()
+      return Effect.gen(function* () {
+        const { lead, dev } = yield* createBots
+        const beacon = yield* Beacon
+        // The developer Bot already spent more than its budget in the window.
+        const taskId = newTaskId()
+        yield* beacon.append({
+          streamId: streamIds.task(taskId),
+          type: "usage.recorded",
+          payload: {
+            taskId,
+            botId: dev.id,
+            executor: "claude-code",
+            model: "fake",
+            usage: { tokensIn: 600000, tokensOut: 0, cacheRead: 0, cacheWrite: 0, usd: 0, seconds: 1 },
+          },
+          actor: "system:test",
+          correlationId: taskId,
+        })
+        const conversation = yield* Conversation
+        yield* conversation.onInbound(yield* inbound(lead, "implementa a issue 3 no repo X"))
+        yield* settle
+
+        const texts = h.telegram.sent.map((message) => message.text)
+        expect(texts.some((text) => text.includes("passei para"))).toBe(false)
+        // The warning goes to the topic the message came from, exactly once.
+        const warnings = h.telegram.sent.filter((message) =>
+          message.text.includes("Orçamento do Bot estourado"),
+        )
+        expect(warnings.map((message) => message.botId)).toEqual([lead.id])
+        const received = Array.from(yield* allEvents).filter((e) => e.type === "task.received")
+        expect(received).toHaveLength(1)
+        expect(typesOf(Array.from(yield* allEvents))).toContain("budget.exceeded")
+      }).pipe(Effect.provide(h.layer))
+    },
+  )
 
   it.effect("tells Renan when the intake fails after the acknowledgement", () => {
     const h = harness({ failIntake: true })

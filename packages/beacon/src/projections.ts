@@ -10,7 +10,7 @@ import {
   type Usage,
   ZERO_USAGE,
 } from "@shoalwork/contracts"
-import { Effect, Option, Schema, Stream } from "effect"
+import { DateTime, Effect, Option, Schema, Stream } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import { Beacon } from "./beacon.js"
 
@@ -64,6 +64,18 @@ export const costByBot = (events: ReadonlyArray<Event>): Map<BotId, Usage> => {
   return totals
 }
 
+// Usage a Bot recorded at or after `sinceMs` (epoch ms): the rolling window of its budget. Pass the events of usage.recorded.
+export const usageForBotSince = (events: ReadonlyArray<Event>, botId: BotId, sinceMs: number): Usage => {
+  let total: Usage = ZERO_USAGE
+  for (const event of events) {
+    if (event.type !== "usage.recorded" || DateTime.toEpochMillis(event.occurredAt) < sinceMs) continue
+    const payload = Option.getOrUndefined(decodeUsageRecorded(event.payload))
+    if (payload === undefined || payload.botId !== botId) continue
+    total = addUsage(total, payload.usage)
+  }
+  return total
+}
+
 // Per stream id, the event with the highest log position.
 export const latestPerStream = (events: ReadonlyArray<Event>): Map<string, Event> => {
   const latest = new Map<string, Event>()
@@ -103,4 +115,11 @@ export const readCostByBot = (): Effect.Effect<Map<BotId, Usage>, SqlError, Beac
     const beacon = yield* Beacon
     const events = yield* Stream.runCollect(beacon.readAll(0, ["usage.recorded"]))
     return costByBot(events)
+  })
+
+export const readUsageForBotSince = (botId: BotId, sinceMs: number): Effect.Effect<Usage, SqlError, Beacon> =>
+  Effect.gen(function* () {
+    const beacon = yield* Beacon
+    const events = yield* Stream.runCollect(beacon.readAll(0, ["usage.recorded"]))
+    return usageForBotSince(events, botId, sinceMs)
   })

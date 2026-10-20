@@ -105,12 +105,22 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
         return
       }
       if (verdict.kind === "budget_exceeded") {
-        yield* taskEvent(spec.id, "budget.exceeded", {
-          scope: "task",
-          refId: spec.id,
-          limit: spec.budget,
-          used: { ...usageToBudget(progress.usage), seconds: verdict.cost.seconds },
-        })
+        const bot =
+          progress.outcome._tag === "BudgetExceeded" && progress.outcome.scope === "bot"
+            ? progress.outcome
+            : undefined
+        yield* taskEvent(
+          spec.id,
+          "budget.exceeded",
+          bot === undefined
+            ? {
+                scope: "task",
+                refId: spec.id,
+                limit: spec.budget,
+                used: { ...usageToBudget(progress.usage), seconds: verdict.cost.seconds },
+              }
+            : { scope: "bot", refId: spec.botId, limit: bot.limit, used: bot.used },
+        )
       }
       yield* recordAttempt(spec, verdict, durationMs, progress)
       const exhausted = closing === "exhausted"

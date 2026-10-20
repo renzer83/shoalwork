@@ -1,6 +1,13 @@
 import { Schema } from "effect"
 
-export const Budget = Schema.Struct({ tokens: Schema.Int, seconds: Schema.Int, usd: Schema.Number })
+// A limit is never negative, and never NaN or infinite: Schema.Number accepts both, and `x < 0` lets NaN through.
+const Limit = Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))
+const Spend = Schema.Number.pipe(
+  Schema.check(Schema.isFinite()),
+  Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+)
+
+export const Budget = Schema.Struct({ tokens: Limit, seconds: Limit, usd: Spend })
 export type Budget = typeof Budget.Type
 
 export const Usage = Schema.Struct({

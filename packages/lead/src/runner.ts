@@ -5,6 +5,7 @@ import type { ExecutorRegistry, TierConfig } from "@shoalwork/executors"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Cause, Clock, Effect, Exit, Option, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
+import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.js"
 import { chooseExecutor } from "./choose.js"
 import { makeConsume } from "./consume.js"
 import type { ControlShape, RunHandle } from "./control.js"
@@ -41,6 +42,7 @@ export interface LeadConfig {
   readonly minRetryBudgetMs: number
   // How long a stop waits for the interrupted runs to finish their cleanup (control.ts).
   readonly stopWaitMs: number
+  readonly botBudgetWindowMs: number
 }
 
 export const DEFAULT_LEAD_CONFIG: LeadConfig = {
@@ -50,6 +52,7 @@ export const DEFAULT_LEAD_CONFIG: LeadConfig = {
   reapEveryMs: 60_000,
   minRetryBudgetMs: MIN_RETRY_BUDGET_MS,
   stopWaitMs: 30_000,
+  botBudgetWindowMs: BOT_BUDGET_WINDOW_MS,
 }
 
 export interface RunResult {
@@ -70,7 +73,7 @@ export interface RunnerDeps {
   readonly tiers: TierConfig
   readonly config: LeadConfig
   // Registers every run so that a stop can reach it.
-  readonly control: Pick<ControlShape, "track">
+  readonly control: Pick<ControlShape, "track" | "pause">
 }
 
 // Retries run inside the same runTask call, so the job's lock and heartbeat cover them and the task's time budget
@@ -133,6 +136,7 @@ export const makeRunner = (deps: RunnerDeps) => {
         ...(effort === undefined ? {} : { effort }),
         ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
       }
+      const watch = yield* watchBudgets({ beacon, bot, spec, carry, windowMs: config.botBudgetWindowMs })
       const use = (ctx: TankContext) =>
         Effect.gen(function* () {
           // The process groups of this run are written down so that a restart can kill the ones it leaves behind.
@@ -145,7 +149,7 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             cwd: ctx.cwd,
           })
-          yield* consume(spec, bot, executor.id, executor.run(task, ctx), stepId, progress, model)
+          yield* consume(spec, bot, executor.id, executor.run(task, ctx), stepId, progress, model, watch)
           yield* deliver(spec, ctx, progress)
         }).pipe(Effect.scoped, Effect.as(ctx))
       // Keep the worktree for diagnosis unless the run ended in an ok verdict.
@@ -174,7 +178,7 @@ export const makeRunner = (deps: RunnerDeps) => {
         ),
       )
       // A stop interrupts the run: its finalizers (Tank processes, worktree release) finish before this resolves.
-      return yield* raceWithStop(run, handle, budgetLeftMs, progress)
+      return yield* raceWithStop(run, handle, budgetLeftMs, progress, watch.breached)
     })
 
   // One run of the task, with what its verdict and the retry decision need. Never fails.
@@ -238,6 +242,7 @@ export const makeRunner = (deps: RunnerDeps) => {
       // consider the job done, so the queue delivers the task again.
       const closing = decision._tag === "Exhausted" ? "exhausted" : "settle"
       const recorded = yield* record(spec, verdict, round.durationMs, round.progress, closing)
+      yield* pauseBotOnBreach(control, spec, round.progress.outcome, raiseError)
       return { verdict, recorded, stopped: round.progress.outcome._tag === "Stopped" }
     })
 

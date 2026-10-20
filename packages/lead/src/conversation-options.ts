@@ -11,6 +11,8 @@ export interface ConversationOptions {
   // Creating Bots by conversation (bot-factory.ts). Absent: "create a bot" is an ordinary message.
   // The rest of the factory's dependencies (database, registry, Telegram, the model) come from the layer.
   readonly botFactory?: BotFactoryOptions
+  // Rolling window of a Bot's budget (budget.ts): a task whose owner is already over it gets no provisional ack.
+  readonly botBudgetWindowMs?: number
   // What /remember and /forget talk to. Absent: the Reef of the layer's context, when there is one.
   readonly memory?: MemoryPort
 }

@@ -2,12 +2,13 @@ import type { BeaconShape } from "@shoalwork/beacon"
 import type { BotRegistryShape } from "@shoalwork/bots"
 import type { Bot, BotId, Event, TaskId } from "@shoalwork/contracts"
 import type { Facts, StandardDecision } from "@shoalwork/reflex"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import type { Chat } from "./chat.js"
 import { budgetFor, historyOf, isTaskIntent, ownerFor } from "./conversation-context.js"
 import type { LeadShape } from "./lead.js"
 import {
   ack,
+  botBudgetPhrase,
   chatFailedPhrase,
   type Lang,
   noOwnerPhrase,
@@ -81,21 +82,40 @@ export const makeHandOff =
       if (!isTaskIntent(intent) || owner === undefined) {
         return yield* say(topicBot.id, noOwnerPhrase(language), event.id)
       }
-      if (!acked.sent || acked.owner === undefined) {
-        yield* say(topicBot.id, ack(language, owner.name), event.id)
-      } else if (acked.owner !== owner.id) {
-        yield* say(topicBot.id, reassignedPhrase(language, owner.name), event.id)
-      }
       const ownerBot = yield* bots.get(owner.id)
-      const spec = yield* lead.intake({
-        botId: owner.id,
-        title: oneLine(text, TITLE_MAX),
-        prompt: text,
-        kind: intent,
-        acceptance: [],
-        budget: budgetFor(intent, ownerBot),
-        origin: "telegram",
-        correlationId: event.correlationId,
-      })
-      languages.set(spec.id, language)
+      const acknowledge =
+        !acked.sent || acked.owner === undefined
+          ? say(topicBot.id, ack(language, owner.name), event.id)
+          : acked.owner !== owner.id
+            ? say(topicBot.id, reassignedPhrase(language, owner.name), event.id)
+            : Effect.void
+      // The task is stored first: a task refused for the Bot's budget is already failed, and then the budget warning
+      // (narrate.ts) is the only answer. A failing intake still gets its acknowledgement before the failure.
+      const intake = yield* Effect.exit(
+        Effect.gen(function* () {
+          const spec = yield* lead.intake({
+            botId: owner.id,
+            title: oneLine(text, TITLE_MAX),
+            prompt: text,
+            kind: intent,
+            acceptance: [],
+            budget: budgetFor(intent, ownerBot),
+            origin: "telegram",
+            correlationId: event.correlationId,
+          })
+          languages.set(spec.id, language)
+          const stored = yield* lead.get(spec.id)
+          return stored.state === "failed" && stored.verdict?.kind === "budget_exceeded"
+        }),
+      )
+      if (Exit.isFailure(intake)) {
+        yield* acknowledge
+        return yield* Effect.failCause(intake.cause)
+      }
+      if (intake.value) {
+        // Answered here, in the topic the message came from: the narrator does not speak for a task never run.
+        yield* say(topicBot.id, botBudgetPhrase(language), event.id)
+        return
+      }
+      yield* acknowledge
     })

@@ -13,6 +13,20 @@ describe("budget", () => {
     expect(() => Schema.decodeUnknownSync(Budget)({ tokens: 1.5, seconds: 20, usd: 0.25 })).toThrow()
   })
 
+  it("Budget rejects negative, NaN and infinite limits", () => {
+    const valid = { tokens: 0, seconds: 0, usd: 0 }
+    expect(Schema.decodeUnknownSync(Budget)(valid)).toEqual(valid)
+    for (const bad of [
+      { tokens: -1, seconds: 20, usd: 0.25 },
+      { tokens: 10, seconds: -1, usd: 0.25 },
+      { tokens: 10, seconds: 20, usd: -0.01 },
+      { tokens: 10, seconds: 20, usd: Number.NaN },
+      { tokens: 10, seconds: 20, usd: Number.POSITIVE_INFINITY },
+    ]) {
+      expect(() => Schema.decodeUnknownSync(Budget)(bad)).toThrow()
+    }
+  })
+
   it("addUsage sums every field", () => {
     const a = usage({ tokensIn: 1, tokensOut: 2, cacheRead: 3, cacheWrite: 4, usd: 0.5, seconds: 5 })
     const b = usage({ tokensIn: 10, tokensOut: 20, cacheRead: 30, cacheWrite: 40, usd: 0.25, seconds: 50 })
