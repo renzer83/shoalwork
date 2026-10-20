@@ -24,6 +24,7 @@ import {
   executorConsolidationModel,
   Lead,
   LeadLive,
+  loadContextConfig,
   McpTokensLive,
   startConsolidateHook,
   TaskStoreLive,
@@ -32,7 +33,7 @@ import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
-import { AppConfig, type AppConfigShape, hostEnvSnapshot, REPO_ROOT } from "./config.js"
+import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
 import { TelegramFromSettings, TelegramStatus, telegramSettings } from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
@@ -104,22 +105,28 @@ export const AppLayer = Layer.unwrap(
     const tiers = yield* loadModelTiers(config.modelTiersPath)
     const reflexConfig = yield* loadReflexConfig(config.reflexConfigPath)
     const telegram = yield* telegramSettings(config)
+    const contextConfig = yield* loadContextConfig(config.contextConfigPath)
     const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
     // Execution tokens (T-167) sit under the Lead, so the Lead can issue and revoke them for each Bot run.
     const withMcpTokens = McpTokensLive.pipe(Layer.provideMerge(withStore))
     const botBudgetWindowMs = config.budgetBotWindowHours * 60 * 60 * 1000
-    const withLead = LeadLive(tiers, { botBudgetWindowMs }).pipe(Layer.provideMerge(withMcpTokens))
-    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
-    const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     // No connection to Ollama until a memory is saved or searched, so the core boots without it.
     const withEmbedder = EmbedderOllamaLive({
       baseUrl: config.ollamaUrl,
       model: config.ollamaEmbedModel,
-    }).pipe(Layer.provideMerge(withSessions))
+    }).pipe(Layer.provideMerge(withMcpTokens))
     const withReef = ReefLive().pipe(Layer.provideMerge(withEmbedder))
-    // Code search for the MCP routes (T-167). Same embedder and database as the Reef.
+    // Code search for the MCP routes (T-167) and the briefing's code block (T-041). Same embedder and database as the Reef.
+    // Below the Lead, so the Lead finds the Indexer in its context.
     const withIndexer = IndexerLive().pipe(Layer.provideMerge(withReef))
-    const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withIndexer))
+    // The reef MCP server of a Bot run: its entrypoint and the origin of this core (T-168).
+    const mcp = { serverEntry: config.reefMcpEntry, api: coreApiOrigin(config.appUrl, config.port) }
+    const withLead = LeadLive(tiers, { botBudgetWindowMs, mcp, context: contextConfig }).pipe(
+      Layer.provideMerge(withIndexer),
+    )
+    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
+    const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
+    const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withSessions))
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
     return ConversationLive(tiers, reflexConfig, {
       botBudgetWindowMs,

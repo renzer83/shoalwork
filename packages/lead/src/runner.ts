@@ -1,25 +1,28 @@
 import type { BeaconShape } from "@shoalwork/beacon"
 import type { BotRegistryShape } from "@shoalwork/bots"
-import { type ExecutorTask, type TaskId, type TaskSpec, type Verdict, ZERO_USAGE } from "@shoalwork/contracts"
-import type { ExecutorRegistry, TierConfig } from "@shoalwork/executors"
+import { type TaskId, type TaskSpec, type Verdict, ZERO_USAGE } from "@shoalwork/contracts"
+import type { ExecutorContext, ExecutorRegistry, TierConfig } from "@shoalwork/executors"
+import type { IndexerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Cause, Clock, Effect, Exit, Option, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.js"
 import { chooseExecutor } from "./choose.js"
 import { makeConsume } from "./consume.js"
-import { type BriefingMemory, makeInjector } from "./context/inject.js"
+import type { ContextConfig } from "./context/config.js"
+import type { BriefingMemory } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
-import { CODE_ALLOWED_TOOLS, makeDeliver } from "./deliver.js"
+import { makeDeliver } from "./deliver.js"
 import { makeLifecycle } from "./lifecycle.js"
+import type { McpTokensShape } from "./mcp-tokens.js"
 import { recoveredCarry } from "./resume.js"
-import { buildRetryPrompt, type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
-import { clearProcesses, watchProcesses } from "./run-processes.js"
+import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
+import { watchProcesses } from "./run-processes.js"
+import { executorTaskFor, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 import { raceWithStop } from "./stoppable.js"
 import type { TaskStoreShape } from "./tasks.js"
 import {
   blockedVerdict,
-  buildPrompt,
   clip,
   describeFailure,
   INITIAL,
@@ -44,6 +47,10 @@ export interface LeadConfig {
   // How long a stop waits for the interrupted runs to finish their cleanup (control.ts).
   readonly stopWaitMs: number
   readonly botBudgetWindowMs: number
+  // The reef MCP server a Bot with an indexed repo gets (T-168). Without it no run is given MCP.
+  readonly mcp?: McpServerConfig
+  // config/context.yaml, read once by the composition root (T-041).
+  readonly context?: ContextConfig
 }
 
 export const DEFAULT_LEAD_CONFIG: LeadConfig = {
@@ -76,6 +83,10 @@ export interface RunnerDeps {
   // Registers every run so that a stop can reach it.
   readonly control: Pick<ControlShape, "track" | "pause">
   readonly memory?: BriefingMemory | undefined
+  // Token store of the reef MCP server (T-168): one token per execution, revoked when it ends.
+  readonly tokens: McpTokensShape
+  // The repo index, when the composition root has one (the briefing reads code from it).
+  readonly indexer?: IndexerShape | undefined
 }
 
 // Retries run inside the same runTask call, so the job's lock and heartbeat cover them and the task's time budget
@@ -89,7 +100,18 @@ export const makeRunner = (deps: RunnerDeps) => {
   })
   const consume = makeConsume({ taskEvent, raiseError, tank })
   const deliver = makeDeliver({ tank, raiseError })
-  const inject = makeInjector({ tank, memory: deps.memory, raiseError })
+  const setup = makeRunSetup({
+    sql,
+    bots,
+    tank,
+    tokens: deps.tokens,
+    mcp: config.mcp,
+    memory: deps.memory,
+    raiseError,
+    indexer: deps.indexer,
+    context: config.context,
+    recordAssembled: (spec, payload) => taskEvent(spec.id, "context.assembled", payload),
+  })
   // One executor run, from transition to running until the worktree is released. A retry (carry) continues the
   // previous run's step: same worktree and branch, and the executor session when there is one.
   // Resolves with the context when the run reached its end; never fails: problems become the progress outcome.
@@ -106,12 +128,7 @@ export const makeRunner = (deps: RunnerDeps) => {
       const { attempts } = yield* tasks.get(spec.id)
       const stepId = carry?.stepId ?? stepIdFor(spec.id, attempts)
       yield* Ref.update(progress, (p) => ({ ...p, stepId, attempt: attempts }))
-      // Another task of the same Bot may already have set it. A paused Bot stays paused while its tasks run.
-      const states = yield* bots.list()
-      const botState = states.find((b) => b.id === spec.botId)?.state
-      if (botState !== "working" && botState !== "paused") {
-        yield* bots.setState(spec.botId, "working", spec.id)
-      }
+      yield* setup.markWorking(spec)
       const bot = yield* bots.get(spec.botId)
       const chosen = yield* chooseExecutor(tiers, bot, spec.tier, executors)
       if (Option.isNone(chosen)) {
@@ -123,23 +140,17 @@ export const makeRunner = (deps: RunnerDeps) => {
       // The model and effort the tier table (or the Bot override) resolved travel in the task: the adapter's argv
       // uses them, and executor.started reports the same model.
       const { executor, model, effort } = chosen.value
-      const resumeSessionId = carry?.sessionId
-      const task: ExecutorTask = {
-        taskId: spec.id,
-        stepId,
+      const task = executorTaskFor({
+        spec,
         botId: bot.id,
-        prompt: carry === undefined ? buildPrompt(spec) : buildRetryPrompt(spec, { tail: carry.tail }),
-        tier: spec.tier,
-        allowedTools: spec.kind === "code" && spec.repo !== undefined ? [...CODE_ALLOWED_TOOLS] : [],
-        permissionMode: "edit",
-        maxTurns: config.maxTurns,
-        budget: spec.budget,
+        carry,
+        stepId,
         model,
-        ...(effort === undefined ? {} : { effort }),
-        ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
-      }
+        effort,
+        maxTurns: config.maxTurns,
+      })
       const watch = yield* watchBudgets({ beacon, bot, spec, carry, windowMs: config.botBudgetWindowMs })
-      const use = (ctx: TankContext) =>
+      const use = (ctx: TankContext, context: ExecutorContext) =>
         Effect.gen(function* () {
           // The process groups of this run are written down so that a restart can kill the ones it leaves behind.
           yield* Effect.forkScoped(watchProcesses(sql, spec.id, ctx.cwd))
@@ -151,34 +162,23 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             cwd: ctx.cwd,
           })
-          const delivered = yield* inject(ctx, { spec, bot, task, executor: executor.id })
-          yield* consume(spec, bot, executor.id, executor.run(delivered, ctx), stepId, progress, model, watch)
+          const delivered = yield* setup.inject(ctx, { spec, bot, task, executor: executor.id })
+          yield* consume(
+            spec,
+            bot,
+            executor.id,
+            executor.run(delivered, context),
+            stepId,
+            progress,
+            model,
+            watch,
+          )
           yield* deliver(spec, ctx, progress)
         }).pipe(Effect.scoped, Effect.as(ctx))
-      // Keep the worktree for diagnosis unless the run ended in an ok verdict.
-      const release = (ctx: TankContext, exit: Exit.Exit<unknown, unknown>) =>
-        Effect.gen(function* () {
-          const ok = Exit.isSuccess(exit) && (yield* Ref.get(progress)).outcome._tag === "Done"
-          yield* clearProcesses(sql, spec.id)
-          yield* tank
-            .release(ctx, { keepWorktree: !ok })
-            .pipe(
-              Effect.catch((error) =>
-                raiseError(spec, "tank.release", error._tag, describeFailure(error).message),
-              ),
-            )
-        })
-      const prepared = {
-        stepId,
-        ...(spec.repo === undefined ? {} : { repo: spec.repo }),
-        ...(carry?.worktree === undefined ? {} : { reuse: carry.worktree }),
-      }
-      // Like acquireUseRelease, but prepare stays interruptible so the time budget also covers it
-      // (interrupting it tears down the Tank's process group); once a context exists, release always runs.
-      const run = Effect.uninterruptibleMask((restore) =>
-        restore(tank.prepare(bot, prepared)).pipe(
-          Effect.flatMap((ctx) => restore(use(ctx)).pipe(Effect.onExit((exit) => release(ctx, exit)))),
-        ),
+      // The whole bracket (MCP grant, Tank context, release, token revoke) lives in run-setup.ts.
+      const run = setup.acquire(
+        { spec, bot, executorId: executor.id, budgetLeftMs, stepId, reuse: carry?.worktree, progress },
+        use,
       )
       // A stop interrupts the run: its finalizers (Tank processes, worktree release) finish before this resolves.
       return yield* raceWithStop(run, handle, budgetLeftMs, progress, watch.breached)

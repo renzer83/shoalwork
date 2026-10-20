@@ -22,7 +22,13 @@ export {
   ExecutorRegistry,
   makeRegistry,
 } from "./executor.js"
-export { MCP_TOKEN_ENV, type McpAttachment, McpConfigError, mcpConfigFor } from "./mcp-config.js"
+export {
+  MCP_NAME_PATTERN,
+  MCP_TOKEN_ENV,
+  type McpAttachment,
+  McpConfigError,
+  mcpConfigFor,
+} from "./mcp-config.js"
 export { parseNdjsonLines } from "./ndjson.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
 export {

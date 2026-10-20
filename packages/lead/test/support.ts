@@ -17,7 +17,15 @@ import { type Executor, ExecutorRegistry, makeRegistry, TierConfig } from "@shoa
 import { type ExecResult, Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import { Lead, type LeadConfig, LeadLive, TaskStore } from "../src/index.js"
+import {
+  Lead,
+  type LeadConfig,
+  LeadLive,
+  McpTokens,
+  type McpTokensShape,
+  makeMcpTokens,
+  TaskStore,
+} from "../src/index.js"
 import { makeTaskStore, type TaskStoreShape } from "../src/tasks.js"
 
 export const CLAUDE = Schema.decodeUnknownSync(ExecutorId)("claude-code")
@@ -44,7 +52,7 @@ export const TEST_TIERS = Schema.decodeUnknownSync(TierConfig)({
   },
 })
 
-const NEW_BOT = Schema.decodeUnknownSync(NewBot)({
+export const NEW_BOT = Schema.decodeUnknownSync(NewBot)({
   name: "worker-bot",
   role: "developer",
   kind: "auxiliary",
@@ -235,6 +243,8 @@ export const leadLayer = (opts: {
   readonly liveBeacon?: boolean
   // Wraps the real TaskStore, e.g. to make some writes fail.
   readonly wrapStore?: (real: TaskStoreShape) => TaskStoreShape
+  // Wraps the real token store, e.g. to make issuing fail.
+  readonly wrapTokens?: (real: McpTokensShape) => McpTokensShape
 }) => {
   const tank = opts.tank ?? makeFakeTank()
   const registry =
@@ -249,7 +259,12 @@ export const leadLayer = (opts: {
     ),
     bots,
   )
-  const deps = Layer.provideMerge(Layer.merge(Layer.succeed(Tank, tank.shape), registry), store)
+  const wrapTokens = opts.wrapTokens ?? ((real: McpTokensShape) => real)
+  const tokens = Layer.effect(
+    McpTokens,
+    Effect.map(SqlClient, (sql) => wrapTokens(makeMcpTokens(sql))),
+  )
+  const deps = Layer.provideMerge(Layer.mergeAll(Layer.succeed(Tank, tank.shape), registry, tokens), store)
   return Layer.provideMerge(LeadLive(opts.tiers ?? TEST_TIERS, opts.config), deps)
 }
 

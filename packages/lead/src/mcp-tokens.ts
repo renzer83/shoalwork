@@ -52,6 +52,8 @@ export interface McpTokensShape {
   readonly verify: (token: string) => Effect.Effect<McpScope, McpTokenRejected | SqlError>
   // Ends every token of the task. Idempotent.
   readonly revoke: (taskId: TaskId) => Effect.Effect<void, SqlError>
+  // Boot: ends every token whose task is not running (a leftover of a run the restart interrupted). Idempotent.
+  readonly revokeStale: () => Effect.Effect<void, SqlError>
 }
 
 export class McpTokens extends Context.Service<McpTokens, McpTokensShape>()("@shoalwork/McpTokens") {}
@@ -106,6 +108,12 @@ export const makeMcpTokens = (sql: SqlClient, clock: () => Date = () => new Date
       yield* sql`UPDATE mcp_tokens SET revoked_at = ${now.toISOString()} WHERE task_id = ${taskId} AND revoked_at IS NULL`
       const cutoff = new Date(now.getTime() - MCP_TOKEN_RETENTION_MS).toISOString()
       yield* sql`DELETE FROM mcp_tokens WHERE expires_at < ${cutoff} OR (revoked_at IS NOT NULL AND revoked_at < ${cutoff})`
+    }),
+  revokeStale: () =>
+    Effect.gen(function* () {
+      const now = clock()
+      yield* sql`UPDATE mcp_tokens SET revoked_at = ${now.toISOString()} WHERE revoked_at IS NULL
+        AND task_id NOT IN (SELECT id FROM tasks WHERE state = 'running')`
     }),
 })
 

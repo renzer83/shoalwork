@@ -23,6 +23,15 @@ export const APP_VERSION: string = Schema.decodeUnknownSync(PackageManifest)(man
 // Snapshot of the host env, taken when called (after .env is loaded). Only the Bot allowlist in the Tank reads it.
 export const hostEnvSnapshot = (): Readonly<Record<string, string | undefined>> => ({ ...process.env })
 
+// Origin the Bot's reef MCP server calls: APP_URL when set, else the loopback address of this core (T-168).
+export const coreApiOrigin = (appUrl: string, port: number): string =>
+  appUrl.trim() === "" ? `http://127.0.0.1:${port}` : appUrl.trim()
+
+// Built entrypoint of the reef MCP server: REEF_MCP_ENTRY when set (relative paths anchor to the repo root), else the
+// default build output of packages/reef (T-168).
+export const reefMcpEntryFrom = (configured: string): string =>
+  resolveRepoPath(configured.trim() === "" ? "packages/reef/dist/mcp.js" : configured.trim())
+
 export const AppConfig = Config.all({
   port: Config.Int("PORT").pipe(Config.withDefault(28900)),
   apiToken: Config.Redacted("API_TOKEN"),
@@ -70,6 +79,14 @@ export const AppConfig = Config.all({
   ollamaEmbedModel: Config.String("OLLAMA_EMBED_MODEL").pipe(
     Config.withDefault(""),
     Config.map(orDefault("bge-m3")),
+  ),
+  // Reef MCP server (T-168): the core origin the Bot's server calls (blank: loopback on PORT) and the built entrypoint.
+  appUrl: Config.String("APP_URL").pipe(Config.withDefault("")),
+  reefMcpEntry: Config.String("REEF_MCP_ENTRY").pipe(Config.withDefault(""), Config.map(reefMcpEntryFrom)),
+  // Briefing context budgets (T-041). Relative paths resolve against the repo root.
+  contextConfigPath: Config.String("CONTEXT_CONFIG_PATH").pipe(
+    Config.withDefault("config/context.yaml"),
+    Config.map((configured) => resolveRepoPath(configured)),
   ),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: Config.String("MODEL_TIERS_PATH").pipe(

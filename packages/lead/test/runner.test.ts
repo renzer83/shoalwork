@@ -45,6 +45,7 @@ describe("Lead.runOnce", () => {
         "task.state_changed",
         "bot.state_changed",
         "executor.started",
+        "context.assembled",
         "executor.event", // started
         "executor.event", // text
         "executor.event", // usage

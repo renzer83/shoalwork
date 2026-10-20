@@ -1,13 +1,14 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
-import { Reef } from "@shoalwork/reef"
+import { Indexer, Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Control, makeControl } from "./control.js"
 import { makeIntake } from "./intake.js"
 import { Lead, type LeadShape } from "./lead.js"
+import { McpTokens, McpTokensLive } from "./mcp-tokens.js"
 import { DEFAULT_LEAD_CONFIG, type LeadConfig, makeRunner } from "./runner.js"
 import { TaskStore, TaskStoreLive } from "./tasks.js"
 import { makeWorker } from "./worker.js"
@@ -19,7 +20,7 @@ export const LeadLive = (
 ): Layer.Layer<
   Lead | Control,
   never,
-  SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry | TaskStore
+  SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry | TaskStore | McpTokens
 > =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -29,8 +30,11 @@ export const LeadLive = (
       const tank = yield* Tank
       const executors = yield* ExecutorRegistry
       const tasks = yield* TaskStore
+      const tokens = yield* McpTokens
       // Without a Reef the briefing has no memories; the rest of it is still delivered.
       const memory = Option.getOrUndefined(yield* Effect.serviceOption(Reef))
+      // The repo index feeds the briefing's code block (T-041); without it the briefing carries none.
+      const indexer = Option.getOrUndefined(yield* Effect.serviceOption(Indexer))
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
       const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs })
       const { runTask, abandon } = makeRunner({
@@ -44,6 +48,8 @@ export const LeadLive = (
         config,
         control,
         memory,
+        tokens,
+        indexer,
       })
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       const lead: LeadShape = {
@@ -65,7 +71,12 @@ export const LeadLive = (
             })),
           ),
         runOnce: (id) => Effect.map(runTask(id), (result) => result.verdict),
-        startWorker,
+        // Boot: tokens of runs the restart interrupted are ended before the worker takes new work (T-168).
+        startWorker: (opts) =>
+          tokens.revokeStale().pipe(
+            Effect.catch((error) => Effect.logError(`could not revoke stale MCP tokens: ${error._tag}`)),
+            Effect.andThen(startWorker(opts)),
+          ),
       }
       return Context.make(Lead, lead).pipe(Context.add(Control, control))
     }),
@@ -76,7 +87,7 @@ export const LeadWithStore = (
   tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
 ): Layer.Layer<Lead | Control, never, SqlClient | Beacon | BotRegistry | Tank | ExecutorRegistry> =>
-  Layer.provide(LeadLive(tiers, overrides), TaskStoreLive)
+  Layer.provide(LeadLive(tiers, overrides), Layer.merge(TaskStoreLive, McpTokensLive))
 
 export {
   type BotFactoryConfig,
@@ -104,6 +115,7 @@ export {
   parseMemoryCallback,
   rememberCommand,
 } from "./commands/memory.js"
+export { type ContextConfig, loadContextConfig } from "./context/config.js"
 export {
   botTarget,
   Control,
@@ -146,6 +158,8 @@ export {
   makeMcpTokens,
 } from "./mcp-tokens.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
+export { repoKeyOf } from "./repo-key.js"
+export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"
 export { stepIdFor } from "./verdict.js"
