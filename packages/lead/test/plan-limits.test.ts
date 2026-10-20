@@ -169,11 +169,12 @@ describe("fitting the step budgets to the task budget", () => {
 
   it.effect("sends the starved plan back once and accepts the corrected one", () =>
     Effect.gen(function* () {
-      const twelve = Array.from({ length: 12 }, (_, i) =>
+      // Eleven steps: a code plan's review step takes the twelfth slot, so the starved budget is what gets refused.
+      const eleven = Array.from({ length: 11 }, (_, i) =>
         stepJson(`s${i}`, { budget: { tokens: 100_000, seconds: 5, usd: 0.01 } }),
       )
       const small = planJson([stepJson("a", { budget: { tokens: 5, seconds: 5, usd: 0.01 } })])
-      const t = yield* setup([planJson(twelve), small], { budget: { tokens: 6, seconds: 60, usd: 1 } })
+      const t = yield* setup([planJson(eleven), small], { budget: { tokens: 6, seconds: 60, usd: 1 } })
       const outcome = yield* t.planner.plan(t.task)
       expect(outcome.kind).toBe("planned")
       expect(t.script.prompts[1]).toContain("leaves step")

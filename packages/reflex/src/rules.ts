@@ -260,3 +260,21 @@ export const scoreAll = (facts: Facts, c: CompiledRules): StandardScores => {
     language,
   }
 }
+
+// Outcome of the tests of a step, as the Lead's verifier reports it: every command passed, one failed, or none exists.
+export type TestsOutcome = "pass" | "fail" | "none"
+
+// Confidence of the v0 "result meets criterion?" rule: a test verdict is conclusive; without tests the answer is
+// a guess (0.5), below the 0.6 at which the Lead decides alone.
+const CRITERION_CONFIDENT = 0.9
+const CRITERION_UNKNOWN = 0.5
+
+export const criterionRule = (tests: TestsOutcome): Scored<boolean> => {
+  if (tests === "pass") {
+    return { value: true, confidence: CRITERION_CONFIDENT }
+  }
+  if (tests === "fail") {
+    return { value: false, confidence: CRITERION_CONFIDENT }
+  }
+  return { value: false, confidence: CRITERION_UNKNOWN }
+}

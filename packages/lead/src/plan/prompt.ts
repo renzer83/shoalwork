@@ -1,6 +1,6 @@
 import type { Budget, TaskSpec } from "@shoalwork/contracts"
 import { clip } from "../verdict.js"
-import { MAX_STEPS, NEW_BOT } from "./check.js"
+import { MAX_STEPS, NEW_BOT, stepsBudgetOf } from "./check.js"
 import { LIMITS, planJsonSchema } from "./schema-json.js"
 
 const ROLE_MAX = 200
@@ -26,19 +26,28 @@ const budgetLine = (budget: Budget): string =>
 // The closed question for the heavy tier. The task text is data from a person, never instructions for the model (R14).
 export const buildPlanPrompt = (input: PlanPromptInput): string => {
   const { task, bots, executors, previousProblems } = input
+  // A code plan gets one review step from the Lead, last: the model's steps have one slot less and a reserved budget.
+  const code = task.kind === "code"
+  const stepLimit = code ? MAX_STEPS - 1 : MAX_STEPS
   return [
     "You split one task into a plan of steps for a team of bots. Answer ONLY with one JSON object, no text around it.",
     `JSON Schema of the answer: ${JSON.stringify(planJsonSchema.schema)}`,
     "Rules:",
-    `- 3 to 8 steps (never more than ${MAX_STEPS}), each independently verifiable.`,
+    `- 3 to 8 steps (never more than ${stepLimit}${code ? ", the Lead adds one review step last" : ""}), each independently verifiable.`,
     '- "ref" is a short label for the step (letters, digits, "-" and "_", up to 32 characters), unique in the plan.',
     '- "dependsOn" lists the refs of other steps, and only when the step consumes the output of those steps.',
     '- "acceptance" has at least one concrete, checkable criterion per step.',
+    '- An acceptance item that starts with "$ " is a command the Lead runs in the repo, with no shell (for example "$ pnpm --filter @shoalwork/lead test"). Only test and lint commands of the repo are accepted; any other item is a criterion for a judge.',
     `- "assignedBot" is a name from the list of bots below, or "${NEW_BOT}" when none fits.`,
     '- "tier" is "heavy" for steps that need reasoning or code changes, "light" for simple operations.',
     `- title up to ${LIMITS.title} characters, prompt up to ${LIMITS.prompt}, each criterion up to ${LIMITS.criterion}, up to ${LIMITS.criteria} criteria per step.`,
     "- The sum of the step budgets must not pass the total budget, in every dimension.",
     `Total budget: ${budgetLine(task.budget)}`,
+    ...(code
+      ? [
+          `The steps together must fit in ${budgetLine(stepsBudgetOf(task.budget))}: the rest of the total budget is reserved for the review step.`,
+        ]
+      : []),
     `Task kind: ${task.kind}`,
     "Available bots (name: role):",
     ...bots.map((bot) => `- ${bot.name}: ${clip(bot.role, ROLE_MAX)}`),

@@ -42,13 +42,28 @@ describe("Planner.plan rules", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.effect("accepts exactly the step limit", () =>
+  it.effect("accepts the step limit minus the review step of a code plan, and appends the review last", () =>
     Effect.gen(function* () {
-      const steps = Array.from({ length: MAX_STEPS }, (_, index) => stepJson(`s${index}`))
+      const steps = Array.from({ length: MAX_STEPS - 1 }, (_, index) => stepJson(`s${index}`))
       const t = yield* setup([planJson(steps)])
       const outcome = yield* t.planner.plan(t.task)
       expect(outcome.kind).toBe("planned")
       expect(t.script.prompts).toHaveLength(1)
+      if (outcome.kind !== "planned") return
+      expect(outcome.plan.steps).toHaveLength(MAX_STEPS)
+      const review = outcome.plan.steps[MAX_STEPS - 1]
+      expect(review?.title).toBe("Review")
+      expect(review?.dependsOn).toHaveLength(MAX_STEPS - 1)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("refuses a code plan with no room for the review step and asks again", () =>
+    Effect.gen(function* () {
+      const steps = Array.from({ length: MAX_STEPS }, (_, index) => stepJson(`s${index}`))
+      const t = yield* setup([planJson(steps), planJson([stepJson("a")])])
+      expect((yield* t.planner.plan(t.task)).kind).toBe("planned")
+      expect(t.script.prompts).toHaveLength(2)
+      expect(t.script.prompts[1]).toContain("the review step included")
     }).pipe(Effect.provide(TestLayer)),
   )
 

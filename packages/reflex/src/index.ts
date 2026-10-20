@@ -8,3 +8,4 @@ export {
   toNdjsonLine,
 } from "./dataset.js"
 export { makeReflexLive, Reflex, type ReflexShape } from "./reflex.js"
+export { criterionRule, type TestsOutcome } from "./rules.js"

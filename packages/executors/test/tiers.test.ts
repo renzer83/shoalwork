@@ -226,3 +226,31 @@ describe("adapter mapTier injection", () => {
     expect(args).not.toContain("--effort")
   })
 })
+
+describe("resolveTier exclude", () => {
+  it.effect("an excluded primary executor is replaced by the first allowed alternative, as a fallback", () =>
+    Effect.gen(function* () {
+      const resolved = yield* resolveTier(
+        config(),
+        noOverride,
+        "heavy",
+        [stub("claude-code"), stub("codex")],
+        {
+          exclude: [id("claude-code")],
+        },
+      )
+      expect(resolved).toEqual({ executor: "codex", model: "codex-model", fallback: true })
+    }),
+  )
+
+  it.effect("fails with the excluded executors named when no other executor is left", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        resolveTier(config(), noOverride, "heavy", [stub("claude-code"), stub("codex")], {
+          exclude: [id("claude-code"), id("codex")],
+        }),
+      )
+      expect(error.message).toContain("excluded: claude-code, codex")
+    }),
+  )
+})

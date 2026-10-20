@@ -18,14 +18,17 @@ describe("Planner.plan", () => {
 
       const plan = outcome.plan
       expect(plan.taskId).toBe(t.task.id)
-      expect(plan.steps).toHaveLength(3)
-      const [schema, link, endpoint] = plan.steps
+      // Three model steps plus the review step the Lead adds to a code plan, last.
+      expect(plan.steps).toHaveLength(4)
+      const [schema, link, endpoint, review] = plan.steps
       expect(endpoint?.dependsOn).toEqual([schema?.id, link?.id])
+      expect(review?.title).toBe("Review")
+      expect(review?.dependsOn).toEqual([schema?.id, link?.id, endpoint?.id])
       // The Bot name became its id; "new" left the step without an owner.
       expect(schema?.assignedBot).toBe(t.bot.id)
       expect(link?.assignedBot).toBeUndefined()
       yield* validatePlan(plan)
-      expect(topoOrder(plan).map((level) => level.length)).toEqual([2, 1])
+      expect(topoOrder(plan).map((level) => level.length)).toEqual([2, 1, 1])
 
       const [row] = yield* t.rows()
       expect(row?.id).toBe(plan.id)
@@ -41,7 +44,7 @@ describe("Planner.plan", () => {
         "task.state_changed",
       ])
       expect(events[0]?.payload).toMatchObject({ from: "received", to: "planning" })
-      expect(events[1]?.payload).toEqual({ taskId: t.task.id, planId: plan.id, stepCount: 3 })
+      expect(events[1]?.payload).toEqual({ taskId: t.task.id, planId: plan.id, stepCount: 4 })
       expect(events[2]?.payload).toMatchObject({ from: "planning", to: "ready" })
     }).pipe(Effect.provide(TestLayer)),
   )
@@ -76,9 +79,11 @@ describe("Planner.plan", () => {
       expect(outcome.kind).toBe("planned")
       if (outcome.kind !== "planned") return
       expect(outcome.warnings).toHaveLength(1)
+      // Two model steps fitted to the task budget less the review reserve (11/12), then the review step's reserve.
       expect(outcome.plan.steps.map((step) => step.budget)).toEqual([
-        { tokens: 50000, seconds: 30, usd: 0.5 },
-        { tokens: 50000, seconds: 30, usd: 0.5 },
+        { tokens: 45833, seconds: 27, usd: 0.458333 },
+        { tokens: 45833, seconds: 27, usd: 0.458333 },
+        { tokens: 8333, seconds: 5, usd: 0.083333 },
       ])
       expect(t.script.prompts).toHaveLength(1)
       expect(t.script.notes).toHaveLength(1)
@@ -97,9 +102,11 @@ describe("Planner.plan", () => {
       const t = yield* setup([planJson(steps)])
       const outcome = yield* t.planner.plan(t.task)
       if (outcome.kind !== "planned") throw new Error("expected a plan")
+      // Only the tokens dimension is over the steps' share: the seconds and usd of each step stay as asked.
       expect(outcome.plan.steps.map((step) => step.budget)).toEqual([
-        { tokens: 50000, seconds: 5, usd: 0.1 },
-        { tokens: 50000, seconds: 5, usd: 0.1 },
+        { tokens: 45833, seconds: 5, usd: 0.1 },
+        { tokens: 45833, seconds: 5, usd: 0.1 },
+        { tokens: 8333, seconds: 5, usd: 0.083333 },
       ])
     }).pipe(Effect.provide(TestLayer)),
   )

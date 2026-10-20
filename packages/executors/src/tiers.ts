@@ -74,22 +74,27 @@ export interface ResolvedTier {
 // Precedence: the Bot's override for the tier, then the global entry. The fallback list always comes from the global
 // entry. The first candidate whose executor is registered and reports quota().available wins. An alternative uses its
 // own mapTier for the model, because the yaml model belongs to the primary executor only.
+// `exclude` lists executors that may not serve this resolution (e.g. the worker's executor, for a reviewer).
 export const resolveTier = (
   config: TierConfig,
   botTiers: ModelTierMap,
   tier: ModelTier,
   executors: ReadonlyArray<Executor>,
+  options: { readonly exclude?: ReadonlyArray<ExecutorId> } = {},
 ): Effect.Effect<ResolvedTier, ConfigError> =>
   Effect.gen(function* () {
     const global = config.model_tiers[tier]
     const primary = botTiers[tier] ?? global
-    const candidates: ReadonlyArray<ExecutorId> = [primary.executor, ...(global.alternatives ?? [])]
-    for (const [index, id] of candidates.entries()) {
+    const excluded = options.exclude ?? []
+    const candidates: ReadonlyArray<ExecutorId> = [primary.executor, ...(global.alternatives ?? [])].filter(
+      (id) => !excluded.includes(id),
+    )
+    for (const id of candidates) {
       const executor = executors.find((candidate) => candidate.id === id)
       if (executor === undefined) continue
       const status = yield* executor.quota()
       if (!status.available) continue
-      if (index === 0) {
+      if (id === primary.executor) {
         return {
           executor: id,
           model: primary.model,
@@ -108,7 +113,7 @@ export const resolveTier = (
     return yield* Effect.fail(
       new ConfigError({
         key: `model_tiers.${tier}`,
-        message: `no available executor for tier ${tier} (tried: ${candidates.join(", ")})`,
+        message: `no available executor for tier ${tier} (tried: ${candidates.join(", ") || "none"}${excluded.length === 0 ? "" : `; excluded: ${excluded.join(", ")}`})`,
       }),
     )
   })

@@ -10,6 +10,7 @@ import type { ChatFailure } from "../chat.js"
 import { makeLifecycle } from "../lifecycle.js"
 import type { TaskStoreShape } from "../tasks.js"
 import { blockedVerdict, clip, describeFailure } from "../verdict.js"
+import { buildReviewPrompt } from "../verify/review.js"
 import { checkDraft, NEW_BOT } from "./check.js"
 import { buildPlanPrompt } from "./prompt.js"
 import { readDraft } from "./reply.js"
@@ -74,7 +75,14 @@ export const makePlanner = (deps: PlannerDeps) => {
         .ask(task.botId, prompt)
         .pipe(Effect.mapError(() => [NO_ANSWER] as ReadonlyArray<string>))
       const draft = yield* readDraft(reply)
-      return yield* checkDraft(draft, { taskId: task.id, budget: task.budget, bots })
+      // A code plan always ends with a review step (the Lead's own, not the model's).
+      const review = task.kind === "code" ? { prompt: buildReviewPrompt(task) } : undefined
+      return yield* checkDraft(draft, {
+        taskId: task.id,
+        budget: task.budget,
+        bots,
+        ...(review === undefined ? {} : { review }),
+      })
     })
 
   // The model gets one retry, with the reasons of the first refusal. A second refusal is final.

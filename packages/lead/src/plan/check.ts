@@ -4,17 +4,19 @@ import {
   newPlanId,
   newStepId,
   type Plan,
-  type PlanId,
   type Step,
   type StepId,
   type TaskId,
   validatePlan,
 } from "@shoalwork/contracts"
 import { Effect } from "effect"
+import { REVIEW_ACCEPTANCE } from "../verify/review.js"
 import { MAX_STEPS, type PlanDraft } from "./schema-json.js"
 
 // Assigned Bot value meaning "no listed Bot fits": the step is left without an owner.
 export const NEW_BOT = "new"
+// A Bot whose role mentions review owns the review step of a code plan, when one is listed.
+const REVIEWER_ROLE = /\breview/i
 // Dollars are summed and split as whole micro-dollars, so a sum of parts never passes its limit by rounding.
 const MICRO = 1_000_000
 
@@ -23,8 +25,11 @@ export { MAX_STEPS }
 export interface CheckInput {
   readonly taskId: TaskId
   readonly budget: Budget
-  // Bots a step may be assigned to (name -> id).
-  readonly bots: ReadonlyArray<Pick<Bot, "id" | "name">>
+  // Bots a step may be assigned to (name -> id), with their roles.
+  readonly bots: ReadonlyArray<Pick<Bot, "id" | "name" | "role">>
+  // Set for a code task: the plan gets a review step last, with this prompt. The review step counts toward MAX_STEPS,
+  // and its budget is reserved from the task budget before the model's steps are fitted.
+  readonly review?: { readonly prompt: string }
 }
 
 export interface Checked {
@@ -34,6 +39,23 @@ export interface Checked {
 
 // Rounded down (the epsilon only absorbs float noise like 0.29 * 1e6): a step never counts for more than it asked.
 const micros = (usd: number): number => Math.floor(usd * MICRO + 1e-6)
+
+// The review step of a code plan keeps one part of MAX_STEPS of the task budget, in every dimension.
+export const reviewBudgetOf = (budget: Budget): Budget => ({
+  tokens: Math.floor(budget.tokens / MAX_STEPS),
+  seconds: Math.floor(budget.seconds / MAX_STEPS),
+  usd: Math.floor(micros(budget.usd) / MAX_STEPS) / MICRO,
+})
+
+// What the model's steps may use together: the task budget less the review step's reserve.
+export const stepsBudgetOf = (budget: Budget): Budget => {
+  const reserve = reviewBudgetOf(budget)
+  return {
+    tokens: budget.tokens - reserve.tokens,
+    seconds: budget.seconds - reserve.seconds,
+    usd: (micros(budget.usd) - micros(reserve.usd)) / MICRO,
+  }
+}
 
 interface Totals {
   readonly tokens: number
@@ -47,9 +69,9 @@ const totalOf = (steps: ReadonlyArray<Step>): Totals => ({
   micros: steps.reduce((total, step) => total + micros(step.budget.usd), 0),
 })
 
-// Each dimension that is over the task's budget is scaled down by limit/total (rounding down, so no step ever gets
-// more than it asked for); the others stay as they are. A step left with nothing in a scaled dimension is a problem
-// for the model to solve (fewer steps, smaller budgets), listed in `empty`.
+// Each dimension that is over the limit is scaled down by limit/total (rounding down, so no step ever gets more than
+// it asked for); the others stay as they are. A step left with nothing in a scaled dimension is a problem for the
+// model to solve (fewer steps, smaller budgets), listed in `empty`.
 const fitToBudget = (steps: ReadonlyArray<Step>, limit: Budget) => {
   const total = totalOf(steps)
   const cap = micros(limit.usd)
@@ -85,13 +107,20 @@ const fitToBudget = (steps: ReadonlyArray<Step>, limit: Budget) => {
 }
 
 // What is wrong with the draft that the Schema cannot say, as short sentences of ours (never the model's text).
-const draftProblems = (draft: PlanDraft, bots: CheckInput["bots"]): ReadonlyArray<string> => {
+// `reserved` counts the steps the Lead adds itself (the review step of a code plan).
+const draftProblems = (
+  draft: PlanDraft,
+  bots: CheckInput["bots"],
+  reserved: number,
+): ReadonlyArray<string> => {
   const problems: Array<string> = []
   if (draft.steps.length === 0) {
     problems.push("the plan has no steps")
   }
-  if (draft.steps.length > MAX_STEPS) {
-    problems.push(`the plan has ${draft.steps.length} steps; the limit is ${MAX_STEPS}`)
+  if (draft.steps.length + reserved > MAX_STEPS) {
+    problems.push(
+      `the plan has ${draft.steps.length} steps; the limit is ${MAX_STEPS}${reserved > 0 ? ", the review step included" : ""}`,
+    )
   }
   const refs = new Set<string>()
   for (const step of draft.steps) {
@@ -122,10 +151,10 @@ const draftProblems = (draft: PlanDraft, bots: CheckInput["bots"]): ReadonlyArra
   return problems
 }
 
-const toPlan = (draft: PlanDraft, input: CheckInput, planId: PlanId): Plan => {
+const toSteps = (draft: PlanDraft, input: CheckInput): ReadonlyArray<Step> => {
   const ids = new Map<string, StepId>(draft.steps.map((step) => [step.ref, newStepId()]))
   const botIds = new Map(input.bots.map((bot) => [bot.name, bot.id]))
-  const steps = draft.steps.map((step): Step => {
+  return draft.steps.map((step): Step => {
     const botId = botIds.get(step.assignedBot)
     return {
       id: ids.get(step.ref) ?? newStepId(),
@@ -139,11 +168,27 @@ const toPlan = (draft: PlanDraft, input: CheckInput, planId: PlanId): Plan => {
       ...(botId === undefined ? {} : { assignedBot: botId }),
     }
   })
-  return { id: planId, taskId: input.taskId, steps }
+}
+
+// The review runs last, after every step it reviews, with the reserved budget. Its owner is the first listed Bot whose
+// role is review, else a Pod auxiliary.
+const reviewStep = (steps: ReadonlyArray<Step>, input: CheckInput): Step => {
+  const reviewer = input.bots.find((bot) => REVIEWER_ROLE.test(bot.role))
+  return {
+    id: newStepId(),
+    title: "Review",
+    prompt: input.review?.prompt ?? "",
+    dependsOn: steps.map((step) => step.id),
+    acceptance: [REVIEW_ACCEPTANCE],
+    budget: reviewBudgetOf(input.budget),
+    tier: "heavy",
+    parallelizable: false,
+    ...(reviewer === undefined ? {} : { assignedBot: reviewer.id }),
+  }
 }
 
 // A draft becomes a Plan only when every rule holds: the sentences of ours when it does not (to go back to the model
-// once), else the Plan with the step budgets reduced to fit the task's.
+// once), else the Plan with the model's step budgets fitted to the task's budget (less the review reserve, if any).
 export const checkDraft = (
   draft: PlanDraft,
   input: CheckInput,
@@ -151,21 +196,31 @@ export const checkDraft = (
   Effect.gen(function* () {
     // A Bot that is really called "new" is not an owner: the literal always means "a new Bot".
     const owners = { ...input, bots: input.bots.filter((bot) => bot.name !== NEW_BOT) }
-    const problems = draftProblems(draft, owners.bots)
+    const problems = draftProblems(draft, owners.bots, input.review === undefined ? 0 : 1)
     if (problems.length > 0) {
       return yield* Effect.fail(problems)
     }
-    const plan = yield* validatePlan(toPlan(draft, owners, newPlanId())).pipe(
+    const modelSteps = toSteps(draft, owners)
+    const modelPlan = yield* validatePlan({ id: newPlanId(), taskId: input.taskId, steps: modelSteps }).pipe(
       Effect.mapError((error) => [typeof error.issue === "string" ? error.issue : "the plan is not valid"]),
     )
-    const fitted = fitToBudget(plan.steps, input.budget)
+    const reviewed = input.review !== undefined
+    const fitted = fitToBudget(modelPlan.steps, reviewed ? stepsBudgetOf(input.budget) : input.budget)
     if (fitted.empty.length > 0) {
       return yield* Effect.fail(fitted.empty)
     }
+    const steps = reviewed ? [...fitted.steps, reviewStep(fitted.steps, owners)] : fitted.steps
+    const plan: Plan = yield* validatePlan({ ...modelPlan, steps }).pipe(
+      Effect.mapError((error) => [typeof error.issue === "string" ? error.issue : "the plan is not valid"]),
+    )
     return {
-      plan: { ...plan, steps: fitted.steps },
+      plan,
       warnings: fitted.scaled
-        ? ["the step budgets were above the task budget and were reduced proportionally"]
+        ? [
+            reviewed
+              ? "the step budgets were above their share of the task budget (the rest is reserved for the review step) and were reduced proportionally"
+              : "the step budgets were above the task budget and were reduced proportionally",
+          ]
         : [],
     }
   })
