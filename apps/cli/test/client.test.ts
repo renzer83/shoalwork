@@ -17,7 +17,7 @@ const client = new ApiClient("http://localhost:28900", "dev-token")
 
 // Replaces global fetch for one test; the mock is returned so the request can be inspected.
 const stubFetch = (respond: () => Promise<Response>) => {
-  const mock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => respond())
+  const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => respond())
   vi.stubGlobal("fetch", mock)
   return mock
 }

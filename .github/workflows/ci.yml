@@ -16,6 +16,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm test:scripts
       - run: pnpm build
       - run: pnpm gate:no-docs
       - uses: gitleaks/gitleaks-action@v2

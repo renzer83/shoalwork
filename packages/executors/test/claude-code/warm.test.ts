@@ -14,7 +14,7 @@ import { describe, expect } from "vitest"
 import { buildWarmChatArgs, encodeWarmUserMessage } from "../../src/claude-code/args.js"
 import { makeClaudeCodeChat, runChatTurn } from "../../src/claude-code/chat.js"
 import { ChatSessions, ChatSessionsLive } from "../../src/claude-code/sessions.js"
-import { makeWarmChatPool, type WarmChatPoolOptions } from "../../src/claude-code/warm.js"
+import { makeWarmChatPool, type WarmChatPool, type WarmChatPoolOptions } from "../../src/claude-code/warm.js"
 
 const SESSION_A = "40e66dbf-beaf-4fc5-839d-ea3f883591f6"
 const SESSION_B = "5b1f0c2e-0d4a-4e8c-9a51-2c7d6e9f1a20"
@@ -159,13 +159,11 @@ const echo = (sessionId: string): Script => ({ reply: (prompt) => answer(session
 
 const doneOf = (events: ReadonlyArray<ExecutorEvent>) => events.find((event) => event.kind === "done")
 
-const withPool = <A, E>(
+const withPool = <A, E, R>(
   scripts: Array<Script>,
   rec: Recorder,
   opts: WarmChatPoolOptions,
-  body: (
-    pool: Effect.Effect.Success<ReturnType<typeof makeWarmChatPool>>,
-  ) => Effect.Effect<A, E, Tank | Scope.Scope>,
+  body: (pool: WarmChatPool) => Effect.Effect<A, E, R>,
 ) =>
   Effect.scoped(
     Effect.gen(function* () {

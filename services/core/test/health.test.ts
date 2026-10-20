@@ -1,5 +1,5 @@
 import { withTempDb } from "@shoalwork/db/testing"
-import { Effect, ManagedRuntime, Redacted } from "effect"
+import { Effect, ManagedRuntime, Redacted, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import { afterAll, describe, expect, it } from "vitest"
 import { APP_VERSION } from "../src/config.js"
@@ -20,15 +20,18 @@ describe("GET /health", () => {
     const res = await appWith().request("/health")
 
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body: unknown = await res.json()
     expect(body).toMatchObject({
       ok: true,
       version: APP_VERSION,
       db: "ok",
       journalMode: "wal",
     })
-    expect(body.dbPath).toMatch(/^shoalwork-test-.+\.db$/)
-    expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0)
+    const { dbPath, uptimeSeconds } = Schema.decodeUnknownSync(
+      Schema.Struct({ dbPath: Schema.String, uptimeSeconds: Schema.Number }),
+    )(body)
+    expect(dbPath).toMatch(/^shoalwork-test-.+\.db$/)
+    expect(uptimeSeconds).toBeGreaterThanOrEqual(0)
   })
 
   it("returns 503 with db error when the probe fails", async () => {

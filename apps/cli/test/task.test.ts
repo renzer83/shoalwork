@@ -31,7 +31,7 @@ const TASK_SPEC = {
 
 // Replaces global fetch for one test; the mock is returned so the request can be inspected.
 const stubFetch = (respond: () => Promise<Response>) => {
-  const mock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => respond())
+  const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => respond())
   vi.stubGlobal("fetch", mock)
   return mock
 }
@@ -97,7 +97,7 @@ describe("task send", () => {
 
   it.effect("resolves a bot name through GET /bots and posts the id it finds", () =>
     Effect.gen(function* () {
-      const mock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      const mock = vi.fn(async (input: string | URL | Request, _init?: RequestInit) =>
         String(input).endsWith("/bots")
           ? json({ bots: [{ id: BOT_ID, name: "lead", role: "coordinator", state: "idle" }] })
           : json({ task: TASK_SPEC }, 201),
@@ -116,7 +116,7 @@ describe("task send", () => {
 
   it.effect("reports an unknown bot name and never posts a task", () =>
     Effect.gen(function* () {
-      const mock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
         json({ bots: [{ id: BOT_ID, name: "lead", role: "coordinator", state: "idle" }] }),
       )
       vi.stubGlobal("fetch", mock)

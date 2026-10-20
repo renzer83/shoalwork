@@ -5,7 +5,7 @@
     "shoalwork": "./dist/main.js"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
     "test": "vitest run",
     "build": "tsc"

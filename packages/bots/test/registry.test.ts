@@ -126,7 +126,7 @@ describe("BotRegistry", () => {
           const registry = yield* BotRegistry
           const error = yield* Effect.flip(registry.syncFromDir(dir))
           expect(error).toBeInstanceOf(SchemaViolation)
-          expect(error.where).toBe(join(dir, "bad.yaml"))
+          expect(error._tag === "SchemaViolation" ? error.where : undefined).toBe(join(dir, "bad.yaml"))
           expect(yield* registry.list()).toHaveLength(0)
         } finally {
           rmSync(dir, { recursive: true, force: true })

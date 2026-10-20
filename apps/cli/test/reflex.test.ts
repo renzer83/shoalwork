@@ -13,7 +13,7 @@ const NDJSON = `${JSON.stringify({ decisionId: "evt_1", outcome: "correct" })}\n
 
 // Replaces global fetch for one test; the mock is returned so the request can be inspected.
 const stubFetch = (respond: () => Promise<Response>) => {
-  const mock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => respond())
+  const mock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => respond())
   vi.stubGlobal("fetch", mock)
   return mock
 }
