@@ -1,6 +1,6 @@
 import { it } from "@effect/vitest"
-import { Conflict, type Event, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
-import { Effect, Option, Queue, Schema, Stream } from "effect"
+import { Conflict, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
+import { Effect, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
 import { Beacon, BeaconTest } from "../src/index.js"
 
@@ -26,35 +26,6 @@ const usageRecorded = (): NewEvent => ({
   actor: `bot:${BOT}`,
   correlationId: "corr_beacon_test",
 })
-
-// Publish until the forked subscriber delivers; bounded yields, no timing involved (see beacon.test.ts).
-const awaitDelivery = (received: Queue.Queue<Event>, publish: Effect.Effect<unknown>): Effect.Effect<Event> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      yield* publish
-      for (let turn = 0; turn < 20; turn++) {
-        const got = yield* Queue.poll(received)
-        if (Option.isSome(got)) {
-          return got.value
-        }
-        yield* Effect.yieldNow
-      }
-    }
-    return yield* Effect.die("subscriber did not deliver within the probe budget")
-  })
-
-const drained = (received: Queue.Queue<Event>): Effect.Effect<ReadonlyArray<Event>> =>
-  Effect.gen(function* () {
-    const out: Array<Event> = []
-    for (let turn = 0; turn < 20; turn++) {
-      yield* Effect.yieldNow
-      const got = yield* Queue.poll(received)
-      if (Option.isSome(got)) {
-        out.push(got.value)
-      }
-    }
-    return out
-  })
 
 describe("BeaconTest (in memory)", () => {
   it.effect("append three events to one stream assigns versions 1, 2, 3", () =>
@@ -181,37 +152,26 @@ describe("BeaconTest (in memory)", () => {
     }).pipe(Effect.provide(BeaconTest)),
   )
 
-  it.effect("subscribe receives events appended after it attaches", () =>
+  it.effect("subscribe keeps an event published before the stream is pulled", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
-      const received = yield* Queue.unbounded<Event>()
-      yield* Stream.runForEach(beacon.subscribe(), (event) => Queue.offer(received, event)).pipe(
-        Effect.forkScoped,
-      )
-      const delivered = yield* awaitDelivery(
-        received,
-        beacon.append(stateChanged("planning")).pipe(Effect.orDie),
-      )
-      expect(delivered.type).toBe("task.state_changed")
-      expect(delivered.streamId).toBe(streamIds.task(TASK_ID))
+      const live = yield* beacon.subscribe()
+      yield* beacon.append(stateChanged("planning")).pipe(Effect.orDie)
+      const delivered = yield* Stream.runCollect(live.pipe(Stream.take(1)))
+      expect(delivered.map((e) => e.type)).toEqual(["task.state_changed"])
+      expect(delivered[0]?.streamId).toBe(streamIds.task(TASK_ID))
     }).pipe(Effect.scoped, Effect.provide(BeaconTest)),
   )
 
   it.effect("subscribe(types) delivers only the requested types", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
-      const received = yield* Queue.unbounded<Event>()
-      yield* Stream.runForEach(beacon.subscribe(["usage.recorded"]), (event) =>
-        Queue.offer(received, event),
-      ).pipe(Effect.forkScoped)
-      const publish = Effect.all([
-        beacon.append(stateChanged("planning")),
-        beacon.append(usageRecorded()),
-      ]).pipe(Effect.orDie)
-      const delivered = yield* awaitDelivery(received, publish)
-      expect(delivered.type).toBe("usage.recorded")
-      const rest = yield* drained(received)
-      expect(rest.every((event) => event.type === "usage.recorded")).toBe(true)
+      const live = yield* beacon.subscribe(["usage.recorded"])
+      yield* beacon
+        .appendMany([stateChanged("planning"), usageRecorded(), stateChanged("running"), usageRecorded()])
+        .pipe(Effect.orDie)
+      const delivered = yield* Stream.runCollect(live.pipe(Stream.take(2)))
+      expect(delivered.map((e) => e.type)).toEqual(["usage.recorded", "usage.recorded"])
     }).pipe(Effect.scoped, Effect.provide(BeaconTest)),
   )
 })

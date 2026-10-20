@@ -6,8 +6,10 @@ import { Hono } from "hono"
 import { APP_VERSION } from "../config.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerEventRoutes } from "./routes/events.js"
+import { registerLiveRoutes } from "./routes/live.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
+import { html } from "./ui.js"
 
 export interface DbProbe {
   readonly dbPath: string
@@ -62,15 +64,20 @@ const checkDatabase = (
   )
 
 // Constant-time comparison; a length mismatch is rejected up front.
-const bearerMatches = (header: string | undefined, expected: string): boolean => {
-  const token = /^Bearer\s+(.+)$/i.exec(header ?? "")?.[1]
-  if (token === undefined) {
+const tokenMatches = (given: string | undefined, expected: string): boolean => {
+  if (given === undefined) {
     return false
   }
-  const given = Buffer.from(token)
+  const givenBytes = Buffer.from(given)
   const wanted = Buffer.from(expected)
-  return given.length === wanted.length && timingSafeEqual(given, wanted)
+  return givenBytes.length === wanted.length && timingSafeEqual(givenBytes, wanted)
 }
+
+const bearerMatches = (header: string | undefined, expected: string): boolean =>
+  tokenMatches(/^Bearer\s+(.+)$/i.exec(header ?? "")?.[1], expected)
+
+// EventSource cannot set headers, so the live feed also accepts ?token=. Other routes take only the header.
+const LIVE_PATH = "/events/live"
 
 export const makeApp = (deps: AppDeps): Hono => {
   const app = new Hono()
@@ -78,14 +85,21 @@ export const makeApp = (deps: AppDeps): Hono => {
   const probe = deps.probe ?? probeDatabase
 
   app.use("*", async (c, next) => {
-    if (c.req.path === "/health") {
+    // The page holds no secret; it asks for the token in the browser and sends it on each request.
+    if (c.req.path === "/health" || c.req.path === "/") {
       return next()
     }
-    if (!bearerMatches(c.req.header("authorization"), expectedToken)) {
+    const queryToken = c.req.path === LIVE_PATH ? c.req.query("token") : undefined
+    if (
+      !bearerMatches(c.req.header("authorization"), expectedToken) &&
+      !tokenMatches(queryToken, expectedToken)
+    ) {
       return c.json({ error: "unauthorized" }, 401)
     }
     return next()
   })
+
+  app.get("/", (c) => c.html(html))
 
   app.get("/health", async (c) => {
     const db = await deps.runEffect(checkDatabase(probe))
@@ -101,6 +115,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
+  registerLiveRoutes(app, deps.runEffect)
 
   return app
 }

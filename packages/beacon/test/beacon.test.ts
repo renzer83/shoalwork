@@ -3,10 +3,10 @@ import { rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { it } from "@effect/vitest"
-import { Conflict, type Event, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
+import { Conflict, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
 import { makeDbLayer, runMigrations } from "@shoalwork/db"
 import { withTempDb } from "@shoalwork/db/testing"
-import { Effect, Layer, Option, Queue, Schema, Stream } from "effect"
+import { Effect, Layer, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
 import { Beacon, BeaconLive, type BeaconShape } from "../src/index.js"
 
@@ -33,36 +33,6 @@ const usageRecorded = (): NewEvent => ({
   actor: `bot:${BOT}`,
   correlationId: "corr_beacon_test",
 })
-
-// subscribe() attaches to the PubSub when its stream starts running, so one publish can race the attach.
-// Publish until the forked subscriber delivers. Each round yields a bounded number of times; no timing involved.
-const awaitDelivery = (received: Queue.Queue<Event>, publish: Effect.Effect<unknown>): Effect.Effect<Event> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      yield* publish
-      for (let turn = 0; turn < 20; turn++) {
-        const got = yield* Queue.poll(received)
-        if (Option.isSome(got)) {
-          return got.value
-        }
-        yield* Effect.yieldNow
-      }
-    }
-    return yield* Effect.die("subscriber did not deliver within the probe budget")
-  })
-
-const drained = (received: Queue.Queue<Event>): Effect.Effect<ReadonlyArray<Event>> =>
-  Effect.gen(function* () {
-    const out: Array<Event> = []
-    for (let turn = 0; turn < 20; turn++) {
-      yield* Effect.yieldNow
-      const got = yield* Queue.poll(received)
-      if (Option.isSome(got)) {
-        out.push(got.value)
-      }
-    }
-    return out
-  })
 
 const removeDbFiles = (path: string): void => {
   for (const suffix of ["", "-wal", "-shm"]) {
@@ -216,37 +186,26 @@ describe("Beacon (SQLite)", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.effect("subscribe receives events appended after it attaches", () =>
+  it.effect("subscribe keeps an event published before the stream is pulled", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
-      const received = yield* Queue.unbounded<Event>()
-      yield* Stream.runForEach(beacon.subscribe(), (event) => Queue.offer(received, event)).pipe(
-        Effect.forkScoped,
-      )
-      const delivered = yield* awaitDelivery(
-        received,
-        beacon.append(stateChanged("planning")).pipe(Effect.orDie),
-      )
-      expect(delivered.type).toBe("task.state_changed")
-      expect(delivered.streamId).toBe(streamIds.task(TASK_ID))
+      const live = yield* beacon.subscribe()
+      yield* beacon.append(stateChanged("planning")).pipe(Effect.orDie)
+      const delivered = yield* Stream.runCollect(live.pipe(Stream.take(1)))
+      expect(delivered.map((e) => e.type)).toEqual(["task.state_changed"])
+      expect(delivered[0]?.streamId).toBe(streamIds.task(TASK_ID))
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 
   it.effect("subscribe(types) delivers only the requested types", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
-      const received = yield* Queue.unbounded<Event>()
-      yield* Stream.runForEach(beacon.subscribe(["usage.recorded"]), (event) =>
-        Queue.offer(received, event),
-      ).pipe(Effect.forkScoped)
-      const publish = Effect.all([
-        beacon.append(stateChanged("planning")),
-        beacon.append(usageRecorded()),
-      ]).pipe(Effect.orDie)
-      const delivered = yield* awaitDelivery(received, publish)
-      expect(delivered.type).toBe("usage.recorded")
-      const rest = yield* drained(received)
-      expect(rest.every((event) => event.type === "usage.recorded")).toBe(true)
+      const live = yield* beacon.subscribe(["usage.recorded"])
+      yield* beacon
+        .appendMany([stateChanged("planning"), usageRecorded(), stateChanged("running"), usageRecorded()])
+        .pipe(Effect.orDie)
+      const delivered = yield* Stream.runCollect(live.pipe(Stream.take(2)))
+      expect(delivered.map((e) => e.type)).toEqual(["usage.recorded", "usage.recorded"])
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 })

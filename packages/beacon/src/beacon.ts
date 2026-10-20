@@ -9,7 +9,7 @@ import {
   SchemaViolation,
 } from "@shoalwork/contracts"
 import { EventRow, nowIso } from "@shoalwork/db"
-import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
+import { Context, Effect, Layer, PubSub, Schema, type Scope, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
 
@@ -30,7 +30,11 @@ export interface BeaconShape {
     afterPosition?: number,
     types?: ReadonlyArray<EventType>,
   ) => Stream.Stream<Event, SqlError>
-  readonly subscribe: (types?: ReadonlyArray<EventType>) => Stream.Stream<Event>
+  // Attaches to the live feed before it resolves: events published after this effect returns are kept
+  // for the returned stream, even if nothing pulls from it yet. The subscription ends with the Scope.
+  readonly subscribe: (
+    types?: ReadonlyArray<EventType>,
+  ) => Effect.Effect<Stream.Stream<Event>, never, Scope.Scope>
   readonly lastVersion: (streamId: string) => Effect.Effect<number, SqlError>
 }
 
@@ -161,14 +165,21 @@ const appendRetrying = (
 export const publishAll = (pubsub: PubSub.PubSub<Event>, events: ReadonlyArray<Event>): Effect.Effect<void> =>
   Effect.forEach(events, (event) => PubSub.publish(pubsub, event)).pipe(Effect.asVoid)
 
-export const subscribeTo = (pubsub: PubSub.PubSub<Event>, types?: ReadonlyArray<EventType>) => {
-  const live = Stream.fromPubSub(pubsub)
-  if (types === undefined || types.length === 0) {
-    return live
-  }
-  const wanted = new Set<string>(types)
-  return live.pipe(Stream.filter((event) => wanted.has(event.type)))
-}
+// PubSub.subscribe runs eagerly, so the subscriber is attached before the stream is handed out.
+export const subscribeTo = (
+  pubsub: PubSub.PubSub<Event>,
+  types?: ReadonlyArray<EventType>,
+): Effect.Effect<Stream.Stream<Event>, never, Scope.Scope> =>
+  PubSub.subscribe(pubsub).pipe(
+    Effect.map((subscription) => {
+      const live = Stream.fromSubscription(subscription)
+      if (types === undefined || types.length === 0) {
+        return live
+      }
+      const wanted = new Set<string>(types)
+      return live.pipe(Stream.filter((event) => wanted.has(event.type)))
+    }),
+  )
 
 const makeLive = (sql: SqlClient, pubsub: PubSub.PubSub<Event>): BeaconShape => {
   const append: BeaconShape["append"] = (e, opts) =>
