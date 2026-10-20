@@ -1,11 +1,13 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
+import type { TaskId } from "@shoalwork/contracts"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
 import { Indexer, Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Control, makeControl } from "./control.js"
+import { MAX_AGENT_MSGS_PER_TASK, makeHandoff } from "./handoff.js"
 import { makeIntake } from "./intake.js"
 import { Lead, type LeadShape } from "./lead.js"
 import { McpTokens, McpTokensLive } from "./mcp-tokens.js"
@@ -37,7 +39,22 @@ export const LeadLive = (
       const indexer = Option.getOrUndefined(yield* Effect.serviceOption(Indexer))
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
       const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs })
-      const { runTask, abandon } = makeRunner({
+      const intake = makeIntake({
+        sql,
+        beacon,
+        bots,
+        tasks,
+        routing: tiers.routing,
+        botBudgetWindowMs: config.botBudgetWindowMs,
+      })
+      const { handoff, reportChild } = makeHandoff({
+        beacon,
+        bots,
+        tasks,
+        intake,
+        maxMessages: MAX_AGENT_MSGS_PER_TASK,
+      })
+      const runner = makeRunner({
         sql,
         beacon,
         tasks,
@@ -51,17 +68,17 @@ export const LeadLive = (
         tokens,
         indexer,
       })
-      const { startWorker } = makeWorker({ sql, runTask, abandon, config })
+      const { abandon } = runner
+      // A settled child reports its verdict to its parent's stream (T-046), after every run, whoever started it.
+      const runAndReport = (id: TaskId) =>
+        runner
+          .runTask(id)
+          .pipe(Effect.tap((result) => (result.recorded ? reportChild(id, result.verdict) : Effect.void)))
+      const { startWorker } = makeWorker({ sql, runTask: runAndReport, abandon, config })
       const lead: LeadShape = {
         abandon,
-        intake: makeIntake({
-          sql,
-          beacon,
-          bots,
-          tasks,
-          routing: tiers.routing,
-          botBudgetWindowMs: config.botBudgetWindowMs,
-        }),
+        intake,
+        handoff,
         get: (id) =>
           tasks.get(id).pipe(
             Effect.map(({ spec, state, verdict }) => ({
@@ -70,7 +87,7 @@ export const LeadLive = (
               ...(verdict === undefined ? {} : { verdict }),
             })),
           ),
-        runOnce: (id) => Effect.map(runTask(id), (result) => result.verdict),
+        runOnce: (id) => Effect.map(runAndReport(id), (result) => result.verdict),
         // Boot: tokens of runs the restart interrupted are ended before the worker takes new work (T-168).
         startWorker: (opts) =>
           tokens.revokeStale().pipe(
@@ -137,6 +154,13 @@ export {
   type ConversationShape,
 } from "./conversation.js"
 export { ESCALATION_MIN_CHARS, escalate, parseChoice } from "./escalation.js"
+export {
+  type HandoffOutcome,
+  type HandoffTask,
+  MAX_AGENT_MSGS_PER_TASK,
+  makeHandoff,
+  remainingBudget,
+} from "./handoff.js"
 export {
   CONSOLIDATE_QUEUE,
   type ConsolidateHookOptions,

@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { AgentMsg } from "./agent-msg.js"
 import { Bot } from "./bot.js"
 import { Budget, Usage } from "./budget.js"
 import { BotState, Risk, TaskState } from "./enums.js"
@@ -37,6 +38,7 @@ export const EventType = Schema.Literals([
   "bot.proposed",
   "bot.proposal_resolved",
   "context.assembled",
+  "agent.msg",
 ])
 export type EventType = typeof EventType.Type
 
@@ -253,6 +255,9 @@ const ContextAssembledPayload = Schema.Struct({
   dropped: Schema.Array(Schema.Struct({ block: Schema.String, items: Schema.Int })),
 })
 
+// A message between Bots (handoff, result, status), written to the stream of the task it belongs to (T-046).
+const AgentMsgPayload = AgentMsg
+
 // One payload schema per event type; `satisfies` keeps the map exhaustive.
 export const EventPayloads = {
   "task.received": TaskReceivedPayload,
@@ -282,6 +287,7 @@ export const EventPayloads = {
   "bot.proposed": BotProposedPayload,
   "bot.proposal_resolved": BotProposalResolvedPayload,
   "context.assembled": ContextAssembledPayload,
+  "agent.msg": AgentMsgPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

@@ -72,6 +72,7 @@ const harness = (records: ReadonlyArray<TaskRecord>) => {
       }),
     get: unusedGet(created),
     runOnce: unused,
+    handoff: unused,
     abandon: unused,
     startWorker: unused,
   }

@@ -33,7 +33,10 @@ export const TaskSpec = Schema.Struct({
   budget: Budget,
   tier: ModelTier,
   origin: TaskOrigin,
-  parent: Schema.optional(Schema.Struct({ planId: PlanId, stepId: StepId })),
+  // The plan step this task belongs to, or the parent task of a Bot-to-Bot handoff (T-046).
+  parent: Schema.optional(
+    Schema.Union([Schema.Struct({ planId: PlanId, stepId: StepId }), Schema.Struct({ taskId: TaskId })]),
+  ),
   // Id of the message that originated the task (the Reflex decisions of that message share it as correlationId).
   correlationId: Schema.optional(Schema.String),
   // The task this one continues ("continua a task …"): same worktree and session when they still exist.

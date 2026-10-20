@@ -6,6 +6,7 @@ import { assemble, type Block } from "./assemble.js"
 import {
   acceptanceBlock,
   codeBlock,
+  handoffBlock,
   instructionsBlock,
   memoryBlock,
   rulesBlock,
@@ -109,6 +110,7 @@ export const buildBriefing = (deps: BriefingDeps, input: BriefingInput): Effect.
       codeBlock(codeHits, config),
       workingBlock(input.working ?? [], config),
       acceptanceBlock(spec, config),
+      ...(spec.origin === "bot" ? [handoffBlock(spec)] : []),
       taskBlock(spec, config),
     ]
     const assembled = assemble(blocks, plan.budgetTokens, config.reserve_for_answer)

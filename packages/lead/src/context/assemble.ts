@@ -9,6 +9,7 @@ export const BLOCK_ORDER = [
   "code",
   "working",
   "acceptance",
+  "handoff",
   "task",
 ] as const
 export type BlockName = (typeof BLOCK_ORDER)[number]

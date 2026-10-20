@@ -1,4 +1,18 @@
 export {
+  ARTIFACT_MAX_FILE_BYTES,
+  ARTIFACT_MAX_TOTAL_BYTES,
+  type ArtifactEntry,
+  type ArtifactLimits,
+  ArtifactManifest,
+  type ArtifactScreen,
+  artifactsDir,
+  MANIFEST_NAME,
+  type PublishedArtifacts,
+  type PublishInput,
+  publishArtifacts,
+  readArtifactManifest,
+} from "./artifacts.js"
+export {
   ensureClone,
   type GitEnv,
   type WorktreeInfo,

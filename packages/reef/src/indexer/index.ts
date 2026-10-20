@@ -20,6 +20,8 @@ export {
 export { findSymbols, type Lang, langOf } from "./symbols.js"
 export {
   DEFAULT_MAX_FILE_BYTES,
+  isIgnoredPath,
+  looksLikeSecret,
   WalkError,
   type WalkedFile,
   type WalkOptions,

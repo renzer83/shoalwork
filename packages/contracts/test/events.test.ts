@@ -49,6 +49,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "bot.proposed",
   "bot.proposal_resolved",
   "context.assembled",
+  "agent.msg",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -114,6 +115,7 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     budget: 23000,
     dropped: [{ block: "code", items: 2 }],
   },
+  "agent.msg": { kind: "result", from: BOT, taskId: TASK, verdict: fixture("verdict.json"), artifacts: [] },
 }
 
 // One required field per type; removing it must reject the payload.
@@ -145,6 +147,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "bot.proposed": "requestedBy",
   "bot.proposal_resolved": "status",
   "context.assembled": "level",
+  "agent.msg": "kind",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -165,8 +168,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 27 types", () => {
-    expect(EVENT_TYPES).toHaveLength(27)
+  it("EventType is exactly the 28 types", () => {
+    expect(EVENT_TYPES).toHaveLength(28)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)
