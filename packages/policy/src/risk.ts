@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import type { Risk, ToolCall } from "@shoalwork/contracts"
 import { Schema } from "effect"
 import { basename, globMatch } from "./match.js"
@@ -53,6 +54,55 @@ const BASH_INPUT = Schema.Struct({ command: Schema.String })
 
 export const commandOf = (input: unknown): string | undefined =>
   Schema.is(BASH_INPUT)(input) ? input.command : undefined
+
+// Default cap, in UTF-8 bytes, for each string a call carries that the policy reads: the Bash command,
+// the resource and the path-like fields. Above it the call is asked at once, never lexed or matched.
+export const DEFAULT_MAX_INPUT_BYTES = 16 * 1024
+
+const PATH_LIKE_INPUT = Schema.Struct({
+  file_path: Schema.optionalKey(Schema.String),
+  path: Schema.optionalKey(Schema.String),
+  pattern: Schema.optionalKey(Schema.String),
+  notebook_path: Schema.optionalKey(Schema.String),
+  glob: Schema.optionalKey(Schema.String),
+})
+
+const sizedFields = (call: ToolCall): ReadonlyArray<string> => {
+  const out: string[] = []
+  if (call.resource !== undefined) {
+    out.push(call.resource)
+  }
+  if (call.tool === "Bash") {
+    const command = commandOf(call.input)
+    if (command !== undefined) {
+      out.push(command)
+    }
+  } else if (Schema.is(PATH_LIKE_INPUT)(call.input)) {
+    for (const value of [
+      call.input.file_path,
+      call.input.path,
+      call.input.pattern,
+      call.input.notebook_path,
+      call.input.glob,
+    ]) {
+      if (value !== undefined) {
+        out.push(value)
+      }
+    }
+  }
+  return out
+}
+
+// Reason text when a field is over the cap, undefined otherwise. Byte length is linear and does not parse.
+export const inputTooLarge = (call: ToolCall, maxBytes: number): string | undefined => {
+  for (const text of sizedFields(call)) {
+    const bytes = Buffer.byteLength(text, "utf8")
+    if (bytes > maxBytes) {
+      return `input too large: ${bytes} bytes > ${maxBytes}`
+    }
+  }
+  return undefined
+}
 
 const textOf = (input: unknown): string | undefined => {
   try {
@@ -204,7 +254,10 @@ const riskOfBash = (command: string | undefined): Risk => {
 const isMcpIrreversible = (tool: string): boolean =>
   tool.startsWith("mcp__") && MCP_IRREVERSIBLE_WORDS.some((w) => tool.toLowerCase().includes(w))
 
-export const riskOf = (call: ToolCall): Risk => {
+export const riskOf = (call: ToolCall, maxBytes = DEFAULT_MAX_INPUT_BYTES): Risk => {
+  if (inputTooLarge(call, maxBytes) !== undefined) {
+    return "irreversible"
+  }
   if (IRREVERSIBLE_TOOL_PATTERNS.some((pattern) => globMatch(pattern, call.tool, false))) {
     return "irreversible"
   }

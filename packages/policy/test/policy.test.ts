@@ -259,25 +259,28 @@ describe("reload", () => {
   )
 })
 
+// Hostile shapes: long words, separators, nested substitution, backticks, an unterminated quote.
+const hostileCommands = (size: number): ReadonlyArray<string> => [
+  `git status ${"a ".repeat(size / 2)}`,
+  ";".repeat(size),
+  "$(".repeat(size / 2),
+  `echo ${"`".repeat(size)}`,
+  `"${"x".repeat(size)}`,
+]
+
 describe("hostile input stays fast", () => {
-  const LIMIT_MS = 2000
+  // Generous on purpose: inputs just under the 16 KB cap take ~15 ms locally; shared CI runners are slower.
+  const LIMIT_MS = 500
   const timed = (fn: () => void): number => {
     const start = performance.now()
     fn()
     return performance.now() - start
   }
 
-  it.effect("evaluates a 200 KB command in well under the limit", () =>
+  it.effect("evaluates commands just under the input cap in well under the limit", () =>
     Effect.gen(function* () {
       const policy = yield* Policy
-      const commands = [
-        `git status ${"a ".repeat(100_000)}`,
-        ";".repeat(200_000),
-        "$(".repeat(100_000),
-        `echo ${"`".repeat(100_000)}`,
-        `"${"x".repeat(200_000)}`,
-      ]
-      for (const command of commands) {
+      for (const command of hostileCommands(15_000)) {
         const start = performance.now()
         const decision = yield* policy.evaluate(BOT, bash(command))
         expect(performance.now() - start).toBeLessThan(LIMIT_MS)
@@ -286,12 +289,14 @@ describe("hostile input stays fast", () => {
     }).pipe(Effect.provide(baseLayer)),
   )
 
-  it.effect("matches a 200 KB resource against a pattern full of wildcards", () =>
+  it.effect("matches a resource against a pattern full of wildcards", () =>
     Effect.gen(function* () {
       const policy = yield* Policy
-      const resource = "a".repeat(200_000)
-      const elapsed = yield* Effect.sync(() => timed(() => globMatch("*a*a*a*a*a*a*a*a*b", resource, true)))
+      const elapsed = yield* Effect.sync(() =>
+        timed(() => globMatch("*a*a*a*a*a*a*a*a*b", "a".repeat(200_000), true)),
+      )
       expect(elapsed).toBeLessThan(LIMIT_MS)
+      const resource = "a".repeat(15_000)
       const decision = yield* policy.evaluate(BOT, { tool: "Read", input: {}, resource })
       expect(decision.effect).toBe("allow")
     }).pipe(
@@ -303,6 +308,77 @@ describe("hostile input stays fast", () => {
           },
           () => "dev",
         ),
+      ),
+    ),
+  )
+})
+
+describe("input size cap", () => {
+  // Measured before any lexing: a 200 KB input must come back in well under 50 ms.
+  const ASK_LIMIT_MS = 50
+
+  it.effect("asks at once for 200 KB commands without parsing them", () =>
+    Effect.gen(function* () {
+      const policy = yield* Policy
+      for (const command of hostileCommands(200_000)) {
+        const start = performance.now()
+        const decision = yield* policy.evaluate(BOT, bash(command))
+        expect(performance.now() - start).toBeLessThan(ASK_LIMIT_MS)
+        expect(decision).toEqual({ effect: "ask", risk: "irreversible" })
+      }
+    }).pipe(Effect.provide(baseLayer)),
+  )
+
+  it.effect("asks at once for an oversized resource or path field", () =>
+    Effect.gen(function* () {
+      const policy = yield* Policy
+      const big = "a".repeat(200_000)
+      const readPath = yield* policy.evaluate(BOT, { tool: "Read", input: { file_path: big } })
+      const editPath = yield* policy.evaluate(BOT, { tool: "Edit", input: { file_path: `src/${big}.ts` } })
+      const resource = yield* policy.evaluate(BOT, { tool: "Read", input: {}, resource: big })
+      expect(readPath).toEqual({ effect: "ask", risk: "irreversible" })
+      expect(editPath).toEqual({ effect: "ask", risk: "irreversible" })
+      expect(resource).toEqual({ effect: "ask", risk: "irreversible" })
+    }).pipe(Effect.provide(baseLayer)),
+  )
+
+  it.effect("keeps deny for inputs that fit under the cap", () =>
+    Effect.gen(function* () {
+      const policy = yield* Policy
+      const small = yield* policy.evaluate(BOT, { tool: "Read", input: { file_path: "config/.secret" } })
+      const large = yield* policy.evaluate(BOT, {
+        tool: "Read",
+        input: { file_path: `${"a/".repeat(10_000)}.secret` },
+      })
+      expect(small.effect).toBe("deny")
+      expect(large).toEqual({ effect: "ask", risk: "irreversible" })
+    }).pipe(
+      Effect.provide(
+        policyWith(
+          {
+            default: DEFAULT_YAML,
+            dev: `rules:\n  - { bot: "*", tool: "Read(**/*.secret)", effect: deny }\n`,
+          },
+          () => "dev",
+        ),
+      ),
+    ),
+  )
+
+  it.effect("uses the cap given to the layer", () =>
+    Effect.gen(function* () {
+      const policy = yield* Policy
+      const plain = yield* policy.evaluate(BOT, bash("git status"))
+      const padded = yield* policy.evaluate(BOT, bash(`git status ${" ".repeat(200)}`))
+      expect(plain.effect).toBe("allow")
+      expect(padded).toEqual({ effect: "ask", risk: "irreversible" })
+    }).pipe(
+      Effect.provide(
+        makePolicyTest({
+          sources: { default: DEFAULT_YAML },
+          policyOf: () => "default",
+          maxInputBytes: 100,
+        }).pipe(Layer.provideMerge(BeaconTest)),
       ),
     ),
   )

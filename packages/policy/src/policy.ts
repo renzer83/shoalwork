@@ -11,7 +11,7 @@ import {
 } from "@shoalwork/contracts"
 import { Context, Effect, Layer, Ref } from "effect"
 import { compilePolicies, DEFAULT_POLICY, loadPolicySet, type PolicySet } from "./loader.js"
-import { riskOf } from "./risk.js"
+import { DEFAULT_MAX_INPUT_BYTES, inputTooLarge, riskOf } from "./risk.js"
 import { type CompiledRule, contextOf, type MatchMode, mostSpecific, ruleLabel, ruleMatches } from "./rule.js"
 import { isWriteOutsideWorkspace } from "./workspace.js"
 
@@ -19,14 +19,18 @@ const decisionOf = (effect: PolicyEffect, rule: CompiledRule | undefined, risk: 
   rule === undefined ? { effect, risk } : { effect, rule: rule.rule, risk }
 
 // deny -> ask -> allow, then workspace, then risk. Compound, wrapped or remote Bash, irreversible calls and
-// writes outside the workspace are never allowed.
+// writes outside the workspace are never allowed. A call over the input cap is asked before any lexing.
 export const decide = (
   rules: ReadonlyArray<CompiledRule>,
   botId: string,
   call: ToolCall,
   roots: ReadonlyArray<string> = [],
+  maxBytes = DEFAULT_MAX_INPUT_BYTES,
 ): PolicyDecision => {
-  const risk = riskOf(call)
+  if (inputTooLarge(call, maxBytes) !== undefined) {
+    return { effect: "ask", risk: "irreversible" }
+  }
+  const risk = riskOf(call, maxBytes)
   const ctx = contextOf(call)
   const applicable = (effect: PolicyEffect, mode: MatchMode): ReadonlyArray<CompiledRule> =>
     rules.filter((r) => r.rule.effect === effect && ruleMatches(r, botId, ctx, mode))
@@ -80,6 +84,8 @@ export interface PolicyOptions {
   readonly policyOf: (botId: BotId) => string | undefined
   // Workspace roots for writes, fixed for the service. Empty: only relative paths without ".." are placed.
   readonly workspaceRoots?: ReadonlyArray<string>
+  // Cap in UTF-8 bytes per Bash command, resource or path-like field. Over it the call is asked at once.
+  readonly maxInputBytes?: number
 }
 
 export interface PolicyLiveOptions extends PolicyOptions {
@@ -98,12 +104,13 @@ const evaluateSafely = (
   botId: BotId,
   call: ToolCall,
   roots: ReadonlyArray<string>,
+  maxBytes: number,
 ): Effect.Effect<PolicyDecision> =>
   Effect.try({
     try: (): PolicyDecision | undefined => {
       const name = policyOf(botId) ?? DEFAULT_POLICY
       const rules = set.rulesOf(name)
-      return rules === undefined ? undefined : decide(rules, botId, call, roots)
+      return rules === undefined ? undefined : decide(rules, botId, call, roots, maxBytes)
     },
     catch: (cause): unknown => cause,
   }).pipe(
@@ -166,19 +173,24 @@ const makePolicy = (deps: {
   readonly state: Ref.Ref<PolicySet>
   readonly policyOf: PolicyOptions["policyOf"]
   readonly workspaceRoots: ReadonlyArray<string>
+  readonly maxInputBytes: number
   readonly load: () => Effect.Effect<PolicySet, ConfigError>
 }): PolicyShape => ({
   evaluate: (botId, call, context) =>
     Effect.gen(function* () {
       const set = yield* Ref.get(deps.state)
       const roots = rootsFor(deps.workspaceRoots, context)
-      const decision = yield* evaluateSafely(set, deps.policyOf, botId, call, roots)
+      const tooLarge = inputTooLarge(call, deps.maxInputBytes)
+      if (tooLarge !== undefined) {
+        yield* Effect.logWarning(`policy asked without parsing: ${tooLarge}`)
+      }
+      const decision = yield* evaluateSafely(set, deps.policyOf, botId, call, roots, deps.maxInputBytes)
       if (decision.effect === "deny") {
         yield* recordDenied(deps.beacon, botId, call, decision)
       }
       return decision
     }),
-  riskOf,
+  riskOf: (call) => riskOf(call, deps.maxInputBytes),
   // On failure the previous rules stay active; the error is returned to the caller.
   reload: () => deps.load().pipe(Effect.flatMap((set) => Ref.set(deps.state, set))),
 })
@@ -195,6 +207,7 @@ export const makePolicyLive = (options: PolicyLiveOptions): Layer.Layer<Policy, 
         state,
         policyOf: options.policyOf,
         workspaceRoots: options.workspaceRoots ?? [],
+        maxInputBytes: options.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES,
         load: () => loadPolicySet(options.policyDir),
       })
     }),
@@ -214,6 +227,7 @@ export const makePolicyTest = (
         state,
         policyOf: options.policyOf,
         workspaceRoots: options.workspaceRoots ?? [],
+        maxInputBytes: options.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES,
         load: () => compilePolicies(options.sources),
       })
     }),
