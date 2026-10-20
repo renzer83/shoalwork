@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { MAX_AGENT_MSGS_PER_TASK } from "@shoalwork/lead"
 import { Config, Option, Redacted, Schema } from "effect"
 
 // The one rule for every setting: unset and blank (`NAME=` in .env, .env.example) both take the default.
@@ -92,6 +93,13 @@ export const AppConfig = Config.all({
   budgetBotWindowHours: setting("BUDGET_BOT_WINDOW_HOURS", Config.Int, 24),
   // Plan dispatch (T-050): how many steps of one plan level run at once (default 3; blank takes the default).
   planConcurrency: setting("PLAN_CONCURRENCY", Config.Int, 3).pipe(Config.map((value) => Math.max(1, value))),
+  // Agent messages a task may carry before further handoffs are refused (T-046, T-172). A whole number of at least 1;
+  // blank takes the Lead's default.
+  maxAgentMsgsPerTask: setting(
+    "MAX_AGENT_MSGS_PER_TASK",
+    (name) => Config.schema(Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(1))), name),
+    MAX_AGENT_MSGS_PER_TASK,
+  ),
   // Telegram (T-024): the connector starts only when a token is set. A blank value counts as unset (.env.example).
   telegramBotToken: optionalSetting("TELEGRAM_BOT_TOKEN", Config.Redacted),
   telegramAllowedUserIds: setting("TELEGRAM_ALLOWED_USER_IDS", Config.String, ""),

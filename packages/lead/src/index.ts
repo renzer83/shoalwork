@@ -16,10 +16,17 @@ import { DEFAULT_LEAD_CONFIG, type LeadConfig, makeRunner } from "./runner.js"
 import { TaskStore, TaskStoreLive } from "./tasks.js"
 import { makeWorker } from "./worker.js"
 
+// Settings the composition root reads from the core config and that do not belong to LeadConfig.
+export interface LeadOptions {
+  // Agent messages a task may carry before further handoffs are refused (T-172, MAX_AGENT_MSGS_PER_TASK).
+  readonly maxAgentMsgsPerTask?: number
+}
+
 // `tiers` is config/model-tiers.yaml (validated by the composition root): it decides the executor of every task.
 export const LeadLive = (
   tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
+  options?: LeadOptions,
 ): Layer.Layer<
   Lead | Control,
   never,
@@ -54,7 +61,7 @@ export const LeadLive = (
         bots,
         tasks,
         intake,
-        maxMessages: MAX_AGENT_MSGS_PER_TASK,
+        maxMessages: options?.maxAgentMsgsPerTask ?? MAX_AGENT_MSGS_PER_TASK,
       })
       const runner = makeRunner({
         sql,
@@ -106,11 +113,12 @@ export const LeadLive = (
 export const LeadWithStore = (
   tiers: TierConfig,
   overrides?: Partial<LeadConfig>,
+  options?: LeadOptions,
 ): Layer.Layer<
   Lead | Control,
   never,
   SqlClient | Beacon | BotRegistry | Tank | GhClient | ExecutorRegistry
-> => Layer.provide(LeadLive(tiers, overrides), Layer.merge(TaskStoreLive, McpTokensLive))
+> => Layer.provide(LeadLive(tiers, overrides, options), Layer.merge(TaskStoreLive, McpTokensLive))
 
 export {
   type BotFactoryConfig,

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { dirname, join, resolve } from "node:path"
 import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Semaphore } from "effect"
+import { publishArtifacts } from "./artifacts.js"
 import { checkSegment, escapes, isInside, resolveUnder } from "./confine.js"
 import { type BaseEnv, buildBotEnv, STEP_ENV_PATTERN } from "./env.js"
 import { ensureClone, worktreeAdd, worktreeList, worktreeRemove, worktreeReuse } from "./git.js"
@@ -28,6 +29,10 @@ export type TankLayout = {
   readonly opsFor: (botName: string) => BotOps
   // Runs before any directory is created for the Bot (server mode: the Linux user must exist).
   readonly preflight: (botName: string) => Effect.Effect<void, TankError>
+  // Where the artifacts of the runs live: <artifactsRoot>/_shared/artifacts/<taskId>.
+  readonly artifactsRoot: string
+  // Server mode: gives the artifacts directory the Bots' shared group (T-172). Absent in local mode.
+  readonly setArtifactsGroup?: ((dir: string) => Effect.Effect<void, TankError>) | undefined
 }
 
 // Filesystem-safe name for a repo URL; the hash keeps distinct URLs from colliding after slugging.
@@ -209,8 +214,17 @@ export const makeBotTank = (
       yield* ops.writeText(target, content, mode)
     })
 
+  // The root and the group come from the layout; the caller only says what the run produced.
+  const publish: TankShape["publishArtifacts"] = (input) =>
+    publishArtifacts({
+      ...input,
+      root: layout.artifactsRoot,
+      ...(layout.setArtifactsGroup === undefined ? {} : { setGroup: layout.setArtifactsGroup }),
+    })
+
   return {
     mode: layout.mode,
+    publishArtifacts: publish,
     prepare,
     worktrees,
     removeWorktree,
@@ -262,6 +276,7 @@ export const makeTankLocal = (config: TankLocalConfig): TankShape => {
       home: (botDir) => join(botDir, "home"),
       opsFor: () => localOps,
       preflight: noPreflight,
+      artifactsRoot: root,
     },
     config.baseEnv,
     config.extraEnv,

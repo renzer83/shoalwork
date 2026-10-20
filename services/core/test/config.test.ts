@@ -1,4 +1,5 @@
 import { resolve } from "node:path"
+import { MAX_AGENT_MSGS_PER_TASK } from "@shoalwork/lead"
 import { Config, ConfigProvider, Effect, Exit, Option, Redacted } from "effect"
 import { describe, expect, it } from "vitest"
 import { AppConfig, optionalSetting, REPO_ROOT, resolveDatabasePath, setting } from "../src/config.js"
@@ -116,5 +117,25 @@ describe("setting: unset and blank take the default", () => {
     const token = optionalSetting("TOKEN_UNDER_TEST", Config.String)
     expect(Option.isNone(readSetting({ TOKEN_UNDER_TEST: "" }, token))).toBe(true)
     expect(readSetting({ TOKEN_UNDER_TEST: "x" }, token)).toEqual(Option.some("x"))
+  })
+})
+
+describe("MAX_AGENT_MSGS_PER_TASK", () => {
+  it("takes the Lead's default when unset or blank", () => {
+    expect(parseEnv({}).maxAgentMsgsPerTask).toBe(MAX_AGENT_MSGS_PER_TASK)
+    expect(parseEnv({ MAX_AGENT_MSGS_PER_TASK: "" }).maxAgentMsgsPerTask).toBe(MAX_AGENT_MSGS_PER_TASK)
+    expect(parseEnv({ MAX_AGENT_MSGS_PER_TASK: "  " }).maxAgentMsgsPerTask).toBe(MAX_AGENT_MSGS_PER_TASK)
+    expect(MAX_AGENT_MSGS_PER_TASK).toBe(20)
+  })
+
+  it("takes a whole number of at least 1", () => {
+    expect(parseEnv({ MAX_AGENT_MSGS_PER_TASK: "5" }).maxAgentMsgsPerTask).toBe(5)
+    expect(parseEnv({ MAX_AGENT_MSGS_PER_TASK: "1" }).maxAgentMsgsPerTask).toBe(1)
+  })
+
+  it("refuses zero, negative, fractional and non-numeric values", () => {
+    for (const value of ["0", "-3", "1.5", "many"]) {
+      expect(() => parseEnv({ MAX_AGENT_MSGS_PER_TASK: value })).toThrow()
+    }
   })
 })

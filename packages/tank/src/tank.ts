@@ -1,5 +1,6 @@
 import type { Bot, BotId, RepoRef, StepId, TankError, TankMode, WorktreeConflict } from "@shoalwork/contracts"
 import { Context, type Effect, type Scope, type Stream } from "effect"
+import type { PublishedArtifacts, PublishRun } from "./artifacts.js"
 
 export type TankContext = {
   readonly botId: BotId
@@ -85,6 +86,10 @@ export interface TankShape {
   readonly worktrees: (bot: Bot, repoUrl: string) => Effect.Effect<ReadonlyArray<OwnedWorktree>, TankError>
   // Removes one of the Bot's worktrees with its branch; same confinement as release.
   readonly removeWorktree: (bot: Bot, worktree: OwnedWorktree) => Effect.Effect<void, TankError>
+  // Copies a run's files into the task's artifacts directory of this Tank (T-046, T-172). The root and the group are
+  // the Tank's own: local mode keeps them under TANK_ROOT, server mode under the Bot homes with the shared group.
+  // Optional so that test doubles of the shape need not carry it; both real Tanks always provide it.
+  readonly publishArtifacts?: (input: PublishRun) => Effect.Effect<PublishedArtifacts, TankError>
 }
 
 export class Tank extends Context.Service<Tank, TankShape>()("@shoalwork/Tank") {}

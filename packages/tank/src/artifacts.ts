@@ -21,6 +21,8 @@ export type ArtifactManifest = typeof ArtifactManifest.Type
 
 export const MANIFEST_NAME = "manifest.json"
 export const ARTIFACT_MAX_FILE_BYTES = 10 * 1024 * 1024
+// Mode of a task's artifacts directory: group-shared and setgid, so the files inherit the group (T-172).
+export const ARTIFACTS_DIR_MODE = 0o2775
 export const ARTIFACT_MAX_TOTAL_BYTES = 50 * 1024 * 1024
 
 export interface ArtifactLimits {
@@ -46,7 +48,12 @@ export interface PublishInput {
   readonly files: ReadonlyArray<string>
   readonly screen: ArtifactScreen
   readonly limits?: ArtifactLimits
+  // Applied to the task directory before its first file (server mode: the shared group, T-172).
+  readonly setGroup?: ((dir: string) => Effect.Effect<void, TankError>) | undefined
 }
+
+// What a Tank needs from a caller to publish a run: the root and the group belong to the Tank, not to the caller.
+export type PublishRun = Omit<PublishInput, "root" | "setGroup">
 
 export interface PublishedArtifacts {
   readonly manifest: ArtifactManifest
@@ -135,58 +142,78 @@ const readSources = async (input: PublishInput, limits: ArtifactLimits): Promise
   return sources
 }
 
+// Copies the sources into the task's directory and writes manifest.json there. Returns one `file` Artifact per copy.
+const writeCopies = async (
+  dir: string,
+  producedBy: BotId,
+  sources: ReadonlyArray<Source>,
+): Promise<ReadonlyArray<Artifact>> => {
+  const realDir = await realpath(dir)
+  const entries: Array<ArtifactEntry> = []
+  const artifacts: Array<Artifact> = []
+  for (const source of sources) {
+    const dest = resolve(dir, source.rel)
+    if (!isInside(dir, dest)) refuse(`artifact destination escapes the task directory: ${source.rel}`)
+    await mkdir(dirname(dest), { recursive: true })
+    await noSymlinkBetween(dir, dest, source.rel)
+    const realParent = await realpath(dirname(dest))
+    if (!isInside(realDir, realParent)) refuse(`artifact destination resolves outside: ${source.rel}`)
+    const existing = await lstat(dest).catch((cause: unknown) => {
+      if (isEnoent(cause)) return undefined
+      throw cause
+    })
+    if (existing?.isSymbolicLink() === true) refuse(`artifact destination is a symlink: ${source.rel}`)
+    await writeFile(dest, source.bytes)
+    entries.push({
+      path: source.rel,
+      sha256: sha256Of(source.bytes),
+      bytes: source.bytes.byteLength,
+      producedBy,
+    })
+    artifacts.push({ kind: "file", ref: dest })
+  }
+  entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  await writeFile(join(dir, MANIFEST_NAME), `${JSON.stringify({ files: entries }, null, 2)}\n`, "utf8")
+  return artifacts
+}
+
+// Any failure of a filesystem step is a TankError (a TankError raised inside the step is kept as it is).
+const fsStep = <A>(step: () => Promise<A>): Effect.Effect<A, TankError> =>
+  Effect.tryPromise({
+    try: step,
+    catch: (cause) => (cause instanceof TankError ? cause : new TankError({ op: "artifacts", cause })),
+  })
+
 // Copies the sources into the task's artifacts directory and writes manifest.json there, then reads it back and
 // validates it. Returns the manifest and one `file` Artifact per copy. Every failure is a TankError; nothing is
-// published when a source is refused (the copies are written after all of them passed).
-export const publishArtifacts = (input: PublishInput): Effect.Effect<PublishedArtifacts, TankError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const limits = input.limits ?? {
-        maxFileBytes: ARTIFACT_MAX_FILE_BYTES,
-        maxTotalBytes: ARTIFACT_MAX_TOTAL_BYTES,
-      }
-      const sources = await readSources(input, limits)
-      const dir = artifactsDir(input.root, input.taskId)
-      await mkdir(dir, { recursive: true, mode: 0o2775 })
-      await chmod(dir, 0o2775)
-      const realDir = await realpath(dir)
-      const entries: Array<ArtifactEntry> = []
-      const artifacts: Array<Artifact> = []
-      for (const source of sources) {
-        const dest = resolve(dir, source.rel)
-        if (!isInside(dir, dest)) refuse(`artifact destination escapes the task directory: ${source.rel}`)
-        await mkdir(dirname(dest), { recursive: true })
-        await noSymlinkBetween(dir, dest, source.rel)
-        const realParent = await realpath(dirname(dest))
-        if (!isInside(realDir, realParent)) refuse(`artifact destination resolves outside: ${source.rel}`)
-        const existing = await lstat(dest).catch((cause: unknown) => {
-          if (isEnoent(cause)) return undefined
-          throw cause
-        })
-        if (existing?.isSymbolicLink() === true) refuse(`artifact destination is a symlink: ${source.rel}`)
-        await writeFile(dest, source.bytes)
-        entries.push({
-          path: source.rel,
-          sha256: sha256Of(source.bytes),
-          bytes: source.bytes.byteLength,
-          producedBy: input.producedBy,
-        })
-        artifacts.push({ kind: "file", ref: dest })
-      }
-      entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-      const manifestPath = join(dir, MANIFEST_NAME)
-      await writeFile(manifestPath, `${JSON.stringify({ files: entries }, null, 2)}\n`, "utf8")
-      return { manifest: { files: entries }, artifacts }
-    },
-    catch: (cause) => (cause instanceof TankError ? cause : new TankError({ op: "artifacts", cause })),
-  }).pipe(
-    Effect.flatMap((published) =>
-      // Read back and validate what was written: the manifest on disk is the record, not the value in memory.
-      readArtifactManifest(input.root, input.taskId).pipe(
-        Effect.map((manifest) => ({ manifest, artifacts: published.artifacts })),
-      ),
+// written when a source is refused (the copies are written after all of them passed). The group, when set, is
+// applied to the directory before its first file, so that the files inherit it (setgid).
+export const publishArtifacts = (input: PublishInput): Effect.Effect<PublishedArtifacts, TankError> => {
+  const limits = input.limits ?? {
+    maxFileBytes: ARTIFACT_MAX_FILE_BYTES,
+    maxTotalBytes: ARTIFACT_MAX_TOTAL_BYTES,
+  }
+  const dir = artifactsDir(input.root, input.taskId)
+  const nothing: PublishedArtifacts = { manifest: { files: [] }, artifacts: [] }
+  return fsStep(() => readSources(input, limits)).pipe(
+    // A run with no files publishes nothing: no directory, no manifest.
+    Effect.flatMap((sources) =>
+      sources.length === 0
+        ? Effect.succeed(nothing)
+        : fsStep(() => mkdir(dir, { recursive: true, mode: ARTIFACTS_DIR_MODE })).pipe(
+            Effect.flatMap(() => (input.setGroup === undefined ? Effect.void : input.setGroup(dir))),
+            Effect.flatMap(() => fsStep(() => chmod(dir, ARTIFACTS_DIR_MODE))),
+            Effect.flatMap(() => fsStep(() => writeCopies(dir, input.producedBy, sources))),
+            Effect.flatMap((artifacts) =>
+              // Read back and validate what was written: the manifest on disk is the record, not the value in memory.
+              readArtifactManifest(input.root, input.taskId).pipe(
+                Effect.map((manifest): PublishedArtifacts => ({ manifest, artifacts })),
+              ),
+            ),
+          ),
     ),
   )
+}
 
 // The manifest of a task's artifacts, decoded from disk (fails with TankError when it is missing or not valid).
 export const readArtifactManifest = (

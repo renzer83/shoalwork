@@ -17,7 +17,7 @@ import {
   MCP_TOKEN_ENV,
   type McpAttachment,
 } from "@shoalwork/executors"
-import type { IndexerShape } from "@shoalwork/reef"
+import { type IndexerShape, isIgnoredPath, looksLikeSecret } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Effect, Exit, Redacted, Ref, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
@@ -230,6 +230,24 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
       ...(grant === undefined ? {} : { extraEnv: grant.extraEnv }),
     })
 
+  // The run's files (its `file` artifacts, paths relative to the worktree) are published at the end of every run, before
+  // the worktree can go (T-172). A failure is reported like the other cleanup steps; the verdict does not change.
+  const publish = (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>) =>
+    Effect.gen(function* () {
+      const publishRun = deps.tank.publishArtifacts
+      if (publishRun === undefined) return
+      const files = (yield* Ref.get(progress)).artifacts.flatMap((artifact) =>
+        artifact.kind === "file" ? [artifact.ref] : [],
+      )
+      yield* publishRun({
+        taskId: spec.id,
+        producedBy: spec.botId,
+        cwd: ctx.cwd,
+        files,
+        screen: { refusePath: isIgnoredPath, refuseContent: looksLikeSecret },
+      }).pipe(Effect.catch((cause) => report(spec, "lead.artifacts", cause)))
+    })
+
   // Keep the worktree for diagnosis unless the run ended in an ok verdict.
   const release = (
     spec: TaskSpec,
@@ -240,6 +258,7 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
     Effect.gen(function* () {
       const ok = Exit.isSuccess(exit) && (yield* Ref.get(progress)).outcome._tag === "Done"
       yield* clearProcesses(deps.sql, spec.id)
+      yield* publish(spec, ctx, progress)
       yield* deps.tank
         .release(ctx, { keepWorktree: !ok })
         .pipe(

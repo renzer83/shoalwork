@@ -23,7 +23,12 @@ export type TankServerConfig = {
   // Same meaning as TankLocalConfig.extraEnv; reaches the Bot only through the `env K=V` argv.
   readonly extraEnv?: Readonly<Record<string, string>>
   readonly run?: RunFn
+  // Where the artifacts live (default: the Bot homes root, since TANK_ROOT does not apply in server mode).
+  readonly artifactsRoot?: string
 }
+
+// Group shared by the Bots' artifacts directories (T-172). The core's user must be a member: host setup, not code.
+export const ARTIFACTS_GROUP = "bots"
 
 type Call = PassEnv & {
   readonly cwd?: string | undefined
@@ -133,6 +138,12 @@ const preflightUser = (
 export const makeTankServer = (config: TankServerConfig): TankShape => {
   const spawnEnv: Record<string, string> = { PATH: config.baseEnv.PATH ?? DEFAULT_PATH }
   const run: RunFn = config.run ?? runProcess
+  // The core owns the artifacts directory (it copies the files in), so the group is set by the core's own user, not
+  // through sudo.
+  const setArtifactsGroup = (dir: string) =>
+    run(["chgrp", "--", ARTIFACTS_GROUP, dir], { cwd: "/", env: spawnEnv }).pipe(
+      Effect.flatMap((r) => checkExit("artifacts", r)),
+    )
   return makeBotTank(
     {
       mode: "server",
@@ -141,6 +152,8 @@ export const makeTankServer = (config: TankServerConfig): TankShape => {
       home: (botDir) => botDir,
       opsFor: (botName) => botOps(botUserName(botName), config.sudo, spawnEnv, run),
       preflight: (botName) => (config.sudo ? preflightUser(botName, spawnEnv, run) : Effect.void),
+      artifactsRoot: config.artifactsRoot ?? BOT_HOMES_ROOT,
+      setArtifactsGroup,
     },
     config.baseEnv,
     config.extraEnv,

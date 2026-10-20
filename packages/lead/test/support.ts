@@ -104,6 +104,12 @@ export type FakeTank = {
   readonly released: Array<{ readonly keepWorktree: boolean }>
   // Every command the Lead ran in a Bot's Tank (argv), in order.
   readonly commands: Array<ReadonlyArray<string>>
+  // Every publishArtifacts call of a run (T-172): the task, the run's cwd and the files it named.
+  readonly published: Array<{
+    readonly taskId: string
+    readonly cwd: string
+    readonly files: ReadonlyArray<string>
+  }>
 }
 
 const result = (exitCode: number, stdout = "", stderr = ""): ExecResult => ({
@@ -137,6 +143,7 @@ export const makeFakeTank = (
   opts: {
     readonly failPrepare?: boolean
     readonly hangPrepare?: boolean
+    readonly failPublish?: boolean
     readonly exec?: (argv: ReadonlyArray<string>) => ExecResult
   } = {},
 ): FakeTank => {
@@ -146,6 +153,7 @@ export const makeFakeTank = (
   // Like the real Tank: a worktree kept for diagnosis blocks a second prepare with the same step id.
   const worktrees = new Set<string>()
   const released: Array<{ readonly keepWorktree: boolean }> = []
+  const published: FakeTank["published"] = []
   const unused = () => Effect.die("not used by the Lead")
   const shape: TankShape = {
     mode: "local",
@@ -194,6 +202,13 @@ export const makeFakeTank = (
     readFile: unused,
     writeFile: unused,
     writeHomeFile: unused,
+    publishArtifacts: (input) =>
+      opts.failPublish === true
+        ? Effect.fail(new TankError({ op: "artifacts", cause: "disk full" }))
+        : Effect.sync(() => {
+            published.push({ taskId: input.taskId, cwd: input.cwd, files: input.files })
+            return { manifest: { files: [] }, artifacts: [] }
+          }),
     release: (_ctx, release) =>
       Effect.sync(() => {
         released.push({ keepWorktree: release.keepWorktree })
@@ -204,7 +219,7 @@ export const makeFakeTank = (
     worktrees: () => Effect.succeed([]),
     removeWorktree: unused,
   }
-  return { shape, prepared, released, commands }
+  return { shape, prepared, released, commands, published }
 }
 
 export type Runs = Array<ExecutorTask>
