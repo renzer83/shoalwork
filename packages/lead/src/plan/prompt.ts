@@ -36,11 +36,16 @@ export const buildPlanPrompt = (input: PlanPromptInput): string => {
     `- 3 to 8 steps (never more than ${stepLimit}${code ? ", the Lead adds one review step last" : ""}), each independently verifiable.`,
     '- "ref" is a short label for the step (letters, digits, "-" and "_", up to 32 characters), unique in the plan.',
     '- "dependsOn" lists the refs of other steps, and only when the step consumes the output of those steps.',
-    '- "acceptance" has at least one concrete, checkable criterion per step.',
-    '- An acceptance item that starts with "$ " is a command the Lead runs in the repo, with no shell (for example "$ pnpm --filter @shoalwork/lead test"). Only test and lint commands of the repo are accepted; any other item is a criterion for a judge.',
+    '- Each step has at least one concrete, checkable criterion in "acceptance" or one command in "checks"; "checks" may be an empty list.',
+    '- "acceptance" items are criteria for a judge. "checks" lists the commands the Lead runs in the repo: each is {"argv": ["pnpm", "test"]}, one word per item, no shell, no pipes or quoting (for example {"argv": ["pnpm", "--filter", "@shoalwork/lead", "test"]}). Only "test", "lint", "typecheck" and "build" of pnpm, npm, yarn or bun are accepted (also as "run <script>"), with --filter limited to a package name or a path inside the repo.',
+    ...(code
+      ? [
+          '- In a code plan EVERY step has at least one command in "checks": the Lead verifies each step by running them.',
+        ]
+      : []),
     `- "assignedBot" is a name from the list of bots below, or "${NEW_BOT}" when none fits.`,
     '- "tier" is "heavy" for steps that need reasoning or code changes, "light" for simple operations.',
-    `- title up to ${LIMITS.title} characters, prompt up to ${LIMITS.prompt}, each criterion up to ${LIMITS.criterion}, up to ${LIMITS.criteria} criteria per step.`,
+    `- title up to ${LIMITS.title} characters, prompt up to ${LIMITS.prompt}, each criterion up to ${LIMITS.criterion}, up to ${LIMITS.criteria} criteria and up to ${LIMITS.checks} checks per step, each check up to ${LIMITS.argv} words of up to ${LIMITS.arg} characters.`,
     "- The sum of the step budgets must not pass the total budget, in every dimension.",
     `Total budget: ${budgetLine(task.budget)}`,
     ...(code

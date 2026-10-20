@@ -4,12 +4,25 @@ import { ModelTier } from "./enums.js"
 import { SchemaViolation } from "./errors.js"
 import { BotId, PlanId, StepId, TaskId } from "./ids.js"
 
+export const StepKind = Schema.Literals(["work", "review"])
+export type StepKind = typeof StepKind.Type
+
+// One acceptance command, as argv: it runs without a shell, so no item can inject one.
+export const StepCheck = Schema.Struct({
+  argv: Schema.Array(Schema.String).check(Schema.isMinLength(1)),
+})
+export type StepCheck = typeof StepCheck.Type
+
 export const Step = Schema.Struct({
   id: StepId,
   title: Schema.String,
   prompt: Schema.String,
   dependsOn: Schema.Array(StepId),
+  // Criteria for the judge. The commands that must pass are `checks`.
   acceptance: Schema.Array(Schema.String),
+  // "review" steps are marked by the planner; plans stored before this field decode as "work" steps.
+  kind: StepKind.pipe(Schema.withDecodingDefaultKey(Effect.succeed("work" as const))),
+  checks: Schema.Array(StepCheck).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   budget: Budget,
   tier: ModelTier,
   parallelizable: Schema.Boolean,

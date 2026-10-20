@@ -230,7 +230,7 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
       }).pipe(Effect.catch((cause) => report(spec, "lead.artifacts", cause)))
     })
 
-  // Keep the worktree for diagnosis unless the run ended in an ok verdict.
+  // Keep the worktree for diagnosis unless the run ended in an ok verdict, or for the Lead's checks (holdWorktree).
   const release = (
     spec: TaskSpec,
     ctx: TankContext,
@@ -242,7 +242,7 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
       yield* clearProcesses(deps.sql, spec.id)
       yield* publish(spec, ctx, progress)
       yield* deps.tank
-        .release(ctx, { keepWorktree: !ok })
+        .release(ctx, { keepWorktree: !ok || spec.holdWorktree === true })
         .pipe(
           Effect.catch((error) =>
             deps.raiseError(spec, "tank.release", error._tag, describeFailure(error).message),

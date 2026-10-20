@@ -87,6 +87,7 @@ export const stepJson = (ref: string, over: Record<string, unknown> = {}) => ({
   prompt: `Do step ${ref}.`,
   dependsOn: [],
   acceptance: [`step ${ref} is done`],
+  checks: [{ argv: ["pnpm", "test"] }],
   budget: { tokens: 1000, seconds: 5, usd: 0.01 },
   tier: "light",
   parallelizable: true,

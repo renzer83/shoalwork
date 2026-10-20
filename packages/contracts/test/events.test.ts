@@ -59,6 +59,8 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "github.push",
   "pod.opened",
   "pod.closed",
+  "step.verified",
+  "review.decided",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -117,6 +119,24 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     podId: POD,
     taskId: TASK,
     summary: "2 passo(s) auxiliar(es): 2 concluído(s), 0 falhou(aram).",
+  },
+  "step.verified": {
+    taskId: TASK,
+    planId: PLAN,
+    stepId: STEP,
+    tests: "pass",
+    artifacts: "pass",
+    final: "ok",
+    notes: [],
+  },
+  "review.decided": {
+    taskId: TASK,
+    planId: PLAN,
+    stepId: STEP,
+    round: 1,
+    decision: "fix",
+    findings: 2,
+    reason: "two blocking findings",
   },
   "memory.added": { id: "mem_1", scope: "bot", ownerId: BOT, kind: "semantic", source: "chat" },
   "memory.superseded": { id: "mem_1", supersededBy: "mem_2", scope: "bot", ownerId: BOT },
@@ -222,6 +242,8 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "github.push": "ref",
   "pod.opened": "podId",
   "pod.closed": "summary",
+  "step.verified": "final",
+  "review.decided": "decision",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -242,8 +264,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 36 types", () => {
-    expect(EVENT_TYPES).toHaveLength(36)
+  it("EventType is exactly the 38 types", () => {
+    expect(EVENT_TYPES).toHaveLength(38)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

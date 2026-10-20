@@ -34,6 +34,7 @@ import {
 import { PodClosedPayload, PodOpenedPayload } from "./pod.js"
 import { TaskPlannedPayload, TaskReceivedPayload, TaskStateChangedPayload } from "./task.js"
 import { TideFiredPayload, TideSkippedPayload } from "./tide.js"
+import { ReviewDecidedPayload, StepVerifiedPayload } from "./verify.js"
 
 // Closed list: adding a type is a spec change (02-architecture §3).
 export const EventType = Schema.Literals([
@@ -73,6 +74,8 @@ export const EventType = Schema.Literals([
   "github.push",
   "pod.opened",
   "pod.closed",
+  "step.verified",
+  "review.decided",
 ])
 export type EventType = typeof EventType.Type
 
@@ -114,6 +117,8 @@ export const EventPayloads = {
   "github.push": GithubPushPayload,
   "pod.opened": PodOpenedPayload,
   "pod.closed": PodClosedPayload,
+  "step.verified": StepVerifiedPayload,
+  "review.decided": ReviewDecidedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

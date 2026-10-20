@@ -155,6 +155,8 @@ export const stepOf = (id: StepId, title: string, assignedBot: BotId | undefined
   prompt: `Do: ${title}.`,
   dependsOn: [],
   acceptance: [`${title} is done`],
+  kind: "work" as const,
+  checks: [],
   budget: { tokens: 1000, seconds: 60, usd: 0.1 },
   tier: "light" as const,
   parallelizable: true,

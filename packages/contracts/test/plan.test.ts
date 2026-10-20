@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { it } from "@effect/vitest"
 import { Effect, Schema } from "effect"
 import { describe, expect } from "vitest"
-import { Plan, topoOrder, validatePlan } from "../src/plan.js"
+import { Plan, Step, topoOrder, validatePlan } from "../src/plan.js"
 
 const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"))
@@ -120,5 +120,26 @@ describe("plan", () => {
   it("topoOrder puts every step with no dependencies in the first level", () => {
     const plan = decodePlan([step(A, []), step(B, []), step(C, []), step(D, [])])
     expect(topoOrder(plan)).toEqual([[A, B, C, D]])
+  })
+})
+
+describe("step kind and checks", () => {
+  it("a plan stored before them decodes as work steps with no checks", () => {
+    const plan = decodePlan([step(A, [])])
+    expect(plan.steps[0]?.kind).toBe("work")
+    expect(plan.steps[0]?.checks).toEqual([])
+  })
+
+  it("round-trips a review step with checks", () => {
+    const raw = { ...step(A, []), kind: "review", checks: [{ argv: ["pnpm", "test"] }] }
+    const decoded = Schema.decodeUnknownSync(Step)(raw)
+    expect(decoded.kind).toBe("review")
+    expect(Schema.encodeSync(Step)(decoded)).toEqual(raw)
+  })
+
+  it("rejects an unknown kind and a check without a command", () => {
+    expect(() => Schema.decodeUnknownSync(Step)({ ...step(A, []), kind: "fix" })).toThrow()
+    expect(() => Schema.decodeUnknownSync(Step)({ ...step(A, []), checks: [{ argv: [] }] })).toThrow()
+    expect(() => Schema.decodeUnknownSync(Step)({ ...step(A, []), checks: [{ cmd: "pnpm test" }] })).toThrow()
   })
 })

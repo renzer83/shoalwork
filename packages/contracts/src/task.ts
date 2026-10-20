@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { Budget } from "./budget.js"
 import { ModelTier, TaskKind, TaskOrigin } from "./enums.js"
-import { BotId, PlanId, StepId, TaskId } from "./ids.js"
+import { BotId, ExecutorId, PlanId, StepId, TaskId } from "./ids.js"
 
 export const RepoRef = Schema.Struct({
   url: Schema.String,
@@ -41,5 +41,9 @@ export const TaskSpec = Schema.Struct({
   correlationId: Schema.optional(Schema.String),
   // The task this one continues ("continua a task …"): same worktree and session when they still exist.
   resumeOf: Schema.optional(TaskId),
+  // A review task: it reads and answers, never delivers, and runs on an executor outside this list (the worker's).
+  review: Schema.optional(Schema.Struct({ excludeExecutors: Schema.Array(ExecutorId) })),
+  // A plan step with checks: its worktree stays after an ok run until the Lead has run the checks in it (and releases it).
+  holdWorktree: Schema.optional(Schema.Boolean),
 })
 export type TaskSpec = typeof TaskSpec.Type

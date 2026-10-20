@@ -141,6 +141,7 @@ describe("checkDraft review step", () => {
     prompt: "build it",
     dependsOn: [],
     acceptance: ["done"],
+    checks: [{ argv: ["pnpm", "test"] }],
     budget,
     tier: "heavy" as const,
     parallelizable: false,

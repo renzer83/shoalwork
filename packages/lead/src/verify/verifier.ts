@@ -1,18 +1,15 @@
 import type { Artifact, Step, Verdict } from "@shoalwork/contracts"
 import type { TestsOutcome } from "@shoalwork/reflex"
 import { Effect } from "effect"
+import { clip } from "../verdict.js"
 import { type ArtifactsOutcome, decide, type JudgeAnswer, type Verification } from "./rules.js"
 
 export const ACCEPTANCE_TIMEOUT_MS = 10 * 60 * 1000
-// An acceptance item that starts with this prefix is a command ("$ pnpm test"); the others are criteria for the judge.
-export const COMMAND_PREFIX = "$ "
 const PR_URL = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/
 
-// Commands as argv, split on spaces: they run without a shell, so no item can inject one.
-export const commandsOf = (acceptance: ReadonlyArray<string>): ReadonlyArray<ReadonlyArray<string>> =>
-  acceptance
-    .filter((item) => item.startsWith(COMMAND_PREFIX))
-    .map((item) => item.slice(COMMAND_PREFIX.length).trim().split(/\s+/))
+// The step's commands as argv (Step.checks): they run without a shell, so no item can inject one.
+export const commandsOf = (step: Pick<Step, "checks">): ReadonlyArray<ReadonlyArray<string>> =>
+  step.checks.map((check) => check.argv)
 
 // Each command gets the smaller of the per-command timeout and what is left of the step's seconds budget.
 export const timeoutFor = (remainingMs: number): number => Math.min(ACCEPTANCE_TIMEOUT_MS, remainingMs)
@@ -33,6 +30,9 @@ export interface JudgeFacts {
   readonly evidence: ReadonlyArray<string>
 }
 
+// "refused" covers deny, ask and a command shape the Lead does not accept: the step goes to a person, it is not failed.
+export type Allowance = "allow" | "refused"
+
 export interface CommandRun {
   readonly exitCode: number
   readonly durationMs: number
@@ -41,7 +41,7 @@ export interface CommandRun {
 export interface VerifierDeps {
   // Policy for one acceptance command (the composition binds Policy.evaluate, as the Bot's Bash). Anything but allowed
   // is never run: the tests outcome is "fail" with the reason.
-  readonly allow: (argv: ReadonlyArray<string>) => Effect.Effect<boolean>
+  readonly allow: (argv: ReadonlyArray<string>) => Effect.Effect<Allowance>
   // One command in the step's worktree, argv only, with its timeout. A command that cannot start or times out resolves
   // a non-zero exit (the caller maps Tank errors); durationMs is what it took, spent from the step's seconds budget.
   readonly run: (argv: ReadonlyArray<string>, timeoutMs: number) => Effect.Effect<CommandRun>
@@ -54,13 +54,16 @@ export interface VerifierDeps {
 interface TestsCheck {
   readonly tests: TestsOutcome
   readonly notes: ReadonlyArray<string>
+  readonly refused?: true
 }
+
+const commandText = (argv: ReadonlyArray<string>): string => `\`${clip(argv.join(" "), 120)}\``
 
 export const makeVerifier = (deps: VerifierDeps) => {
   // Commands run in order and stop at the first failure. No command at all means "none", not "pass".
   const testsOf = (step: Step): Effect.Effect<TestsCheck> =>
     Effect.gen(function* () {
-      const commands = commandsOf(step.acceptance)
+      const commands = commandsOf(step)
       if (commands.length === 0) {
         return { tests: "none", notes: [] } satisfies TestsCheck
       }
@@ -72,10 +75,11 @@ export const makeVerifier = (deps: VerifierDeps) => {
             notes: ["the step's time budget ran out before every acceptance command ran"],
           } satisfies TestsCheck
         }
-        if (!(yield* deps.allow(argv))) {
+        if ((yield* deps.allow(argv)) !== "allow") {
           return {
-            tests: "fail",
-            notes: ["an acceptance command was refused by policy and not run"],
+            tests: "none",
+            notes: [`the acceptance command ${commandText(argv)} was refused by policy and not run`],
+            refused: true,
           } satisfies TestsCheck
         }
         const run = yield* deps.run(argv, timeoutFor(remainingMs))
@@ -83,7 +87,7 @@ export const makeVerifier = (deps: VerifierDeps) => {
         if (run.exitCode !== 0) {
           return {
             tests: "fail",
-            notes: [`an acceptance command exited with ${run.exitCode}`],
+            notes: [`the acceptance command ${commandText(argv)} exited with ${run.exitCode}`],
           } satisfies TestsCheck
         }
       }
@@ -126,7 +130,12 @@ export const makeVerifier = (deps: VerifierDeps) => {
         tests: checked.tests,
         artifacts,
         judge,
-        final: notOk.length === 0 ? decide(checked.tests, artifacts, judge) : "failed",
+        final:
+          notOk.length > 0
+            ? "failed"
+            : checked.refused === true
+              ? "needs_human"
+              : decide(checked.tests, artifacts, judge),
         notes: [...checked.notes, ...notOk],
       }
     })

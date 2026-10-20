@@ -23,7 +23,9 @@ import {
   type MergeOutcome,
   type StepBranch,
 } from "../../src/plan/integration.js"
+import type { VerifyInput, VerifyStep } from "../../src/plan/step-verify.js"
 import { makeTaskStore } from "../../src/tasks.js"
+import type { Verification } from "../../src/verify/rules.js"
 import { createBot, specFor } from "../support.js"
 
 export const DispatchLayer = Layer.provideMerge(BotRegistryLive, Layer.provideMerge(BeaconLive, withTempDb()))
@@ -34,9 +36,25 @@ export const step = (title: string, dependsOn: ReadonlyArray<StepId> = []): Step
   prompt: `Do ${title}.`,
   dependsOn,
   acceptance: [`${title} works`],
+  kind: "work",
+  checks: [],
   budget: { tokens: 1000, seconds: 5, usd: 0.01 },
   tier: "light",
   parallelizable: true,
+})
+
+// A step with a check command: the only kind the dispatcher verifies.
+export const checked = (title: string, dependsOn: ReadonlyArray<StepId> = []): Step => ({
+  ...step(title, dependsOn),
+  checks: [{ argv: ["pnpm", "test"] }],
+})
+
+export const verified = (final: Verification["final"], notes: ReadonlyArray<string> = []): Verification => ({
+  tests: final === "ok" ? "pass" : final === "failed" ? "fail" : "none",
+  artifacts: "pass",
+  judge: { value: final === "ok", confidence: 0.9 },
+  final,
+  notes,
 })
 
 export const okVerdict = (branch?: string): Verdict => ({
@@ -155,6 +173,8 @@ export const setupDispatch = (
     readonly run: (run: FakeRun) => Effect.Effect<Verdict | StepResult>
     readonly overBudget?: (botId: BotId) => boolean
     readonly owners?: (id: StepId) => BotId | undefined
+    // Verification of a work step (default: ok). Sees every call, in order.
+    readonly verify?: (input: VerifyInput, nth: number) => Verification
   },
 ) =>
   Effect.gen(function* () {
@@ -177,7 +197,14 @@ export const setupDispatch = (
     const specs: Array<TaskSpec> = []
     const abandoned: Array<TaskId> = []
     const runs = new Map<StepId, number>()
+    const verifications: Array<VerifyInput> = []
+    const verify: VerifyStep = (input) =>
+      Effect.sync(() => {
+        verifications.push(input)
+        return options.verify?.(input, verifications.length) ?? verified("ok")
+      })
     const dispatcher = makeDispatcher({
+      verify,
       sql,
       beacon,
       tasks,
@@ -206,7 +233,7 @@ export const setupDispatch = (
           return "verdict" in result ? result : { verdict: result, stopped: false }
         }),
     })
-    return { dispatcher, plan, assignments, specs, abandoned, root, tasks, bot, bots }
+    return { dispatcher, plan, assignments, specs, abandoned, root, tasks, bot, bots, verifications }
   })
 
 // Counts how many fake runs are inside `body` at once and remembers the highest count.

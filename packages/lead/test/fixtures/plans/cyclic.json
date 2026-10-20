@@ -6,10 +6,19 @@
       "prompt": "Do the first thing after b.",
       "dependsOn": ["b"],
       "acceptance": ["first thing is done"],
-      "budget": { "tokens": 10000, "seconds": 10, "usd": 0.1 },
+      "budget": {
+        "tokens": 10000,
+        "seconds": 10,
+        "usd": 0.1
+      },
       "tier": "light",
       "parallelizable": false,
-      "assignedBot": "worker-bot"
+      "assignedBot": "worker-bot",
+      "checks": [
+        {
+          "argv": ["pnpm", "test"]
+        }
+      ]
     },
     {
       "ref": "b",
@@ -17,10 +26,19 @@
       "prompt": "Do the second thing after a.",
       "dependsOn": ["a"],
       "acceptance": ["second thing is done"],
-      "budget": { "tokens": 10000, "seconds": 10, "usd": 0.1 },
+      "budget": {
+        "tokens": 10000,
+        "seconds": 10,
+        "usd": 0.1
+      },
       "tier": "light",
       "parallelizable": false,
-      "assignedBot": "worker-bot"
+      "assignedBot": "worker-bot",
+      "checks": [
+        {
+          "argv": ["pnpm", "test"]
+        }
+      ]
     }
   ]
 }

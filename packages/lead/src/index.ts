@@ -253,6 +253,13 @@ export {
 } from "./plan/planner.js"
 export { buildPlanPrompt } from "./plan/prompt.js"
 export { PlanDraft, planJsonSchema } from "./plan/schema-json.js"
+export {
+  makeStepVerify,
+  policyAllow,
+  type StepVerifyDeps,
+  type VerifyInput,
+  type VerifyStep,
+} from "./plan/step-verify.js"
 export { Planning, PlanningLive, type PlanningOptions, type PlanningShape } from "./planning.js"
 export { makePodNotes, PodNotes, PodNotesLive, type PodNotesShape } from "./pod-notes.js"
 export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
@@ -260,3 +267,18 @@ export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.j
 export { DEFAULT_LEAD_CONFIG, type LeadConfig, type RunResult } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"
 export { stepIdFor } from "./verdict.js"
+export {
+  decideReview,
+  type Finding,
+  fixPrompt,
+  type ParsedReview,
+  parseReview,
+  type ReviewDecision,
+} from "./verify/review.js"
+export {
+  type FinalOutcome,
+  JUDGE_MIN_CONFIDENCE,
+  type JudgeAnswer,
+  type Verification,
+} from "./verify/rules.js"
+export { type JudgeFacts, makeVerifier, type Verifier, type VerifierDeps } from "./verify/verifier.js"

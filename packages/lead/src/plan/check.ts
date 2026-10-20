@@ -134,8 +134,17 @@ const draftProblems = (
     if (step.title.trim() === "" || step.prompt.trim() === "") {
       problems.push(`step ${step.ref} needs a title and a prompt`)
     }
-    if (step.acceptance.length === 0 || step.acceptance.some((item) => item.trim() === "")) {
+    if (
+      (step.acceptance.length === 0 && step.checks.length === 0) ||
+      step.acceptance.some((item) => item.trim() === "")
+    ) {
       problems.push(`step ${step.ref} needs at least one non-empty acceptance criterion`)
+    }
+    if (reserved > 0 && step.checks.length === 0) {
+      problems.push(`step ${step.ref} needs at least one check command (a code plan verifies every step)`)
+    }
+    if (step.checks.some((check) => (check.argv[0] ?? "").trim() === "")) {
+      problems.push(`step ${step.ref} has a check without a command (argv[0] is empty)`)
     }
     for (const dep of step.dependsOn) {
       if (!refs.has(dep)) {
@@ -162,6 +171,8 @@ const toSteps = (draft: PlanDraft, input: CheckInput): ReadonlyArray<Step> => {
       prompt: step.prompt.trim(),
       dependsOn: step.dependsOn.flatMap((ref) => ids.get(ref) ?? []),
       acceptance: step.acceptance.map((item) => item.trim()),
+      kind: "work",
+      checks: step.checks.map((check) => ({ argv: check.argv })),
       budget: step.budget,
       tier: step.tier,
       parallelizable: step.parallelizable,
@@ -180,6 +191,8 @@ const reviewStep = (steps: ReadonlyArray<Step>, input: CheckInput): Step => {
     prompt: input.review?.prompt ?? "",
     dependsOn: steps.map((step) => step.id),
     acceptance: [REVIEW_ACCEPTANCE],
+    kind: "review",
+    checks: [],
     budget: reviewBudgetOf(input.budget),
     tier: "heavy",
     parallelizable: false,

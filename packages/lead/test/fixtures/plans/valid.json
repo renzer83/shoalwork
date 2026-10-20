@@ -6,10 +6,19 @@
       "prompt": "Create the migration for the invoices table and its repository.",
       "dependsOn": [],
       "acceptance": ["pnpm --filter @shoalwork/db test passes"],
-      "budget": { "tokens": 30000, "seconds": 20, "usd": 0.3 },
+      "budget": {
+        "tokens": 30000,
+        "seconds": 20,
+        "usd": 0.3
+      },
       "tier": "heavy",
       "parallelizable": true,
-      "assignedBot": "worker-bot"
+      "assignedBot": "worker-bot",
+      "checks": [
+        {
+          "argv": ["pnpm", "test"]
+        }
+      ]
     },
     {
       "ref": "docs-link",
@@ -17,10 +26,19 @@
       "prompt": "Export the invoice type from the contracts package.",
       "dependsOn": [],
       "acceptance": ["pnpm --filter @shoalwork/contracts typecheck passes"],
-      "budget": { "tokens": 20000, "seconds": 10, "usd": 0.2 },
+      "budget": {
+        "tokens": 20000,
+        "seconds": 10,
+        "usd": 0.2
+      },
       "tier": "light",
       "parallelizable": true,
-      "assignedBot": "new"
+      "assignedBot": "new",
+      "checks": [
+        {
+          "argv": ["pnpm", "test"]
+        }
+      ]
     },
     {
       "ref": "endpoint",
@@ -28,10 +46,19 @@
       "prompt": "Use the table and the type to serve GET /invoices.",
       "dependsOn": ["schema", "docs-link"],
       "acceptance": ["GET /invoices answers 200 in the service test"],
-      "budget": { "tokens": 30000, "seconds": 20, "usd": 0.3 },
+      "budget": {
+        "tokens": 30000,
+        "seconds": 20,
+        "usd": 0.3
+      },
       "tier": "heavy",
       "parallelizable": false,
-      "assignedBot": "worker-bot"
+      "assignedBot": "worker-bot",
+      "checks": [
+        {
+          "argv": ["pnpm", "test"]
+        }
+      ]
     }
   ]
 }

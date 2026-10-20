@@ -136,7 +136,7 @@ export const makeRunner = (deps: RunnerDeps) => {
       yield* Ref.update(progress, (p) => ({ ...p, stepId, attempt: attempts }))
       yield* setup.markWorking(spec)
       const bot = yield* bots.get(spec.botId)
-      const chosen = yield* chooseExecutor(tiers, bot, spec.tier, executors)
+      const chosen = yield* chooseExecutor(tiers, bot, spec.tier, executors, spec.review?.excludeExecutors)
       if (Option.isNone(chosen)) {
         const message = `no executor available for tier ${spec.tier}`
         yield* raiseError(spec, "lead.executor", "NoExecutor", message)

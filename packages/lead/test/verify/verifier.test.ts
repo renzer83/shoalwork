@@ -12,12 +12,17 @@ import {
   timeoutFor,
 } from "../../src/verify/verifier.js"
 
-const step = (acceptance: ReadonlyArray<string>, seconds = 3600): Step => ({
+type Argv = ReadonlyArray<string>
+
+// Commands are the step's checks (argv); the criteria stay in acceptance for the judge.
+const step = (checks: ReadonlyArray<Argv>, seconds = 3600): Step => ({
   id: newStepId(),
   title: "step",
   prompt: "do it",
   dependsOn: [],
-  acceptance,
+  acceptance: ["the feature works"],
+  kind: "work",
+  checks: checks.map((argv) => ({ argv })),
   budget: { tokens: 1000, seconds, usd: 0.1 },
   tier: "heavy",
   parallelizable: false,
@@ -31,8 +36,7 @@ const verdict = (kind: Verdict["kind"] = "ok"): Verdict => ({
 })
 
 // "pass" runs one command that exits 0, "fail" one that exits 1, "none" has no command.
-const acceptanceFor = (tests: TestsOutcome): ReadonlyArray<string> =>
-  tests === "none" ? ["the feature works"] : ["$ pnpm test"]
+const checksFor = (tests: TestsOutcome): ReadonlyArray<Argv> => (tests === "none" ? [] : [["pnpm", "test"]])
 
 const artifactsFor = (artifacts: ArtifactsOutcome): ReadonlyArray<Artifact> =>
   artifacts === "pass"
@@ -47,7 +51,7 @@ const fakes = (exitCode: (argv: ReadonlyArray<string>) => number = () => 0) => {
     runs,
     files,
     deps: {
-      allow: () => Effect.succeed(true),
+      allow: () => Effect.succeed("allow" as const),
       run: (argv: ReadonlyArray<string>, timeoutMs: number) =>
         Effect.sync(() => {
           runs.push({ argv, timeoutMs })
@@ -76,7 +80,7 @@ describe("Verifier.verify", () => {
     Effect.gen(function* () {
       const { deps } = fakes((argv) => (argv[0] === "pnpm" && tests === "fail" ? 1 : 0))
       const verifier = makeVerifier(deps)
-      const verification = yield* verifier.verify(step(acceptanceFor(tests)), {
+      const verification = yield* verifier.verify(step(checksFor(tests)), {
         verdict: verdict(),
         artifacts: artifactsFor(artifacts),
       })
@@ -90,7 +94,7 @@ describe("Verifier.verify", () => {
     Effect.gen(function* () {
       const fake = fakes((argv) => (argv[0] === "lint" ? 1 : 0))
       const verifier = makeVerifier(fake.deps)
-      const result = yield* verifier.verify(step(["$ lint --fix", "$ pnpm test", "$ never"]), {
+      const result = yield* verifier.verify(step([["lint", "--fix"], ["pnpm", "test"], ["never"]]), {
         verdict: verdict(),
         artifacts: [],
       })
@@ -99,15 +103,15 @@ describe("Verifier.verify", () => {
     }),
   )
 
-  it.effect("a command refused by policy is never run and fails the tests with the reason", () =>
+  it.effect("a command refused by policy is never run and sends the step to a person with the reason", () =>
     Effect.gen(function* () {
       const fake = fakes()
-      const verifier = makeVerifier({ ...fake.deps, allow: () => Effect.succeed(false) })
-      const result = yield* verifier.verify(step(["$ rm -rf /"]), { verdict: verdict(), artifacts: [] })
+      const verifier = makeVerifier({ ...fake.deps, allow: () => Effect.succeed("refused" as const) })
+      const result = yield* verifier.verify(step([["rm", "-rf", "/"]]), { verdict: verdict(), artifacts: [] })
       expect(fake.runs).toHaveLength(0)
-      expect(result.tests).toBe("fail")
-      expect(result.final).toBe("failed")
-      expect(result.notes).toContain("an acceptance command was refused by policy and not run")
+      expect(result.tests).toBe("none")
+      expect(result.final).toBe("needs_human")
+      expect(result.notes).toEqual(["the acceptance command `rm -rf /` was refused by policy and not run"])
     }),
   )
 
@@ -124,7 +128,7 @@ describe("Verifier.verify", () => {
             return { exitCode: 0, durationMs: durations[fake.runs.length - 1] ?? 0 }
           }),
       })
-      const result = yield* verifier.verify(step(["$ a", "$ b", "$ c"], 1), {
+      const result = yield* verifier.verify(step([["a"], ["b"], ["c"]], 1), {
         verdict: verdict(),
         artifacts: [],
       })
@@ -142,7 +146,7 @@ describe("Verifier.verify", () => {
   it.effect("a step whose verdict is not ok is failed even when its tests pass", () =>
     Effect.gen(function* () {
       const verifier = makeVerifier(fakes().deps)
-      const result = yield* verifier.verify(step(["$ pnpm test"]), {
+      const result = yield* verifier.verify(step([["pnpm", "test"]]), {
         verdict: verdict("failed"),
         artifacts: [],
       })
@@ -157,7 +161,7 @@ describe("Verifier.verify", () => {
       const fake = fakes()
       const verifier = makeVerifier(fake.deps)
       for (const ref of ["/etc/passwd", "../secret", "docs/../../x", "C:\\x", "\\\\server\\share", ""]) {
-        const result = yield* verifier.verify(step(["$ pnpm test"]), {
+        const result = yield* verifier.verify(step([["pnpm", "test"]]), {
           verdict: verdict(),
           artifacts: [{ kind: "file", ref }],
         })
@@ -171,7 +175,7 @@ describe("Verifier.verify", () => {
     Effect.gen(function* () {
       const fake = fakes()
       const verifier = makeVerifier(fake.deps)
-      const result = yield* verifier.verify(step(["$ pnpm test"]), {
+      const result = yield* verifier.verify(step([["pnpm", "test"]]), {
         verdict: verdict(),
         artifacts: [
           { kind: "file", ref: "docs/out.txt" },
@@ -184,12 +188,33 @@ describe("Verifier.verify", () => {
     }),
   )
 
-  it("splits commands into argv without a shell and ignores criteria", () => {
-    expect(commandsOf(["$ pnpm  test --filter lead", "check the copy", "$ git status"])).toEqual([
+  it("takes the commands from the structured checks and ignores criteria", () => {
+    expect(
+      commandsOf(
+        step([
+          ["pnpm", "test", "--filter", "lead"],
+          ["git", "status"],
+        ]),
+      ),
+    ).toEqual([
       ["pnpm", "test", "--filter", "lead"],
       ["git", "status"],
     ])
+    expect(commandsOf(step([]))).toEqual([])
   })
+
+  it.effect("an acceptance line that looks like a command is a criterion, never run", () =>
+    Effect.gen(function* () {
+      const fake = fakes()
+      const verifier = makeVerifier(fake.deps)
+      const result = yield* verifier.verify(
+        { ...step([]), acceptance: ["$ rm -rf /"] },
+        { verdict: verdict(), artifacts: [] },
+      )
+      expect(fake.runs).toHaveLength(0)
+      expect(result.tests).toBe("none")
+    }),
+  )
 })
 
 describe("decide (tie-break table)", () => {

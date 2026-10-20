@@ -3,7 +3,9 @@ import { BotRegistry } from "@shoalwork/bots"
 import type { TaskId } from "@shoalwork/contracts"
 import { GhClient, TelegramOut } from "@shoalwork/currents"
 import { ChatSessions, ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
+import { Policy } from "@shoalwork/policy"
 import { Reef } from "@shoalwork/reef"
+import { criterionRule } from "@shoalwork/reflex"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, Option, type Scope, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -15,6 +17,7 @@ import { makeLifecycle } from "./lifecycle.js"
 import { makeDispatcher, PLAN_STOPPED_REASON } from "./plan/dispatcher.js"
 import { makeIntegration } from "./plan/integration.js"
 import { makePlanner } from "./plan/planner.js"
+import { makeStepVerify, policyAllow, type StepVerifyDeps } from "./plan/step-verify.js"
 import { makePlanFlow } from "./plan-flow.js"
 import { signalsOf } from "./plan-signals.js"
 import { forgetNotes, PodNotes } from "./pod-notes.js"
@@ -29,6 +32,8 @@ export interface PlanningOptions {
   readonly botBudgetWindowMs: number
   // "telegram": the Pod's topic is a forum topic. "none": Telegram is off, the Pod has no topic and posts go nowhere.
   readonly topics: "telegram" | "none"
+  // The Reflex "result meets criterion?" question for the verifier. Default: the v0 rule (packages/reflex).
+  readonly judge?: StepVerifyDeps["judge"]
 }
 
 export interface PlanningShape {
@@ -80,6 +85,8 @@ export const PlanningLive = (
       const control = yield* Control
       const notes = yield* PodNotes
       const reef = Option.getOrUndefined(yield* Effect.serviceOption(Reef))
+      // The Policy is optional in the core for now: without one no check command is allowed (needs_human).
+      const policy = Option.getOrUndefined(yield* Effect.serviceOption(Policy))
       const lifecycle = makeLifecycle({ beacon, tasks, bots })
       const chat = makeChat({ tank, bots, executors, sessions, tiers })
 
@@ -144,6 +151,12 @@ export const PlanningLive = (
             Effect.catchTag("NotFound", () => Effect.succeed(false)),
           ),
         integration: makeIntegration({ tank, gh, bots }),
+        verify: makeStepVerify({
+          tank,
+          bots,
+          allow: policyAllow(policy),
+          judge: options.judge ?? ((facts) => Effect.succeed(criterionRule(facts.tests))),
+        }),
         concurrency: options.planConcurrency,
       })
       const flow = makePlanFlow({

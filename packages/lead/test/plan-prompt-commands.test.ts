@@ -14,10 +14,12 @@ const base = {
 }
 
 describe("buildPlanPrompt command convention and review reserve", () => {
-  it("declares the $ command convention and that only test and lint commands are accepted", () => {
+  it("declares the structured checks and that only test, lint, typecheck and build commands are accepted", () => {
     const prompt = buildPlanPrompt(base)
-    expect(prompt).toContain('starts with "$ "')
-    expect(prompt).toContain("Only test and lint commands of the repo are accepted")
+    expect(prompt).toContain('"checks" lists the commands the Lead runs')
+    expect(prompt).not.toContain('starts with "$ "')
+    expect(prompt).toContain('Only "test", "lint", "typecheck" and "build"')
+    expect(prompt).toContain("EVERY step has at least one command")
   })
 
   it("tells a code plan its steps have one slot less and a reserved review budget", () => {

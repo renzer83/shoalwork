@@ -14,7 +14,7 @@ import type { IntegrationFailed, IntegrationSession } from "../src/plan/integrat
 import type { PlanOutcome, PlanSignals } from "../src/plan/planner.js"
 import { makePlanFlow } from "../src/plan-flow.js"
 import type { TaskRecord } from "../src/tasks.js"
-import { fakeIntegration, okVerdict } from "./plan/dispatch-support.js"
+import { fakeIntegration, okVerdict, verified } from "./plan/dispatch-support.js"
 import { type setupPods, stepOf } from "./pods-support.js"
 import { specFor } from "./support.js"
 
@@ -65,6 +65,7 @@ export const harness = (s: Setup, options: HarnessOptions = {}) =>
         return { verdict, stopped: false }
       })
     const dispatcher = makeDispatcher({
+      verify: () => Effect.succeed(verified("ok")),
       sql: s.sql,
       beacon,
       tasks: s.tasks,

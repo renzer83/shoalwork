@@ -123,7 +123,9 @@ export const makeDeliverStep =
   (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>) =>
     Effect.gen(function* () {
       const { outcome } = yield* Ref.get(progress)
+      // A review reads the plan branch and answers; it has nothing to deliver.
       if (outcome._tag !== "Done" || spec.kind !== "code" || spec.repo === undefined) return
+      if (spec.review !== undefined) return
       yield* deliverBranch(tank, ctx, {
         title: spec.title,
         base: spec.repo.base,

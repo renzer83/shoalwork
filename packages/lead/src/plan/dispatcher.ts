@@ -2,17 +2,14 @@ import type { BeaconShape } from "@shoalwork/beacon"
 import {
   type Artifact,
   type BotId,
-  type Budget,
   type NotFound,
   type Plan,
   type PlanId,
   SchemaViolation,
-  type Step,
   type StepId,
   type TaskId,
   type TaskSpec,
   topoOrder,
-  type Verdict,
   validatePlan,
 } from "@shoalwork/contracts"
 import { Effect, Ref, type Scope } from "effect"
@@ -20,28 +17,24 @@ import type { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
 import type { TaskStoreShape } from "../tasks.js"
 import type { IntegrationFailed, IntegrationSession } from "./integration.js"
+import { makeReviewFlow } from "./review-flow.js"
+import { makeRunOnce, type StepResult } from "./run-once.js"
 import {
   type Attempt,
   blockedWith,
-  conflictOf,
   conflictReason,
   failedWith,
+  type Job,
   outcomeOf,
   type StepOutcome,
 } from "./step-outcome.js"
-import { branchOf, budgetLeft, createStepTask, retryPrompt } from "./step-task.js"
+import { budgetLeft, retryPrompt } from "./step-task.js"
+import type { VerifyStep } from "./step-verify.js"
+import { makeGate } from "./verify-gate.js"
 
 export const DEFAULT_PLAN_CONCURRENCY = 3
 
-// The reason the dispatcher gives for closing the task of a step an interruption left unfinished.
-export const PLAN_STOPPED_REASON = "plan stopped"
-
-// What running a task came back with: its verdict and whether a stop (not the task itself) ended it.
-// The runner's RunResult has both (Lead.runTask).
-export interface StepResult {
-  readonly verdict: Verdict
-  readonly stopped: boolean
-}
+export { PLAN_STOPPED_REASON, type StepResult } from "./run-once.js"
 
 export interface DispatcherDeps {
   readonly sql: SqlClient
@@ -55,6 +48,8 @@ export interface DispatcherDeps {
   readonly integration: {
     readonly open: (root: TaskSpec) => Effect.Effect<IntegrationSession, IntegrationFailed, Scope.Scope>
   }
+  // Verification of a work step that finished ok (makeStepVerify): its checks and the tie-break of the verifier.
+  readonly verify: VerifyStep
   // config PLAN_CONCURRENCY: how many steps of one level run at once.
   readonly concurrency: number
 }
@@ -73,11 +68,6 @@ export interface PlanRun {
 }
 
 export type DispatchError = NotFound | SqlError | SchemaViolation | IntegrationFailed
-
-interface Job {
-  readonly step: Step
-  readonly botId: BotId
-}
 
 export const makeDispatcher = (deps: DispatcherDeps) => {
   const concurrency = Math.max(1, deps.concurrency)
@@ -114,37 +104,18 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
           return published ? session.branch : (root.repo?.base ?? "")
         })
 
-        // One run of a step as its own task. An interruption closes the task unless it already has its verdict.
-        const runOnce = (
-          { step, botId }: Job,
-          base: string,
-          prompt: string,
-          runs: number,
-          budget: Budget,
-        ): Effect.Effect<Attempt, SqlError> =>
-          Effect.gen(function* () {
-            if (yield* Ref.get(stopped))
-              return { _tag: "Skipped", reason: "stopped", runs: runs - 1 } as const
-            if (yield* deps.overBudget(botId)) {
-              return { _tag: "Skipped", reason: "budget: bot", runs: runs - 1 } as const
-            }
-            const taskId = yield* createStepTask(deps, { root, plan, step, botId, base, prompt, budget })
-            const result = yield* deps
-              .runTask(taskId)
-              .pipe(Effect.onInterrupt(() => deps.abandon(taskId, PLAN_STOPPED_REASON)))
-            if (result.stopped) yield* Ref.set(stopped, true)
-            const branch = result.verdict.kind === "ok" ? branchOf(result.verdict) : undefined
-            const conflict = conflictOf(result.verdict)
-            return {
-              _tag: "Ran",
-              taskId,
-              verdict: result.verdict,
-              runs,
-              stopped: result.stopped,
-              ...(branch === undefined ? {} : { branch }),
-              ...(conflict === undefined ? {} : { conflict }),
-            } as const
-          })
+        const runBare = makeRunOnce({ deps, root, plan, stopped })
+        // Every task a work step (or the fix of a review) ran as, discarded attempts included: the reviewer's
+        // executor must differ from all of theirs.
+        const workTasks: Array<TaskId> = []
+        const runOnce: typeof runBare = (job, ...rest) =>
+          runBare(job, ...rest).pipe(
+            Effect.tap((attempt) =>
+              job.step.kind === "work" && attempt._tag === "Ran"
+                ? Effect.sync(() => void workTasks.push(attempt.taskId))
+                : Effect.void,
+            ),
+          )
 
         // The one retry a conflict earns: the rest of the step's budget, from `base`, told which files clash.
         const retry = (
@@ -164,12 +135,22 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
             : runOnce(job, base, retryPrompt(job.step, base, files), 2, left)
         }
 
-        // A step is run; a conflict at delivery earns the retry, from the plan branch when it is published.
-        const runStep = (job: Job): Effect.Effect<Attempt, SqlError> =>
+        const gate = makeGate({
+          root,
+          beacon: deps.beacon,
+          planId: plan.id,
+          verify: deps.verify,
+          baseNow,
+          run: runOnce,
+        })
+
+        // A work step is run; a conflict at delivery earns the retry, from the plan branch when it is published.
+        // What comes out is verified before it is merged.
+        const runWork = (job: Job): Effect.Effect<Attempt, SqlError> =>
           Effect.gen(function* () {
             const first = yield* runOnce(job, yield* baseNow, job.step.prompt, 1, job.step.budget)
-            if (first._tag === "Skipped" || first.conflict === undefined) return first
-            return yield* retry(job, first, yield* baseNow, first.conflict)
+            if (first._tag === "Skipped" || first.conflict === undefined) return yield* gate(job, first, true)
+            return yield* gate(job, yield* retry(job, first, yield* baseNow, first.conflict), true)
           })
 
         // Merges a finished step; a merge conflict earns the one retry (if the step has not used it) and a second
@@ -180,7 +161,8 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
               session === undefined ||
               attempt._tag !== "Ran" ||
               attempt.verdict.kind !== "ok" ||
-              attempt.stopped
+              attempt.stopped ||
+              job.step.kind === "review"
             ) {
               return outcomeOf(id, attempt)
             }
@@ -192,7 +174,7 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
             if (first._tag === "Merged") return outcomeOf(id, attempt)
             if (attempt.runs > 1) return blockedWith(outcomeOf(id, attempt), conflictReason(first.files))
             yield* session.publish
-            const again = yield* retry(job, attempt, session.branch, first.files)
+            const again = yield* gate(job, yield* retry(job, attempt, session.branch, first.files), false)
             if (again._tag !== "Ran" || again.verdict.kind !== "ok" || again.stopped)
               return outcomeOf(id, again)
             if (again.branch === undefined) {
@@ -207,6 +189,27 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
               Effect.succeed(failedWith(id, attempt, `integration ${error.op}: ${error.cause}`)),
             ),
           )
+
+        // The fix a review asks for lands like any step: merged into the plan branch, which is then published.
+        const land = (job: Job, attempt: Attempt): Effect.Effect<StepOutcome, SqlError> =>
+          Effect.gen(function* () {
+            const outcome = yield* integrate(job.step.id, job, attempt)
+            if (outcome.status !== "done" || session === undefined) return outcome
+            const pushed = yield* Effect.result(session.publish)
+            return pushed._tag === "Success"
+              ? outcome
+              : failedWith(job.step.id, attempt, `integration ${pushed.failure.op}: ${pushed.failure.cause}`)
+          })
+        const runReview = makeReviewFlow({
+          root,
+          planId: plan.id,
+          beacon: deps.beacon,
+          baseNow,
+          run: runOnce,
+          land,
+          workTasks: () => workTasks,
+        })
+        const runStep = (job: Job) => (job.step.kind === "review" ? runReview(job) : runWork(job))
 
         for (const level of topoOrder(plan)) {
           const ready: Array<Job> = []

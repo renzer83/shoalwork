@@ -1,5 +1,5 @@
 import { Budget } from "@shoalwork/contracts"
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
 // The most steps a plan may have (the prompt asks for 3 to 8; this is the hard limit).
 export const MAX_STEPS = 12
@@ -9,6 +9,9 @@ export const LIMITS = {
   prompt: 4000,
   criterion: 300,
   criteria: 20,
+  checks: 5,
+  argv: 20,
+  arg: 200,
   reply: 200_000,
 } as const
 
@@ -16,6 +19,14 @@ export const LIMITS = {
 // Planner turns refs into StepIds and names into BotIds, so a model never invents an id.
 export const REF_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
 const Ref = Schema.String.check(Schema.isPattern(REF_PATTERN))
+
+// One acceptance command as argv (no shell). The limits keep a model from sending a novel as a command.
+export const DraftCheck = Schema.Struct({
+  argv: Schema.Array(Schema.String.check(Schema.isMaxLength(LIMITS.arg))).check(
+    Schema.isMaxLength(LIMITS.argv),
+  ),
+})
+export type DraftCheck = typeof DraftCheck.Type
 
 export const DraftStep = Schema.Struct({
   ref: Ref,
@@ -25,6 +36,10 @@ export const DraftStep = Schema.Struct({
   acceptance: Schema.Array(Schema.String.check(Schema.isMaxLength(LIMITS.criterion))).check(
     Schema.isMaxLength(LIMITS.criteria),
   ),
+  // A reply with no "checks" key means no commands.
+  checks: Schema.Array(DraftCheck)
+    .check(Schema.isMaxLength(LIMITS.checks))
+    .pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
   budget: Budget,
   tier: Schema.Literals(["light", "heavy"]),
   parallelizable: Schema.Boolean,

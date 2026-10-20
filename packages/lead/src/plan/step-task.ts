@@ -2,6 +2,7 @@ import type { BeaconShape } from "@shoalwork/beacon"
 import {
   type BotId,
   type Budget,
+  type ExecutorId,
   newTaskId,
   type Plan,
   type Step,
@@ -43,6 +44,19 @@ export const retryPrompt = (step: Step, base: string, files: ReadonlyArray<strin
     step.prompt,
   ].join("\n")
 
+// The one retry of a step whose verification failed: told what failed, in sentences of ours (never executor output).
+export const verifyRetryPrompt = (step: Step, notes: ReadonlyArray<string>): string =>
+  [
+    "Your previous work on this step did not pass verification. Fix it and keep what is already right.",
+    "What failed:",
+    ...notes.map((note) => `- ${note}`),
+    "",
+    step.prompt,
+  ].join("\n")
+
+// A check command as the executor reads it among the acceptance lines.
+const checkLine = (argv: ReadonlyArray<string>): string => `this command must exit 0: ${argv.join(" ")}`
+
 export interface StepTaskDeps {
   readonly sql: SqlClient
   readonly beacon: BeaconShape
@@ -60,6 +74,8 @@ export const createStepTask = (
     readonly base: string
     readonly prompt: string
     readonly budget: Budget
+    // Set for a review run: the task is marked as a review and may not run on these executors.
+    readonly exclude?: ReadonlyArray<ExecutorId>
   },
 ): Effect.Effect<TaskId, SqlError> =>
   Effect.gen(function* () {
@@ -71,13 +87,16 @@ export const createStepTask = (
       prompt: input.prompt,
       kind: root.kind,
       ...(root.repo === undefined ? {} : { repo: { ...root.repo, base: input.base } }),
-      acceptance: step.acceptance,
+      acceptance: [...step.acceptance, ...step.checks.map((check) => checkLine(check.argv))],
       budget: input.budget,
       tier: step.tier,
       // "bot" would make the executor read a handoff briefing; a step is the plan's own work.
       origin: root.origin === "bot" ? "api" : root.origin,
       parent: { planId: plan.id, stepId: step.id },
       ...(root.correlationId === undefined ? {} : { correlationId: root.correlationId }),
+      ...(input.exclude === undefined ? {} : { review: { excludeExecutors: input.exclude } }),
+      // The checks run in the worker's own worktree (its installed deps): it stays until the Lead is done with it.
+      ...(step.checks.length > 0 && root.repo !== undefined ? { holdWorktree: true } : {}),
     }
     yield* deps.sql.withTransaction(
       Effect.gen(function* () {
