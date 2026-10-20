@@ -11,6 +11,7 @@ import { Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor } from "../executor.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { buildArgs, type TierMapping } from "./args.js"
+import { dropApiKey } from "./env.js"
 import { ClaudeStreamLine, makeMapperState, toExecutorEvents } from "./events.js"
 
 export type ClaudeCodeOptions = {
@@ -34,17 +35,10 @@ export const defaultMapTier = (tier: ModelTier): TierMapping => {
   }
 }
 
-// Never reintroduced through envOverrides: the Bot pays through its CLI login, not an API key (ADR-011).
-// ANTHROPIC_AUTH_TOKEN stays allowed in overrides: it is how gateways such as Z.ai are reached.
-const FORBIDDEN_ENV_KEYS: ReadonlySet<string> = new Set(["ANTHROPIC_API_KEY"])
-
-const withoutForbidden = (env: Readonly<Record<string, string>>): Record<string, string> =>
-  Object.fromEntries(Object.entries(env).filter(([key]) => !FORBIDDEN_ENV_KEYS.has(key)))
-
 export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
   const id = opts.id ?? DEFAULT_ID
   const bin = opts.bin ?? "claude"
-  const envOverrides = withoutForbidden(opts.envOverrides ?? {})
+  const envOverrides = dropApiKey(opts.envOverrides ?? {})
   const spawnFailed = (cause: unknown) => new ExecutorSpawnError({ executor: id, cause })
 
   const run = (
@@ -54,7 +48,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
     Stream.unwrap(
       Effect.gen(function* () {
         const tank = yield* Tank
-        const env = withoutForbidden({ ...ctx.env, ...envOverrides })
+        const env = dropApiKey({ ...ctx.env, ...envOverrides })
         const proc = yield* tank
           .spawnStream({ ...ctx, env }, [bin, ...buildArgs(task, defaultMapTier)])
           .pipe(Effect.mapError(spawnFailed))

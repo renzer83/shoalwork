@@ -182,6 +182,9 @@ importers:
       '@effect/vitest':
         specifier: 'catalog:'
         version: 4.0.5(effect@4.0.5)(vitest@5.0.5(@types/node@26.6.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))
+      '@shoalwork/db':
+        specifier: workspace:*
+        version: link:../db
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
