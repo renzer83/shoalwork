@@ -7,6 +7,8 @@ export type TankContext = {
   readonly cwd: string
   readonly home: string
   readonly env: Readonly<Record<string, string>>
+  // The execution's own keys (SHOALWORK_*, e.g. its MCP token), already in env. They never reach argv (T-167).
+  readonly stepEnv?: Readonly<Record<string, string>>
   readonly worktree?: { readonly path: string; readonly branch: string; readonly repoDir: string }
 }
 
@@ -47,6 +49,8 @@ export interface TankShape {
       readonly stepId: StepId
       readonly repo?: RepoRef
       readonly reuse?: { readonly path: string; readonly branch: string }
+      // Env of this execution only (e.g. its MCP token). Applied after the Tank's extraEnv, before the Tank's own keys.
+      readonly extraEnv?: Readonly<Record<string, string>>
     },
   ) => Effect.Effect<TankContext, TankError | WorktreeConflict>
   readonly exec: (
@@ -60,6 +64,13 @@ export interface TankShape {
   ) => Effect.Effect<RunningProcess, TankError, Scope.Scope>
   readonly readFile: (ctx: TankContext, rel: string) => Effect.Effect<string, TankError>
   readonly writeFile: (ctx: TankContext, rel: string, content: string) => Effect.Effect<void, TankError>
+  // Writes a file under the Bot's home (not its cwd), with the same confinement as writeFile; mode is octal (0..0o777).
+  readonly writeHomeFile: (
+    ctx: TankContext,
+    rel: string,
+    content: string,
+    mode: number,
+  ) => Effect.Effect<void, TankError>
   readonly release: (
     ctx: TankContext,
     opts: { readonly keepWorktree: boolean },

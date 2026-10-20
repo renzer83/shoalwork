@@ -4,11 +4,19 @@ import { Effect, Redacted } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Hono } from "hono"
 import { APP_VERSION } from "../config.js"
+import {
+  API_PRINCIPAL,
+  authenticateExecution,
+  isExecutionReadPath,
+  type RunMcp,
+  setPrincipal,
+} from "./principal.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
+import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
@@ -27,6 +35,8 @@ export interface AppDeps {
   readonly probe?: ProbeEffect | undefined
   // Mounted only when the composition root provides the Reef and the SqlClient to the HTTP layer.
   readonly runMemory?: RunMemory | undefined
+  // Code search, chunk read and execution-token checks. Without it, execution tokens are refused everywhere.
+  readonly runMcp?: RunMcp | undefined
 }
 
 export interface HealthBody {
@@ -78,8 +88,11 @@ const tokenMatches = (given: string | undefined, expected: string): boolean => {
   return givenBytes.length === wanted.length && timingSafeEqual(givenBytes, wanted)
 }
 
+const bearerValue = (header: string | undefined): string | undefined =>
+  /^Bearer\s+(.+)$/i.exec(header ?? "")?.[1]
+
 const bearerMatches = (header: string | undefined, expected: string): boolean =>
-  tokenMatches(/^Bearer\s+(.+)$/i.exec(header ?? "")?.[1], expected)
+  tokenMatches(bearerValue(header), expected)
 
 // EventSource cannot set headers, so the live feed also accepts ?token=. Other routes take only the header.
 const LIVE_PATH = "/events/live"
@@ -94,14 +107,26 @@ export const makeApp = (deps: AppDeps): Hono => {
     if (c.req.path === "/health" || c.req.path === "/") {
       return next()
     }
+    const header = c.req.header("authorization")
     const queryToken = c.req.path === LIVE_PATH ? c.req.query("token") : undefined
-    if (
-      !bearerMatches(c.req.header("authorization"), expectedToken) &&
-      !tokenMatches(queryToken, expectedToken)
-    ) {
-      return c.json({ error: "unauthorized" }, 401)
+    if (bearerMatches(header, expectedToken) || tokenMatches(queryToken, expectedToken)) {
+      setPrincipal(c.req.raw, API_PRINCIPAL)
+      return next()
     }
-    return next()
+    // An execution token opens only the read routes a Bot's MCP server calls; each of them checks its scope.
+    const presented = bearerValue(header)
+    if (
+      presented !== undefined &&
+      deps.runMcp !== undefined &&
+      isExecutionReadPath(c.req.method, c.req.path)
+    ) {
+      const principal = await deps.runMcp(authenticateExecution(presented))
+      if (principal !== undefined) {
+        setPrincipal(c.req.raw, principal)
+        return next()
+      }
+    }
+    return c.json({ error: "unauthorized" }, 401)
   })
 
   app.get("/", (c) => c.html(html))
@@ -125,6 +150,9 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerReflexRoutes(app, deps.runEffect)
   if (deps.runMemory !== undefined) {
     registerMemoryRoutes(app, deps.runMemory)
+  }
+  if (deps.runMcp !== undefined) {
+    registerReefRoutes(app, deps.runMcp)
   }
 
   return app

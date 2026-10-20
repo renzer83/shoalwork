@@ -1,9 +1,10 @@
 import { dirname, join } from "node:path"
 import { TankError } from "@shoalwork/contracts"
 import { Effect, Layer } from "effect"
-import { type BaseEnv, makeBotTank } from "./local.js"
-import type { BotOps } from "./ops.js"
-import { type ProcessOptions, runProcess, spawnProcess } from "./process.js"
+import type { BaseEnv } from "./env.js"
+import { makeBotTank } from "./local.js"
+import type { BotOps, PassEnv } from "./ops.js"
+import { type ProcessOptions, type RunOptions, runProcess, spawnProcess } from "./process.js"
 import { botUserName, planLaunch, sudoRefusal } from "./sudo.js"
 import { type ExecResult, Tank, type TankShape } from "./tank.js"
 
@@ -12,15 +13,19 @@ export const BOT_HOMES_ROOT = "/home"
 
 const DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
 
+// How a command is run. Tests replace it to see the argv; production uses runProcess.
+export type RunFn = (cmd: ReadonlyArray<string>, opts: RunOptions) => Effect.Effect<ExecResult, TankError>
+
 export type TankServerConfig = {
   readonly baseEnv: BaseEnv
   // true: commands run as bot-<name> through sudo. false (fallback): commands run as the current user.
   readonly sudo: boolean
   // Same meaning as TankLocalConfig.extraEnv; reaches the Bot only through the `env K=V` argv.
   readonly extraEnv?: Readonly<Record<string, string>>
+  readonly run?: RunFn
 }
 
-type Call = {
+type Call = PassEnv & {
   readonly cwd?: string | undefined
   readonly env?: Readonly<Record<string, string>> | undefined
   readonly timeoutMs?: number | undefined
@@ -34,12 +39,25 @@ const checkExit = (op: string, r: ExecResult): Effect.Effect<void, TankError> =>
         new TankError({ op, cause: r.stderr.trim() === "" ? `exit ${r.exitCode}` : r.stderr.trim() }),
       )
 
+// Octal digits of a file mode (0..0o777, checked by the Tank before it gets here).
+const octal = (mode: number): string => mode.toString(8)
+
 // Operations for one Bot's Linux user. Each one is a plain argv (no shell) wrapped by planLaunch.
-const botOps = (user: string, sudo: boolean, spawnEnv: Readonly<Record<string, string>>): BotOps => {
+const botOps = (
+  user: string,
+  sudo: boolean,
+  spawnEnv: Readonly<Record<string, string>>,
+  run: RunFn,
+): BotOps => {
   const runIn = (cmd: ReadonlyArray<string>, call: Call): Effect.Effect<ExecResult, TankError> =>
     Effect.gen(function* () {
-      const plan = yield* planLaunch(sudo, user, { cmd, cwd: call.cwd, env: call.env }, spawnEnv)
-      const r = yield* runProcess(plan.argv, {
+      const plan = yield* planLaunch(
+        sudo,
+        user,
+        { cmd, cwd: call.cwd, env: call.env, passEnv: call.passEnv },
+        spawnEnv,
+      )
+      const r = yield* run(plan.argv, {
         cwd: plan.cwd,
         env: plan.env,
         ...(call.timeoutMs === undefined ? {} : { timeoutMs: call.timeoutMs }),
@@ -52,8 +70,8 @@ const botOps = (user: string, sudo: boolean, spawnEnv: Readonly<Record<string, s
 
   const ops: BotOps = {
     run: (cmd, opts) => runIn(cmd, opts),
-    spawn: (cmd: ReadonlyArray<string>, opts: ProcessOptions) =>
-      planLaunch(sudo, user, { cmd, cwd: opts.cwd, env: opts.env }, spawnEnv).pipe(
+    spawn: (cmd: ReadonlyArray<string>, opts: ProcessOptions & PassEnv) =>
+      planLaunch(sudo, user, { cmd, cwd: opts.cwd, env: opts.env, passEnv: opts.passEnv }, spawnEnv).pipe(
         Effect.flatMap((plan) => spawnProcess(plan.argv, { cwd: plan.cwd, env: plan.env })),
       ),
     exists: (path) =>
@@ -72,10 +90,20 @@ const botOps = (user: string, sudo: boolean, spawnEnv: Readonly<Record<string, s
       runIn(["cat", "--", path], {}).pipe(
         Effect.flatMap((r) => checkExit("readFile", r).pipe(Effect.as(r.stdout))),
       ),
-    writeText: (path, content) =>
+    // A mode makes `install -m` create the file with it, as the Bot's user; the content comes on stdin.
+    writeText: (path, content, mode) =>
       ops.mkdirp(dirname(path)).pipe(
-        Effect.flatMap(() => runIn(["tee", "--", path], { stdin: content })),
+        Effect.flatMap(() =>
+          mode === undefined
+            ? runIn(["tee", "--", path], { stdin: content })
+            : runIn(["install", "-m", octal(mode), "--", "/dev/stdin", path], { stdin: content }),
+        ),
         Effect.flatMap((r) => checkExit("writeFile", r)),
+      ),
+    // `realpath -m` canonicalises without requiring the tail to exist; the Bot's user resolves its own links.
+    realpath: (path) =>
+      runIn(["realpath", "-m", "--", path], {}).pipe(
+        Effect.flatMap((r) => checkExit("path", r).pipe(Effect.as(r.stdout.trim()))),
       ),
   }
   return ops
@@ -85,9 +113,10 @@ const botOps = (user: string, sudo: boolean, spawnEnv: Readonly<Record<string, s
 const preflightUser = (
   botName: string,
   spawnEnv: Readonly<Record<string, string>>,
+  run: RunFn,
 ): Effect.Effect<void, TankError> => {
   const user = botUserName(botName)
-  return runProcess(["id", "-u", user], { cwd: "/", env: spawnEnv }).pipe(
+  return run(["id", "-u", user], { cwd: "/", env: spawnEnv }).pipe(
     Effect.flatMap((r) =>
       r.exitCode === 0
         ? Effect.void
@@ -103,14 +132,15 @@ const preflightUser = (
 
 export const makeTankServer = (config: TankServerConfig): TankShape => {
   const spawnEnv: Record<string, string> = { PATH: config.baseEnv.PATH ?? DEFAULT_PATH }
+  const run: RunFn = config.run ?? runProcess
   return makeBotTank(
     {
       mode: "server",
       root: BOT_HOMES_ROOT,
       botDir: (botName) => join(BOT_HOMES_ROOT, botUserName(botName)),
       home: (botDir) => botDir,
-      opsFor: (botName) => botOps(botUserName(botName), config.sudo, spawnEnv),
-      preflight: (botName) => (config.sudo ? preflightUser(botName, spawnEnv) : Effect.void),
+      opsFor: (botName) => botOps(botUserName(botName), config.sudo, spawnEnv, run),
+      preflight: (botName) => (config.sudo ? preflightUser(botName, spawnEnv, run) : Effect.void),
     },
     config.baseEnv,
     config.extraEnv,

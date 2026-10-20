@@ -152,6 +152,7 @@ const scriptedTank = (scripts: Array<Script>, rec: Recorder): TankShape => ({
     }),
   readFile: () => Effect.die("tank not used by this test"),
   writeFile: () => Effect.die("tank not used by this test"),
+  writeHomeFile: () => Effect.die("tank not used by this test"),
   worktrees: () => Effect.die("tank not used by this test"),
   removeWorktree: () => Effect.die("tank not used by this test"),
   release: () => Effect.die("tank not used by this test"),

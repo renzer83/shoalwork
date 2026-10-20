@@ -5,7 +5,8 @@ import { Data, Effect, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
 import type { Context, Hono } from "hono"
-import { failureResponse, type RouteResponse, sendResponse } from "./respond.js"
+import { type Principal, principalOf, ScopeViolation } from "../principal.js"
+import { failureResponse, type RouteResponse, sendResponse, UNAUTHORIZED } from "./respond.js"
 
 export type MemoryServices = Reef | SqlClient | BotRegistry
 
@@ -172,12 +173,30 @@ const importRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServ
     Effect.catch((error) => failureResponse(error)),
   )
 
+// An execution token searches its own Bot only: a `bot` that names another Bot is refused, one that names none is fine.
+const botFor = (
+  principal: Principal,
+  requested: string | undefined,
+): Effect.Effect<BotId, SchemaViolation | NotFound | SqlError | ScopeViolation, BotRegistry> => {
+  if (principal.kind === "api") {
+    return botOf(requested ?? "", "memory.search.bot")
+  }
+  if (requested === undefined || requested === principal.scope.botId) {
+    return Effect.succeed(principal.scope.botId)
+  }
+  return Effect.fail(new ScopeViolation({ where: "memory.search.bot" }))
+}
+
 // GET /memory?bot=<BotId>&q=<text>&k=<1..100, default 20>&kinds=<a,b> → bare array of hits (the MCP decodes this).
-const searchRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServices> =>
-  Effect.gen(function* () {
+const searchRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServices> => {
+  const principal = principalOf(c.req.raw)
+  if (principal === undefined) {
+    return Effect.succeed(UNAUTHORIZED)
+  }
+  return Effect.gen(function* () {
     const q = c.req.query("q") ?? ""
     yield* requireText("memory.search.q", q)
-    const bot = yield* botOf(c.req.query("bot") ?? "", "memory.search.bot")
+    const bot = yield* botFor(principal, c.req.query("bot"))
     const k = yield* parseK(c.req.query("k"))
     const kinds = yield* parseKinds(c.req.query("kinds"))
     const reef = yield* Reef
@@ -191,6 +210,7 @@ const searchRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServ
       body: hits.map((hit) => ({ ...toView(hit), score: hit.score })),
     } satisfies RouteResponse
   }).pipe(Effect.catch((error) => failureResponse(error)))
+}
 
 // POST /memory {scope: bot|global, ownerId: BotId|"global", kind, content, userId} → 201 {item}.
 const addRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServices> =>

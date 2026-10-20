@@ -80,6 +80,7 @@ const tankWith = (spawnStream: TankShape["spawnStream"]): TankShape => {
     spawnStream,
     readFile: unused,
     writeFile: unused,
+    writeHomeFile: unused,
     worktrees: unused,
     removeWorktree: unused,
     release: unused,

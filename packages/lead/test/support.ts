@@ -184,6 +184,7 @@ export const makeFakeTank = (
     spawnStream: unused,
     readFile: unused,
     writeFile: unused,
+    writeHomeFile: unused,
     release: (_ctx, release) =>
       Effect.sync(() => {
         released.push({ keepWorktree: release.keepWorktree })

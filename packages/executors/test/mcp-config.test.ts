@@ -248,6 +248,7 @@ describe("claude-code run with an attached MCP config", () => {
           },
           readFile: () => Effect.die("unused"),
           writeFile: () => Effect.die("unused"),
+          writeHomeFile: () => Effect.die("unused"),
           worktrees: () => Effect.die("unused"),
           removeWorktree: () => Effect.die("unused"),
           release: () => Effect.die("unused"),

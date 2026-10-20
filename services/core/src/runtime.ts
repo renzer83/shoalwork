@@ -24,10 +24,11 @@ import {
   executorConsolidationModel,
   Lead,
   LeadLive,
+  McpTokensLive,
   startConsolidateHook,
   TaskStoreLive,
 } from "@shoalwork/lead"
-import { EmbedderOllamaLive, ReefLive } from "@shoalwork/reef"
+import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
@@ -104,8 +105,10 @@ export const AppLayer = Layer.unwrap(
     const reflexConfig = yield* loadReflexConfig(config.reflexConfigPath)
     const telegram = yield* telegramSettings(config)
     const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
+    // Execution tokens (T-167) sit under the Lead, so the Lead can issue and revoke them for each Bot run.
+    const withMcpTokens = McpTokensLive.pipe(Layer.provideMerge(withStore))
     const botBudgetWindowMs = config.budgetBotWindowHours * 60 * 60 * 1000
-    const withLead = LeadLive(tiers, { botBudgetWindowMs }).pipe(Layer.provideMerge(withStore))
+    const withLead = LeadLive(tiers, { botBudgetWindowMs }).pipe(Layer.provideMerge(withMcpTokens))
     const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withLead))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     // No connection to Ollama until a memory is saved or searched, so the core boots without it.
@@ -114,7 +117,9 @@ export const AppLayer = Layer.unwrap(
       model: config.ollamaEmbedModel,
     }).pipe(Layer.provideMerge(withSessions))
     const withReef = ReefLive().pipe(Layer.provideMerge(withEmbedder))
-    const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withReef))
+    // Code search for the MCP routes (T-167). Same embedder and database as the Reef.
+    const withIndexer = IndexerLive().pipe(Layer.provideMerge(withReef))
+    const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withIndexer))
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withConsolidation))
     return ConversationLive(tiers, reflexConfig, {
       botBudgetWindowMs,

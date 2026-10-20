@@ -28,6 +28,7 @@ describe("runMigrations", () => {
         "0008_control.sql",
         "0009_bot_proposals.sql",
         "0010_task_processes.sql",
+        "0011_mcp_tokens.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )
@@ -46,6 +47,19 @@ describe("runMigrations", () => {
       const sql = yield* SqlClient
       const names = (yield* tableNames(sql)).map((row) => row.name)
       expect(names).toEqual(expect.arrayContaining(["events", "jobs", "schema_migrations"]))
+    }).pipe(Effect.provide(withRawTempDb())),
+  )
+
+  it.effect("creates mcp_tokens keyed by the token hash, with no column for the token itself", () =>
+    Effect.gen(function* () {
+      yield* runMigrations
+      const sql = yield* SqlClient
+      const columns = yield* sql<{ readonly name: string }>`SELECT name FROM pragma_table_info('mcp_tokens')`
+      const names = columns.map((row) => row.name)
+      expect(names).toEqual(
+        expect.arrayContaining(["token_hash", "bot_id", "repo", "task_id", "expires_at", "revoked_at"]),
+      )
+      expect(names).not.toContain("token")
     }).pipe(Effect.provide(withRawTempDb())),
   )
 

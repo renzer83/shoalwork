@@ -128,7 +128,7 @@ const serveUntilInterrupted = (
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(conversation).pipe(Effect.andThen(Effect.logInfo("shutdown: conversation stopped"))),
     )
-    yield* serve(makeApp({ apiToken, runEffect, runMemory: runEffect }), port)
+    yield* serve(makeApp({ apiToken, runEffect, runMemory: runEffect, runMcp: runEffect }), port)
     yield* Effect.logInfo(`listening on port ${port}`)
     yield* Effect.never
   }).pipe(Effect.scoped)

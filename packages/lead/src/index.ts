@@ -129,6 +129,18 @@ export {
 } from "./hooks/consolidate.js"
 export { TASKS_QUEUE } from "./intake.js"
 export { Lead, type LeadShape } from "./lead.js"
+export {
+  type IssuedMcpToken,
+  type IssueMcpToken,
+  MAX_MCP_TOKEN_TTL_MS,
+  MCP_TOKEN_PREFIX,
+  type McpScope,
+  McpTokenRejected,
+  McpTokens,
+  McpTokensLive,
+  type McpTokensShape,
+  makeMcpTokens,
+} from "./mcp-tokens.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

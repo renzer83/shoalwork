@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto"
-import { lstat, realpath } from "node:fs/promises"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Semaphore } from "effect"
+import { checkSegment, escapes, isInside, resolveUnder } from "./confine.js"
+import { type BaseEnv, buildBotEnv, STEP_ENV_PATTERN } from "./env.js"
 import { ensureClone, worktreeAdd, worktreeList, worktreeRemove, worktreeReuse } from "./git.js"
 import { type BotOps, localOps } from "./ops.js"
-import { type OwnedWorktree, Tank, type TankContext, type TankShape } from "./tank.js"
+import { type OwnedWorktree, Tank, type TankShape } from "./tank.js"
 
-// Environment inherited by Bot processes; the caller (core) decides, this package never reads process.env.
-export type BaseEnv = Readonly<Record<string, string | undefined>>
+export { type BaseEnv, buildBotEnv } from "./env.js"
 
 export type TankLocalConfig = {
   // <root>/<bot.name>/{home,repos,work}
@@ -42,106 +42,14 @@ export const slugRepoUrl = (url: string): string => {
   return readable === "" ? hash : `${readable}-${hash}`
 }
 
-const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
-
-const checkSegment = (what: string, value: string): Effect.Effect<void, TankError> =>
-  SEGMENT.test(value)
-    ? Effect.void
-    : Effect.fail(new TankError({ op: "prepare", cause: `unsafe ${what}: ${JSON.stringify(value)}` }))
-
-const isInside = (parent: string, child: string): boolean => {
-  const rel = relative(parent, child)
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))
-}
-
-const isEnoent = (cause: unknown): boolean =>
-  cause instanceof Error && "code" in cause && cause.code === "ENOENT"
-
-const escapes = (rel: string, why: string): TankError =>
-  new TankError({ op: "path", cause: `path escapes the worktree (${why}): ${JSON.stringify(rel)}` })
-
-// Real path of the deepest existing ancestor of `target`; a dangling symlink on the way is rejected
-// because writing through it would create a file wherever it points.
-const realAncestor = async (target: string, rel: string): Promise<string> => {
-  let current = target
-  for (;;) {
-    try {
-      return await realpath(current)
-    } catch (cause) {
-      if (!isEnoent(cause)) throw cause
-    }
-    try {
-      await lstat(current)
-      throw escapes(rel, "dangling symlink")
-    } catch (cause) {
-      if (!isEnoent(cause)) throw cause
-    }
-    const parent = dirname(current)
-    if (parent === current) throw escapes(rel, "no existing ancestor")
-    current = parent
-  }
-}
-
-// Confinement to the context cwd, symlinks included. Must run before any read or write.
-const resolveInside = (ctx: TankContext, rel: string): Effect.Effect<string, TankError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const target = resolve(ctx.cwd, rel)
-      if (!isInside(ctx.cwd, target)) throw escapes(rel, "lexical")
-      const [realCwd, realTarget] = await Promise.all([realpath(ctx.cwd), realAncestor(target, rel)])
-      if (!isInside(realCwd, realTarget)) throw escapes(rel, "symlink")
-      return target
-    },
-    catch: (cause) => (cause instanceof TankError ? cause : new TankError({ op: "path", cause })),
-  })
-
-// The only keys a Bot process inherits from the core's base env. Everything else is dropped (R7, ADR-011).
-const INHERITED_ENV_KEYS: ReadonlyArray<string> = [
-  "PATH",
-  "USER",
-  "LOGNAME",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TERM",
-  "TMPDIR",
-  "TZ",
-  "SHELL",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NO_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "no_proxy",
-  "SSL_CERT_FILE",
-  "NODE_EXTRA_CA_CERTS",
-]
-
-// Bots never get an API key from the core, even when extraEnv asks for one.
-const DROPPED_EXTRA_KEYS: ReadonlySet<string> = new Set(["ANTHROPIC_API_KEY"])
-
-// Env a Bot process receives: an allowlist of the base env, then extraEnv (minus dropped keys), then the keys the
-// Tank always owns (Bot home, CLI config dirs, git safety defaults). Tank keys win over extraEnv.
-export const buildBotEnv = (
-  baseEnv: BaseEnv,
-  home: string,
-  extraEnv: Readonly<Record<string, string>> = {},
-): Record<string, string> => {
-  const env: Record<string, string> = {}
-  for (const key of INHERITED_ENV_KEYS) {
-    const value = baseEnv[key]
-    if (value !== undefined) env[key] = value
-  }
-  for (const [key, value] of Object.entries(extraEnv)) {
-    if (!DROPPED_EXTRA_KEYS.has(key)) env[key] = value
-  }
-  env.HOME = home
-  env.CLAUDE_CONFIG_DIR = join(home, ".claude")
-  env.CODEX_HOME = join(home, ".codex")
-  env.GEMINI_CLI_HOME = home
-  env.GIT_TERMINAL_PROMPT = "0"
-  env.GIT_ALLOW_PROTOCOL = "file:git:http:https:ssh"
-  return env
+// Keys of one execution's env (T-167): only SHOALWORK_* names, checked before anything is created.
+const checkStepEnv = (
+  extra: Readonly<Record<string, string>> = {},
+): Effect.Effect<Record<string, string>, TankError> => {
+  const bad = Object.keys(extra).find((key) => !STEP_ENV_PATTERN.test(key))
+  return bad === undefined
+    ? Effect.succeed({ ...extra })
+    : Effect.fail(new TankError({ op: "prepare", cause: `step env key not allowed: ${JSON.stringify(bad)}` }))
 }
 
 export const makeBotTank = (
@@ -163,10 +71,12 @@ export const makeBotTank = (
   const opsOf = (botName: string): Effect.Effect<BotOps, TankError> =>
     checkSegment("bot name", botName).pipe(Effect.map(() => layout.opsFor(botName)))
 
+  // Git runs with the Bot env but without the execution's env: its secrets never reach a git argv.
   const prepare: TankShape["prepare"] = (bot: Bot, step) =>
     Effect.gen(function* () {
       yield* checkSegment("bot name", bot.name)
       yield* checkSegment("step id", step.stepId)
+      const stepEnv = yield* checkStepEnv(step.extraEnv)
       yield* layout.preflight(bot.name)
       const ops = layout.opsFor(bot.name)
       const botDir = layout.botDir(bot.name)
@@ -174,7 +84,13 @@ export const makeBotTank = (
       const workPath = join(botDir, "work", step.stepId)
       for (const sub of [".claude", ".codex", ".gemini"]) yield* ops.mkdirp(join(home, sub))
       const env = buildBotEnv(baseEnv, home, extraEnv)
-      const base = { botId: bot.id, botName: bot.name, home, env }
+      const base = {
+        botId: bot.id,
+        botName: bot.name,
+        home,
+        env: buildBotEnv(baseEnv, home, { ...extraEnv, ...stepEnv }),
+        stepEnv,
+      }
       if (step.repo === undefined) {
         yield* ops.mkdirp(workPath)
         return { ...base, cwd: workPath }
@@ -213,13 +129,14 @@ export const makeBotTank = (
       const reject = (what: string) =>
         Effect.fail(new TankError({ op: "release", cause: `${what} outside the tank root` }))
       if (!isInside(layout.root, ctx.cwd)) return yield* reject("cwd")
+      const gitEnv = buildBotEnv(baseEnv, layout.home(botDir), extraEnv)
       if (ctx.worktree !== undefined) {
         const { repoDir, path, branch } = ctx.worktree
         if (!isInside(join(botDir, "repos"), repoDir) || repoDir === join(botDir, "repos")) {
           return yield* reject("repoDir")
         }
         if (!isInside(workDir, path) || path === workDir) return yield* reject("worktree path")
-        yield* lockFor(repoDir).withPermits(1)(worktreeRemove(repoDir, path, branch, ctx.env, ops))
+        yield* lockFor(repoDir).withPermits(1)(worktreeRemove(repoDir, path, branch, gitEnv, ops))
         return
       }
       // No repo: cwd is a plain scratch directory under <root>/<bot>/work/.
@@ -264,6 +181,34 @@ export const makeBotTank = (
       yield* lockFor(wt.repoDir).withPermits(1)(worktreeRemove(wt.repoDir, wt.path, wt.branch, env, ops))
     })
 
+  // Home files: confined to the Bot's home (symlinks included), created with the mode in one step.
+  const writeHomeFile: TankShape["writeHomeFile"] = (ctx, rel, content, mode) =>
+    Effect.gen(function* () {
+      const ops = yield* opsOf(ctx.botName)
+      const botDir = layout.botDir(ctx.botName)
+      if (!isInside(botDir, ctx.home)) {
+        return yield* Effect.fail(
+          new TankError({ op: "writeHomeFile", cause: "home outside the bot directory" }),
+        )
+      }
+      if (!Number.isInteger(mode) || mode < 0 || mode > 0o777) {
+        return yield* Effect.fail(new TankError({ op: "writeHomeFile", cause: `invalid mode: ${mode}` }))
+      }
+      if (resolve(ctx.home, rel) === resolve(ctx.home)) {
+        return yield* Effect.fail(escapes(rel, "home itself"))
+      }
+      // The home must also be inside the Bot directory once symlinks are followed (fail closed).
+      const realBotDir = yield* ops.realpath(botDir)
+      const realHome = yield* ops.realpath(ctx.home)
+      if (!isInside(realBotDir, realHome)) {
+        return yield* Effect.fail(
+          new TankError({ op: "writeHomeFile", cause: "home outside the bot directory" }),
+        )
+      }
+      const target = yield* resolveUnder(ops, ctx.home, rel)
+      yield* ops.writeText(target, content, mode)
+    })
+
   return {
     mode: layout.mode,
     prepare,
@@ -275,21 +220,29 @@ export const makeBotTank = (
           ops.run(cmd, {
             cwd: ctx.cwd,
             env: ctx.env,
+            passEnv: ctx.stepEnv ?? {},
             ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
             ...(opts?.stdin === undefined ? {} : { stdin: opts.stdin }),
           }),
         ),
       ),
     spawnStream: (ctx, cmd) =>
-      opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.spawn(cmd, { cwd: ctx.cwd, env: ctx.env }))),
+      opsOf(ctx.botName).pipe(
+        Effect.flatMap((ops) => ops.spawn(cmd, { cwd: ctx.cwd, env: ctx.env, passEnv: ctx.stepEnv ?? {} })),
+      ),
     readFile: (ctx, rel) =>
-      resolveInside(ctx, rel).pipe(
-        Effect.flatMap((p) => opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.readText(p)))),
-      ),
+      Effect.gen(function* () {
+        const ops = yield* opsOf(ctx.botName)
+        const p = yield* resolveUnder(ops, ctx.cwd, rel)
+        return yield* ops.readText(p)
+      }),
     writeFile: (ctx, rel, content) =>
-      resolveInside(ctx, rel).pipe(
-        Effect.flatMap((p) => opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.writeText(p, content)))),
-      ),
+      Effect.gen(function* () {
+        const ops = yield* opsOf(ctx.botName)
+        const p = yield* resolveUnder(ops, ctx.cwd, rel)
+        yield* ops.writeText(p, content)
+      }),
+    writeHomeFile,
     release,
   }
 }
