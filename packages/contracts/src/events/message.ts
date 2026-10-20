@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { AgentMsg } from "../agent-msg.js"
-import { BotId, EventId } from "../ids.js"
+import { BotId, EventId, PodId } from "../ids.js"
 
 export const Channel = Schema.Literals(["telegram", "api", "cli"])
 
@@ -11,6 +11,8 @@ export const MessageInboundPayload = Schema.Struct({
   userId: Schema.String,
   text: Schema.String,
   botId: Schema.optional(BotId),
+  // Set when the message was typed in a Pod's topic: the Lead's conversation leaves these to the Pod (T-175).
+  podId: Schema.optional(PodId),
 })
 
 export const MessageOutboundPayload = Schema.Struct({

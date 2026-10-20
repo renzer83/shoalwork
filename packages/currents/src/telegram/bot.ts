@@ -34,7 +34,11 @@ export const createTelegramBot = (token: string, options: BotOptions = {}): Gram
 
 // Where a human message in a Pod's topic goes (pods.ts onHumanMessage, bound by the composition root). The Pod decides.
 export interface PodInboundPort {
-  readonly onHumanMessage: (podId: PodId, text: string) => Effect.Effect<unknown, unknown>
+  readonly onHumanMessage: (
+    podId: PodId,
+    text: string,
+    from?: { readonly userId: string; readonly chatId?: string },
+  ) => Effect.Effect<unknown, unknown>
 }
 
 export interface InboundOptions {
@@ -100,7 +104,7 @@ export const recordInbound = (message: InboundMessage, pods?: PodInboundPort) =>
       const podId = yield* findOpenPodByThread(sql, message.threadId)
       if (podId !== undefined) {
         yield* pods
-          .onHumanMessage(podId, message.text)
+          .onHumanMessage(podId, message.text, { userId: message.userId, chatId: message.chatId })
           .pipe(Effect.catchCause((cause) => reportFailure("telegram.pod")(Cause.squash(cause))))
         return
       }

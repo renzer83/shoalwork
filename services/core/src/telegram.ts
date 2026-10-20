@@ -1,5 +1,11 @@
 import { ConfigError } from "@shoalwork/contracts"
-import { TelegramError, TelegramLive, TelegramOut, type TelegramOutShape } from "@shoalwork/currents"
+import {
+  type PodInboundPort,
+  TelegramError,
+  TelegramLive,
+  TelegramOut,
+  type TelegramOutShape,
+} from "@shoalwork/currents"
 import { Cause, Context, Effect, Layer, Option, Redacted } from "effect"
 import type { AppConfigShape } from "./config.js"
 
@@ -7,6 +13,28 @@ import type { AppConfigShape } from "./config.js"
 export class TelegramStatus extends Context.Service<TelegramStatus, { readonly enabled: boolean }>()(
   "@shoalwork/TelegramStatus",
 ) {}
+
+// The door from Telegram into the Pods. The connector is built before the Pods exist (they need its topics), so it
+// is given this port and the composition root points it at the Pods once they are built.
+export interface PodInboundSlotShape {
+  readonly port: PodInboundPort
+  readonly bind: (handler: PodInboundPort["onHumanMessage"]) => void
+}
+
+export class PodInboundSlot extends Context.Service<PodInboundSlot, PodInboundSlotShape>()(
+  "@shoalwork/PodInboundSlot",
+) {}
+
+export const PodInboundSlotLive: Layer.Layer<PodInboundSlot> = Layer.sync(PodInboundSlot, () => {
+  let handler: PodInboundPort["onHumanMessage"] = () =>
+    Effect.logWarning("a message reached a Pod's topic before the Pods were bound; dropped")
+  return {
+    port: { onHumanMessage: (podId, text, from) => handler(podId, text, from) },
+    bind: (next) => {
+      handler = next
+    },
+  }
+})
 
 export interface TelegramSettings {
   readonly token: Redacted.Redacted<string>
@@ -58,6 +86,8 @@ const DISABLED_OUT: TelegramOutShape = {
   editReplyMarkup: () => Effect.fail(disabledError),
   typing: () => Effect.void,
   ensureTopic: () => Effect.fail(disabledError),
+  openPodTopic: () => Effect.fail(disabledError),
+  postToPodTopic: () => Effect.fail(disabledError),
 }
 
 const Disabled = Layer.mergeAll(
@@ -66,7 +96,14 @@ const Disabled = Layer.mergeAll(
 )
 
 const Enabled = (settings: TelegramSettings) =>
-  Layer.mergeAll(TelegramLive(settings), Layer.succeed(TelegramStatus, { enabled: true }))
+  Layer.unwrap(
+    Effect.map(PodInboundSlot, (slot) =>
+      Layer.mergeAll(
+        TelegramLive({ ...settings, pods: slot.port }),
+        Layer.succeed(TelegramStatus, { enabled: true }),
+      ),
+    ),
+  )
 
 // The connector when configured; otherwise (or when it fails to start) a no-op, so the core always boots.
 export const TelegramFromSettings = (settings: TelegramSettings | undefined) => {

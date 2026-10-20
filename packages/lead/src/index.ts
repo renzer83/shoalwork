@@ -13,7 +13,8 @@ import { MAX_AGENT_MSGS_PER_TASK, makeHandoff } from "./handoff.js"
 import { makeIntake } from "./intake.js"
 import { Lead, type LeadShape } from "./lead.js"
 import { McpTokens, McpTokensLive } from "./mcp-tokens.js"
-import { DEFAULT_LEAD_CONFIG, type LeadConfig, makeRunner } from "./runner.js"
+import { PodNotes } from "./pod-notes.js"
+import { DEFAULT_LEAD_CONFIG, type LeadConfig, makeRunner, type RunResult } from "./runner.js"
 import { TaskStore, TaskStoreLive } from "./tasks.js"
 import { makeWorker } from "./worker.js"
 
@@ -43,6 +44,8 @@ export const LeadLive = (
       const executors = yield* ExecutorRegistry
       const tasks = yield* TaskStore
       const tokens = yield* McpTokens
+      // Messages from Pod topics wait here for the next round of the task they were meant for (T-175).
+      const notes = Option.getOrUndefined(yield* Effect.serviceOption(PodNotes))
       // Without a Reef the briefing has no memories; the rest of it is still delivered.
       const memory = Option.getOrUndefined(yield* Effect.serviceOption(Reef))
       // The repo index feeds the briefing's code block (T-041); without it the briefing carries none.
@@ -81,6 +84,7 @@ export const LeadLive = (
         tokens,
         indexer,
         approvals,
+        notes,
       })
       const { abandon } = runner
       // A settled child reports its verdict to its parent's stream (T-046), after every run, whoever started it.
@@ -88,7 +92,14 @@ export const LeadLive = (
         runner
           .runTask(id)
           .pipe(Effect.tap((result) => (result.recorded ? reportChild(id, result.verdict) : Effect.void)))
-      const { startWorker } = makeWorker({ sql, runTask: runAndReport, abandon, config })
+      // A task the planning flow settled reports to its parent like any other (reportChild is idempotent).
+      const reporting = (run: ((id: TaskId) => Effect.Effect<RunResult>) | undefined) =>
+        run === undefined
+          ? undefined
+          : (id: TaskId) =>
+              run(id).pipe(
+                Effect.tap((result) => (result.recorded ? reportChild(id, result.verdict) : Effect.void)),
+              )
       const lead: LeadShape = {
         abandon,
         intake,
@@ -102,11 +113,19 @@ export const LeadLive = (
             })),
           ),
         runOnce: (id) => Effect.map(runAndReport(id), (result) => result.verdict),
+        runTask: runAndReport,
         // Boot: tokens of runs the restart interrupted are ended before the worker takes new work (T-168).
         startWorker: (opts) =>
           tokens.revokeStale().pipe(
             Effect.catch((error) => Effect.logError(`could not revoke stale MCP tokens: ${error._tag}`)),
-            Effect.andThen(startWorker(opts)),
+            Effect.andThen(
+              makeWorker({
+                sql,
+                runTask: reporting(opts.runTask) ?? runAndReport,
+                abandon,
+                config,
+              }).startWorker(opts),
+            ),
           ),
       }
       return Context.make(Lead, lead).pipe(Context.add(Control, control))
@@ -170,7 +189,12 @@ export {
   type StopTarget,
   taskTarget,
 } from "./control.js"
-export { RESTART_REASON, RESUME_REASON, type RecoveryReport } from "./control-recovery.js"
+export {
+  PLANNING_RESTART_REASON,
+  RESTART_REASON,
+  RESUME_REASON,
+  type RecoveryReport,
+} from "./control-recovery.js"
 export {
   type BotFactoryOptions,
   Conversation,
@@ -210,6 +234,16 @@ export {
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
 export { type CheckInput, checkDraft, MAX_STEPS } from "./plan/check.js"
 export {
+  DEFAULT_PLAN_CONCURRENCY,
+  type Dispatcher,
+  type DispatcherDeps,
+  makeDispatcher,
+  type PlanRun,
+  type StepOutcome,
+  type StepResult,
+} from "./plan/dispatcher.js"
+export { IntegrationFailed, makeIntegration, planBranchOf } from "./plan/integration.js"
+export {
   makePlanner,
   type Planner,
   type PlannerDeps,
@@ -219,8 +253,10 @@ export {
 } from "./plan/planner.js"
 export { buildPlanPrompt } from "./plan/prompt.js"
 export { PlanDraft, planJsonSchema } from "./plan/schema-json.js"
+export { Planning, PlanningLive, type PlanningOptions, type PlanningShape } from "./planning.js"
+export { makePodNotes, PodNotes, PodNotesLive, type PodNotesShape } from "./pod-notes.js"
 export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
 export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
-export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
+export { DEFAULT_LEAD_CONFIG, type LeadConfig, type RunResult } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"
 export { stepIdFor } from "./verdict.js"

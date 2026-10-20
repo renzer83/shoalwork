@@ -4,7 +4,6 @@ import type { BotRegistryShape } from "@shoalwork/bots"
 import {
   type BotId,
   type Event,
-  type NewEvent,
   type NotFound,
   newPodId,
   type Plan,
@@ -25,20 +24,20 @@ import {
   createAuxiliary,
   withOwners,
 } from "./auxiliary.js"
-import { podClosedPhrase, podHeaderPhrase, safeLine } from "./narrator.js"
+import { podClosedPhrase, podHeaderPhrase } from "./narrator.js"
 import { isTerminal } from "./outcomes.js"
 import {
   PodClosed,
-  PodDeliveryFailed,
   PodExists,
   PodMemoryFailed,
   PodMissing,
   PodNotFinished,
   PodTopicFailed,
 } from "./pod-errors.js"
-import { lineOf, NOTE_MAX } from "./pod-narration.js"
+import { makeOnHumanMessage } from "./pod-human.js"
+import { lineOf } from "./pod-narration.js"
 import { decodePodRows, type PodRecord, toRecord } from "./pod-rows.js"
-import { emit, type TaskRecord, type TaskStoreShape } from "./tasks.js"
+import { emit, type TaskStoreShape } from "./tasks.js"
 import { describeFailure } from "./verdict.js"
 
 // The Bot that plans and delivers: its executors, policy and Tank are the template of the auxiliaries.
@@ -66,13 +65,13 @@ export interface PodsDeps extends AuxiliaryDeps {
   readonly remember: (podId: PodId, summary: string) => Effect.Effect<void, unknown>
 }
 
+export type { HumanOutcome, HumanSender } from "./pod-human.js"
+
 export interface OpenedPod {
   readonly pod: PodRecord
   // Every step of the plan with the Bot that runs it: the fixed owner, or the auxiliary created for it.
   readonly assignments: ReadonlyMap<StepId, BotId>
 }
-
-export type HumanOutcome = { readonly kind: "delivered"; readonly taskId: TaskId } | { readonly kind: "idle" }
 
 const describe = (cause: unknown): string => describeFailure(cause).tag
 
@@ -205,50 +204,24 @@ export const makePods = (deps: PodsDeps) => {
       }
     })
 
-  // A message from Renan goes to the running step of the Pod: recorded as agent.msg on the step's stream, then
-  // handed to the step through resume. Idle when no Pod Bot has a running task.
-  const onHumanMessage = (
-    podId: PodId,
-    text: string,
-  ): Effect.Effect<HumanOutcome, PodMissing | PodClosed | PodDeliveryFailed | SqlError> =>
-    Effect.gen(function* () {
-      const pod = yield* openPodById(podId)
-      let running: TaskRecord | undefined
-      for (const botId of pod.botIds) {
-        const records = yield* tasks.listByBot(botId)
-        running = records.find((record) => record.state === "running")
-        if (running !== undefined) {
-          break
-        }
-      }
-      if (running === undefined) {
-        return { kind: "idle" } satisfies HumanOutcome
-      }
-      const taskId = running.spec.id
-      const message: StatusMsg = {
-        kind: "status",
-        bot: running.spec.botId,
-        state: "working",
-        note: safeLine(text, NOTE_MAX),
-      }
-      const event: NewEvent = {
-        streamId: streamIds.task(taskId),
-        type: "agent.msg",
-        payload: message,
-        actor: "human",
-        correlationId: randomUUID(),
-      }
-      yield* emit(beacon, event)
-      yield* deps
-        .resume(taskId, message)
-        .pipe(Effect.mapError((cause) => new PodDeliveryFailed({ taskId, cause: describe(cause) })))
-      return { kind: "delivered", taskId } satisfies HumanOutcome
-    })
+  const onHumanMessage = makeOnHumanMessage({
+    beacon,
+    tasks,
+    resume: deps.resume,
+    openPodById,
+    post,
+    planIdOf: (pod) =>
+      Effect.map(
+        sql<{ readonly id: string }>`SELECT id FROM plans WHERE task_id = ${pod.taskId}`,
+        (rows) => rows[0]?.id,
+      ),
+  })
 
   // Closes the Pod once every auxiliary Bot has finished its step. Order: episodic memory (a failure leaves the Pod
   // open for a retry), archive the auxiliaries, mark the Pod closed, then the closing message in the topic.
   const close = (
     podId: PodId,
+    options: { readonly planFinished?: boolean } = {},
   ): Effect.Effect<void, PodMissing | PodClosed | PodNotFinished | PodMemoryFailed | NotFound | SqlError> =>
     Effect.gen(function* () {
       const pod = yield* openPodById(podId)
@@ -261,7 +234,11 @@ export const makePods = (deps: PodsDeps) => {
           continue
         }
         const records = yield* tasks.listByBot(botId)
-        const finished = records.length > 0 && records.every((record) => isTerminal(record.state))
+        // A step that never started (its dependency failed, a stop) leaves its auxiliary without tasks: once the
+        // plan is over that is a finished auxiliary too.
+        const finished =
+          (records.length > 0 || options.planFinished === true) &&
+          records.every((record) => isTerminal(record.state))
         if (!finished) {
           return yield* Effect.fail(new PodNotFinished({ podId }))
         }

@@ -137,15 +137,20 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       if (isTerminal(next)) {
         yield* recordOutcomes(spec, next)
       }
-      // The Bot is free only when none of its tasks is still running; after exhausted retries it is blocked.
-      // A paused Bot stays paused: only a resume changes that.
-      if ((yield* tasks.countRunning(spec.botId)) === 0 && !(yield* botIsPaused(spec.botId))) {
-        yield* bots.setState(spec.botId, exhausted ? "blocked" : "idle", spec.id)
-      }
+      yield* freeBot(spec, exhausted)
     })
 
   const botIsPaused = (botId: BotId) =>
     Effect.map(bots.list(), (all) => all.find((bot) => bot.id === botId)?.state === "paused")
+
+  // The Bot is free only when none of its tasks is still running; after exhausted retries it is blocked.
+  // A paused Bot stays paused: only a resume changes that.
+  const freeBot = (spec: Pick<TaskSpec, "id" | "botId">, blocked = false) =>
+    Effect.gen(function* () {
+      if ((yield* tasks.countRunning(spec.botId)) === 0 && !(yield* botIsPaused(spec.botId))) {
+        yield* bots.setState(spec.botId, blocked ? "blocked" : "idle", spec.id)
+      }
+    })
 
   // A task with no run to show for it (still queued, or stopped before its next run starts) is cancelled without an
   // executor.finished: nothing executed. A Bot left with nothing to do is free again.
@@ -223,6 +228,7 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
     abandon,
     cancelUnstarted,
     botIsPaused,
+    freeBot,
   }
 }
 

@@ -8,7 +8,7 @@ import { Approvals, ApprovalsLive } from "@shoalwork/policy"
 import { Tank } from "@shoalwork/tank"
 import { Effect, Layer, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import { ApprovalFlowLive, LeadLive, McpTokensLive, TaskStoreLive } from "../src/index.js"
+import { ApprovalFlowLive, LeadLive, McpTokensLive, PodNotesLive, TaskStoreLive } from "../src/index.js"
 import { createBot, fakeExecutor, Lead, makeFakeTank, SESSION, specFor, TEST_TIERS } from "./support.js"
 
 export const ASK: ExecutorEvent = {
@@ -43,6 +43,7 @@ export const approvalLayer = (executor: Executor, tank = makeFakeTank()) => {
       GhClientTest().layer,
       makeRegistry([executor]),
       McpTokensLive,
+      PodNotesLive,
     ),
     approvals,
   )

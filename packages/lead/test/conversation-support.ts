@@ -120,6 +120,8 @@ export const makeFakeTelegramOut = (
             topics.push(bot.name)
             return { chatId: "-100", threadId: topics.length }
           }),
+    openPodTopic: () => Effect.succeed(1),
+    postToPodTopic: () => Effect.void,
   }
   return { shape, sent, typing, topics }
 }

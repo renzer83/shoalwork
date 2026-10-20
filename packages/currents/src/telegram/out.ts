@@ -7,7 +7,15 @@ import type { SqlClient } from "effect/sql/SqlClient"
 import type { InlineKeyboard } from "grammy"
 import { describeError, type TelegramError, telegramError } from "./errors.js"
 import { chunkText, escapeHtml } from "./format.js"
-import { ensureTopic, type MessageRef, type SendOptions, type TelegramApi, type TopicRef } from "./topics.js"
+import {
+  createPodTopic,
+  ensureTopic,
+  type MessageRef,
+  postToTopic,
+  type SendOptions,
+  type TelegramApi,
+  type TopicRef,
+} from "./topics.js"
 
 export interface SendFlags {
   readonly replyMarkup?: InlineKeyboard
@@ -31,6 +39,9 @@ export interface TelegramOutShape {
   ) => Effect.Effect<void, TelegramError>
   readonly typing: (botId: BotId) => Effect.Effect<void>
   readonly ensureTopic: (bot: Bot) => Effect.Effect<TopicRef, TelegramError>
+  // The forum topic of a Pod (T-049): created by name, then written to by thread id. Returns the thread id.
+  readonly openPodTopic: (name: string) => Effect.Effect<number, TelegramError>
+  readonly postToPodTopic: (threadId: number, text: string) => Effect.Effect<void, TelegramError>
 }
 
 export class TelegramOut extends Context.Service<TelegramOut, TelegramOutShape>()("@shoalwork/TelegramOut") {}
@@ -176,5 +187,8 @@ export const makeTelegramOut = (deps: TelegramOutDeps): TelegramOutShape => {
     editReplyMarkup,
     typing,
     ensureTopic: topicOf,
+    openPodTopic: (name) =>
+      createPodTopic(deps.api, deps.forumChatId, name).pipe(Effect.map((topic) => topic.threadId)),
+    postToPodTopic: (threadId, text) => postToTopic(deps.api, { chatId: deps.forumChatId, threadId }, text),
   }
 }

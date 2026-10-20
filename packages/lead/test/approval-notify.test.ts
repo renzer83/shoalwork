@@ -52,6 +52,8 @@ const fakeTelegram = (failSend = false) => {
       }),
     typing: () => Effect.void,
     ensureTopic: () => Effect.succeed({ chatId: "-100", threadId: 7 }),
+    openPodTopic: () => Effect.succeed(1),
+    postToPodTopic: () => Effect.void,
   }
   return { shape, sent, edits, lines }
 }

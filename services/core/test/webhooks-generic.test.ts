@@ -27,6 +27,7 @@ const leadStub: LeadShape = {
     }),
   get: () => Effect.die("not used by the tide routes"),
   runOnce: () => Effect.die("not used by the tide routes"),
+  runTask: () => Effect.die("not used by the tide routes"),
   handoff: () => Effect.die("not used by the tide routes"),
   abandon: () => Effect.void,
   startWorker: () => Effect.void,

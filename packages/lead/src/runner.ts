@@ -16,21 +16,19 @@ import type { BriefingMemory } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
+import type { PodNotesShape } from "./pod-notes.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
 import { executorTaskFor, type McpServerConfig, makeRunSetup } from "./run-setup.js"
+import { crashResult } from "./runner-crash.js"
 import { makeDeliverFor } from "./step-delivery.js"
 import { raceWithStop } from "./stoppable.js"
 import type { TaskStoreShape } from "./tasks.js"
 import {
-  blockedVerdict,
-  clip,
   describeFailure,
   INITIAL,
-  isNotFound,
   type Progress,
-  SUMMARY_MAX,
   settledResult,
   stepIdFor,
   stoppedVerdict,
@@ -93,6 +91,8 @@ export interface RunnerDeps {
   readonly indexer?: IndexerShape | undefined
   // Approvals (T-054), when the composition root has them: a run that needs one is recorded and later resumed.
   readonly approvals?: ApprovalGate | undefined
+  // Messages from Pod topics waiting for the next round of a task (pod-notes.ts).
+  readonly notes?: PodNotesShape | undefined
 }
 
 // Retries run inside the same runTask call, so the job's lock and heartbeat cover them and the task's time budget
@@ -234,7 +234,8 @@ export const makeRunner = (deps: RunnerDeps) => {
       }
       const budgetMs = spec.budget.seconds * 1000
       const roundStart = yield* Clock.currentTimeMillis
-      const round = yield* runRound(spec, carry, budgetMs - (roundStart - started), handle)
+      const noted = deps.notes === undefined ? carry : yield* deps.notes.attach(spec.id, carry)
+      const round = yield* runRound(spec, noted, budgetMs - (roundStart - started), handle)
       const now = yield* Clock.currentTimeMillis
       const budgetLeftMs = budgetMs - (now - started)
       const verdict = verdictFor(round.progress, Math.round((now - started) / 1000))
@@ -276,24 +277,7 @@ export const makeRunner = (deps: RunnerDeps) => {
         const carry = approved ?? (yield* carryFor({ tank, bots, tasks, beacon, raiseError }, current))
         return yield* rounds(record.spec, started, carry, handle)
       }),
-    ).pipe(
-      Effect.catchCause((cause) => {
-        if (Cause.hasInterruptsOnly(cause)) {
-          return Effect.interrupt
-        }
-        const failure = Cause.squash(cause)
-        const { tag, message } = describeFailure(failure)
-        return taskEvent(id, "error.raised", { where: "lead.runOnce", tag, message, taskId: id }).pipe(
-          Effect.catchCause(() => Effect.void),
-          Effect.as({
-            verdict: blockedVerdict(clip(`${tag}: ${message}`, SUMMARY_MAX), tag),
-            // A task that does not exist will not appear on a retry; any other failure may be transient.
-            recorded: isNotFound(failure),
-            stopped: false,
-          }),
-        )
-      }),
-    )
+    ).pipe(Effect.catchCause(crashResult(taskEvent, id)))
 
   return { runTask, abandon }
 }

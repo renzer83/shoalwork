@@ -33,6 +33,9 @@ import { branchOf, budgetLeft, createStepTask, retryPrompt } from "./step-task.j
 
 export const DEFAULT_PLAN_CONCURRENCY = 3
 
+// The reason the dispatcher gives for closing the task of a step an interruption left unfinished.
+export const PLAN_STOPPED_REASON = "plan stopped"
+
 // What running a task came back with: its verdict and whether a stop (not the task itself) ended it.
 // The runner's RunResult has both (Lead.runTask).
 export interface StepResult {
@@ -128,7 +131,7 @@ export const makeDispatcher = (deps: DispatcherDeps) => {
             const taskId = yield* createStepTask(deps, { root, plan, step, botId, base, prompt, budget })
             const result = yield* deps
               .runTask(taskId)
-              .pipe(Effect.onInterrupt(() => deps.abandon(taskId, "plan stopped")))
+              .pipe(Effect.onInterrupt(() => deps.abandon(taskId, PLAN_STOPPED_REASON)))
             if (result.stopped) yield* Ref.set(stopped, true)
             const branch = result.verdict.kind === "ok" ? branchOf(result.verdict) : undefined
             const conflict = conflictOf(result.verdict)

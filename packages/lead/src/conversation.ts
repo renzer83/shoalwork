@@ -145,7 +145,9 @@ export const ConversationLive = (
           if (
             Option.isNone(payload) ||
             payload.value.channel !== "telegram" ||
-            payload.value.text.trim() === ""
+            payload.value.text.trim() === "" ||
+            // Typed in a Pod's topic: the Pod answers it (pods.ts), not the conversation.
+            payload.value.podId !== undefined
           ) {
             return
           }

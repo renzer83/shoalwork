@@ -18,6 +18,7 @@ export const fakeLead = (intakes: Array<Intake>): LeadShape => ({
     }),
   get: () => Effect.die("not used by tides"),
   runOnce: () => Effect.die("not used by tides"),
+  runTask: () => Effect.die("not used by tides"),
   handoff: () => Effect.die("not used by tides"),
   abandon: () => Effect.void,
   startWorker: () => Effect.void,

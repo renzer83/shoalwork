@@ -29,6 +29,9 @@ import {
   LeadLive,
   loadContextConfig,
   McpTokensLive,
+  Planning,
+  PlanningLive,
+  PodNotesLive,
   startConsolidateHook,
   startIndexHook,
   TaskStoreLive,
@@ -42,7 +45,13 @@ import { Effect, Layer, ManagedRuntime, Schema } from "effect"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
-import { TelegramFromSettings, TelegramStatus, telegramSettings } from "./telegram.js"
+import {
+  PodInboundSlot,
+  PodInboundSlotLive,
+  TelegramFromSettings,
+  TelegramStatus,
+  telegramSettings,
+} from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
 
 // `which` without a shell: walks PATH and checks the execute bit. A lookup failure just means "not installed".
@@ -138,7 +147,7 @@ export const AppLayer = Layer.unwrap(
       tiers,
       { botBudgetWindowMs, mcp, context: contextConfig },
       { maxAgentMsgsPerTask: config.maxAgentMsgsPerTask },
-    ).pipe(Layer.provideMerge(withIndexer), Layer.provideMerge(withGh))
+    ).pipe(Layer.provideMerge(withIndexer), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
     // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
     const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withTides))
@@ -147,7 +156,19 @@ export const AppLayer = Layer.unwrap(
     // The one door for a decision: web, CLI and the Telegram buttons all go through it.
     const withApprovalFlow = ApprovalFlowLive.pipe(Layer.provideMerge(withConsolidation))
     const withDecisions = ApprovalDecisionsLive.pipe(Layer.provideMerge(withApprovalFlow))
-    const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withDecisions))
+    const withSlot = PodInboundSlotLive.pipe(Layer.provideMerge(withDecisions))
+    const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withSlot))
+    // Planner -> Pod -> Dispatcher (T-175): above the Lead and the connector, whose topics the Pods use. Without
+    // Telegram a Pod has no topic, and the plan runs all the same.
+    const withPlanning = Layer.unwrap(
+      Effect.map(TelegramStatus, (status) =>
+        PlanningLive(tiers, {
+          planConcurrency: config.planConcurrency,
+          botBudgetWindowMs,
+          topics: status.enabled ? "telegram" : "none",
+        }),
+      ),
+    ).pipe(Layer.provideMerge(withTelegram))
     return ConversationLive(tiers, reflexConfig, {
       botBudgetWindowMs,
       warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },
@@ -159,7 +180,7 @@ export const AppLayer = Layer.unwrap(
           .filter((id) => id !== CHAT_ID),
         config: { ceiling: BOT_FACTORY_CEILING, policy: "default", tank: { mode: "local", host: "mac" } },
       },
-    }).pipe(Layer.provideMerge(withTelegram))
+    }).pipe(Layer.provideMerge(withPlanning))
   }),
 )
 export type AppServices = Layer.Success<typeof AppLayer>
@@ -175,7 +196,12 @@ export const startLeadWorker = (options: { readonly concurrency: number; readonl
   appRuntime.runFork(
     Effect.gen(function* () {
       const lead = yield* Lead
-      yield* lead.startWorker(options)
+      const planning = yield* Planning
+      // The Pod topics' messages and the plan steps' narration meet the Pods here, once they exist.
+      const slot = yield* PodInboundSlot
+      slot.bind(planning.onHumanMessage)
+      yield* planning.start
+      yield* lead.startWorker({ ...options, runTask: planning.run })
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )
