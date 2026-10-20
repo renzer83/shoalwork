@@ -1,17 +1,31 @@
 import { createHash } from "node:crypto"
-import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises"
+import { lstat, realpath } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
-import { type Bot, TankError } from "@shoalwork/contracts"
+import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Semaphore } from "effect"
 import { ensureClone, worktreeAdd, worktreeRemove } from "./git.js"
-import { runProcess, spawnProcess } from "./process.js"
+import { type BotOps, localOps } from "./ops.js"
 import { Tank, type TankContext, type TankShape } from "./tank.js"
+
+// Environment inherited by Bot processes; the caller (core) decides, this package never reads process.env.
+export type BaseEnv = Readonly<Record<string, string | undefined>>
 
 export type TankLocalConfig = {
   // <root>/<bot.name>/{home,repos,work}
   readonly root: string
-  // Environment inherited by Bot processes; the caller (core) decides, this package never reads process.env.
-  readonly baseEnv: Readonly<Record<string, string | undefined>>
+  readonly baseEnv: BaseEnv
+}
+
+// Where a Tank keeps a Bot's directories and how it runs commands for it. Local and server mode differ only here.
+export type TankLayout = {
+  readonly mode: TankMode
+  // Confinement root for release: nothing outside it is ever deleted.
+  readonly root: string
+  readonly botDir: (botName: string) => string
+  readonly home: (botDir: string) => string
+  readonly opsFor: (botName: string) => BotOps
+  // Runs before any directory is created for the Bot (server mode: the Linux user must exist).
+  readonly preflight: (botName: string) => Effect.Effect<void, TankError>
 }
 
 // Filesystem-safe name for a repo URL; the hash keeps distinct URLs from colliding after slugging.
@@ -32,9 +46,6 @@ const checkSegment = (what: string, value: string): Effect.Effect<void, TankErro
   SEGMENT.test(value)
     ? Effect.void
     : Effect.fail(new TankError({ op: "prepare", cause: `unsafe ${what}: ${JSON.stringify(value)}` }))
-
-const fsTry = <A>(op: string, f: () => Promise<A>): Effect.Effect<A, TankError> =>
-  Effect.tryPromise({ try: f, catch: (cause) => new TankError({ op, cause }) })
 
 const isInside = (parent: string, child: string): boolean => {
   const rel = relative(parent, child)
@@ -69,7 +80,7 @@ const realAncestor = async (target: string, rel: string): Promise<string> => {
   }
 }
 
-// Confinement to the context cwd, symlinks included. Must run before any mkdir/write.
+// Confinement to the context cwd, symlinks included. Must run before any read or write.
 const resolveInside = (ctx: TankContext, rel: string): Effect.Effect<string, TankError> =>
   Effect.tryPromise({
     try: async () => {
@@ -82,8 +93,25 @@ const resolveInside = (ctx: TankContext, rel: string): Effect.Effect<string, Tan
     catch: (cause) => (cause instanceof TankError ? cause : new TankError({ op: "path", cause })),
   })
 
-export const makeTankLocal = (config: TankLocalConfig): TankShape => {
-  const root = resolve(config.root)
+// Env a Bot process receives: the base env minus host credentials, with the Bot's own HOME and CLI config dirs.
+export const buildBotEnv = (baseEnv: BaseEnv, home: string): Record<string, string> => {
+  const merged: Record<string, string | undefined> = {
+    ...baseEnv,
+    HOME: home,
+    CLAUDE_CONFIG_DIR: join(home, ".claude"),
+    CODEX_HOME: join(home, ".codex"),
+    GEMINI_CLI_HOME: home,
+    // Bots authenticate through their own CLI login (CLAUDE_CONFIG_DIR); host credentials must not win.
+    ANTHROPIC_API_KEY: undefined,
+    ANTHROPIC_AUTH_TOKEN: undefined,
+    CLAUDE_CODE_OAUTH_TOKEN: undefined,
+  }
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(merged)) if (value !== undefined) env[key] = value
+  return env
+}
+
+export const makeBotTank = (layout: TankLayout, baseEnv: BaseEnv): TankShape => {
   // One lock per base clone: concurrent fetch/worktree-add on the same repo race on git's own locks.
   const repoLocks = new Map<string, Semaphore.Semaphore>()
   const lockFor = (repoDir: string): Semaphore.Semaphore => {
@@ -94,47 +122,34 @@ export const makeTankLocal = (config: TankLocalConfig): TankShape => {
     return created
   }
 
-  const buildEnv = (home: string): Record<string, string> => {
-    const merged: Record<string, string | undefined> = {
-      ...config.baseEnv,
-      HOME: home,
-      CLAUDE_CONFIG_DIR: join(home, ".claude"),
-      CODEX_HOME: join(home, ".codex"),
-      GEMINI_CLI_HOME: home,
-      // Bots authenticate through their own CLI login (CLAUDE_CONFIG_DIR); host credentials must not win.
-      ANTHROPIC_API_KEY: undefined,
-      ANTHROPIC_AUTH_TOKEN: undefined,
-      CLAUDE_CODE_OAUTH_TOKEN: undefined,
-    }
-    const env: Record<string, string> = {}
-    for (const [key, value] of Object.entries(merged)) if (value !== undefined) env[key] = value
-    return env
-  }
+  // Context names come from the caller: validated before they pick the Bot's ops.
+  const opsOf = (botName: string): Effect.Effect<BotOps, TankError> =>
+    checkSegment("bot name", botName).pipe(Effect.map(() => layout.opsFor(botName)))
 
   const prepare: TankShape["prepare"] = (bot: Bot, step) =>
     Effect.gen(function* () {
       yield* checkSegment("bot name", bot.name)
       yield* checkSegment("step id", step.stepId)
-      const botDir = join(root, bot.name)
-      const home = join(botDir, "home")
+      yield* layout.preflight(bot.name)
+      const ops = layout.opsFor(bot.name)
+      const botDir = layout.botDir(bot.name)
+      const home = layout.home(botDir)
       const workPath = join(botDir, "work", step.stepId)
-      yield* fsTry("mkdir home", async () => {
-        for (const sub of [".claude", ".codex", ".gemini"]) await mkdir(join(home, sub), { recursive: true })
-      })
-      const env = buildEnv(home)
+      for (const sub of [".claude", ".codex", ".gemini"]) yield* ops.mkdirp(join(home, sub))
+      const env = buildBotEnv(baseEnv, home)
       const base = { botId: bot.id, botName: bot.name, home, env }
       if (step.repo === undefined) {
-        yield* fsTry("mkdir work", () => mkdir(workPath, { recursive: true }))
+        yield* ops.mkdirp(workPath)
         return { ...base, cwd: workPath }
       }
       const { url, base: baseBranch } = step.repo
       const repoDir = join(botDir, "repos", slugRepoUrl(url))
       const branch = `bot/${bot.name}/${step.stepId}`
-      yield* fsTry("mkdir work", () => mkdir(dirname(workPath), { recursive: true }))
+      yield* ops.mkdirp(dirname(workPath))
       yield* lockFor(repoDir).withPermits(1)(
         Effect.gen(function* () {
-          yield* ensureClone(repoDir, url, baseBranch, env)
-          yield* worktreeAdd(repoDir, workPath, branch, baseBranch, env)
+          yield* ensureClone(repoDir, url, baseBranch, env, ops)
+          yield* worktreeAdd(repoDir, workPath, branch, baseBranch, env, ops)
         }),
       )
       return { ...base, cwd: workPath, worktree: { path: workPath, branch, repoDir } }
@@ -145,49 +160,69 @@ export const makeTankLocal = (config: TankLocalConfig): TankShape => {
       if (opts.keepWorktree) return
       // The context is caller-supplied: never delete or run git outside this Bot's own directories.
       yield* checkSegment("bot name", ctx.botName)
-      const botDir = join(root, ctx.botName)
+      const ops = layout.opsFor(ctx.botName)
+      const botDir = layout.botDir(ctx.botName)
       const workDir = join(botDir, "work")
       const reject = (what: string) =>
         Effect.fail(new TankError({ op: "release", cause: `${what} outside the tank root` }))
-      if (!isInside(root, ctx.cwd)) return yield* reject("cwd")
+      if (!isInside(layout.root, ctx.cwd)) return yield* reject("cwd")
       if (ctx.worktree !== undefined) {
         const { repoDir, path, branch } = ctx.worktree
         if (!isInside(join(botDir, "repos"), repoDir) || repoDir === join(botDir, "repos")) {
           return yield* reject("repoDir")
         }
         if (!isInside(workDir, path) || path === workDir) return yield* reject("worktree path")
-        yield* lockFor(repoDir).withPermits(1)(worktreeRemove(repoDir, path, branch, ctx.env))
+        yield* lockFor(repoDir).withPermits(1)(worktreeRemove(repoDir, path, branch, ctx.env, ops))
         return
       }
       // No repo: cwd is a plain scratch directory under <root>/<bot>/work/.
       if (!isInside(workDir, ctx.cwd) || ctx.cwd === workDir) return yield* reject("cwd")
-      yield* fsTry("rm work", () => rm(ctx.cwd, { recursive: true, force: true }))
+      yield* ops.removeTree(ctx.cwd)
     })
 
   return {
-    mode: "local",
+    mode: layout.mode,
     prepare,
     exec: (ctx, cmd, opts) =>
-      runProcess(cmd, {
-        cwd: ctx.cwd,
-        env: ctx.env,
-        ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
-        ...(opts?.stdin === undefined ? {} : { stdin: opts.stdin }),
-      }),
-    spawnStream: (ctx, cmd) => spawnProcess(cmd, { cwd: ctx.cwd, env: ctx.env }),
-    readFile: (ctx, rel) =>
-      resolveInside(ctx, rel).pipe(Effect.flatMap((p) => fsTry("readFile", () => readFile(p, "utf8")))),
-    writeFile: (ctx, rel, content) =>
-      resolveInside(ctx, rel).pipe(
-        Effect.flatMap((p) =>
-          fsTry("writeFile", async () => {
-            await mkdir(dirname(p), { recursive: true })
-            await writeFile(p, content, "utf8")
+      opsOf(ctx.botName).pipe(
+        Effect.flatMap((ops) =>
+          ops.run(cmd, {
+            cwd: ctx.cwd,
+            env: ctx.env,
+            ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
+            ...(opts?.stdin === undefined ? {} : { stdin: opts.stdin }),
           }),
         ),
       ),
+    spawnStream: (ctx, cmd) =>
+      opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.spawn(cmd, { cwd: ctx.cwd, env: ctx.env }))),
+    readFile: (ctx, rel) =>
+      resolveInside(ctx, rel).pipe(
+        Effect.flatMap((p) => opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.readText(p)))),
+      ),
+    writeFile: (ctx, rel, content) =>
+      resolveInside(ctx, rel).pipe(
+        Effect.flatMap((p) => opsOf(ctx.botName).pipe(Effect.flatMap((ops) => ops.writeText(p, content)))),
+      ),
     release,
   }
+}
+
+const noPreflight = (): Effect.Effect<void, TankError> => Effect.void
+
+export const makeTankLocal = (config: TankLocalConfig): TankShape => {
+  const root = resolve(config.root)
+  return makeBotTank(
+    {
+      mode: "local",
+      root,
+      botDir: (botName) => join(root, botName),
+      home: (botDir) => join(botDir, "home"),
+      opsFor: () => localOps,
+      preflight: noPreflight,
+    },
+    config.baseEnv,
+  )
 }
 
 export const TankLocalLive = (config: TankLocalConfig): Layer.Layer<Tank> =>

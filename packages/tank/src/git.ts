@@ -1,8 +1,7 @@
-import { mkdir, stat } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { TankError, WorktreeConflict } from "@shoalwork/contracts"
 import { Effect } from "effect"
-import { runProcess } from "./process.js"
+import { type BotOps, localOps } from "./ops.js"
 
 export type GitEnv = Readonly<Record<string, string>>
 
@@ -31,12 +30,13 @@ type GitOutput = { readonly stdout: string; readonly stderr: string; readonly ex
 
 // Runs `git <args>` and returns the result without judging the exit code.
 const runGit = (
+  ops: BotOps,
   cwd: string,
   args: ReadonlyArray<string>,
   env: GitEnv,
   timeoutMs = 300_000,
 ): Effect.Effect<GitOutput, TankError> =>
-  runProcess(["git", ...args], { cwd, env: gitEnv(env), timeoutMs }).pipe(
+  ops.run(["git", ...args], { cwd, env: gitEnv(env), timeoutMs }).pipe(
     Effect.mapError((e) => gitError(e.op, e.cause)),
     Effect.flatMap((r) =>
       r.timedOut
@@ -46,27 +46,19 @@ const runGit = (
   )
 
 // Runs `git <args>` and fails with TankError (stderr as cause) on a non-zero exit.
-const git = (cwd: string, args: ReadonlyArray<string>, env: GitEnv): Effect.Effect<string, TankError> =>
-  runGit(cwd, args, env).pipe(
+const git = (
+  ops: BotOps,
+  cwd: string,
+  args: ReadonlyArray<string>,
+  env: GitEnv,
+): Effect.Effect<string, TankError> =>
+  runGit(ops, cwd, args, env).pipe(
     Effect.flatMap((r) =>
       r.exitCode === 0
         ? Effect.succeed(r.stdout)
         : Effect.fail(gitError(`git ${args[0] ?? ""}`, r.stderr.trim())),
     ),
   )
-
-const exists = (path: string): Effect.Effect<boolean, TankError> =>
-  Effect.tryPromise({
-    try: () =>
-      stat(path).then(
-        () => true,
-        (cause: unknown) => {
-          if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false
-          throw cause
-        },
-      ),
-    catch: (cause) => new TankError({ op: "stat", cause }),
-  })
 
 const ensureSafeRef = (name: string, value: string): Effect.Effect<void, TankError> =>
   value === "" || value.startsWith("-")
@@ -79,23 +71,26 @@ export const ensureClone = (
   url: string,
   base: string,
   env: GitEnv,
+  ops: BotOps = localOps,
 ): Effect.Effect<void, TankError> =>
   Effect.gen(function* () {
     yield* ensureSafeRef("base", base)
     yield* ensureSafeRef("url", url)
-    if (!(yield* exists(join(repoDir, ".git")))) {
+    if (!(yield* ops.exists(join(repoDir, ".git")))) {
       const parent = dirname(repoDir)
-      yield* Effect.tryPromise({
-        try: () => mkdir(parent, { recursive: true }),
-        catch: (cause) => new TankError({ op: "mkdir", cause }),
-      })
-      yield* git(parent, ["clone", "--no-checkout", "--branch", base, "--", url, repoDir], env)
+      yield* ops.mkdirp(parent)
+      yield* git(ops, parent, ["clone", "--no-checkout", "--branch", base, "--", url, repoDir], env)
     }
-    yield* git(repoDir, ["fetch", "origin"], env)
+    yield* git(ops, repoDir, ["fetch", "origin"], env)
   })
 
-const branchExists = (repoDir: string, branch: string, env: GitEnv): Effect.Effect<boolean, TankError> =>
-  runGit(repoDir, ["show-ref", "--verify", "--quiet", "--", `refs/heads/${branch}`], env).pipe(
+const branchExists = (
+  ops: BotOps,
+  repoDir: string,
+  branch: string,
+  env: GitEnv,
+): Effect.Effect<boolean, TankError> =>
+  runGit(ops, repoDir, ["show-ref", "--verify", "--quiet", "--", `refs/heads/${branch}`], env).pipe(
     Effect.flatMap((r) =>
       r.exitCode === 0
         ? Effect.succeed(true)
@@ -112,17 +107,19 @@ export const worktreeAdd = (
   branch: string,
   base: string,
   env: GitEnv,
+  ops: BotOps = localOps,
 ): Effect.Effect<void, TankError | WorktreeConflict> =>
   Effect.gen(function* () {
     yield* ensureSafeRef("base", base)
     yield* ensureSafeRef("branch", branch)
     yield* ensureSafeRef("path", path)
     // Checked up front: from here on, a branch that exists afterwards may belong to someone else.
-    if (yield* branchExists(repoDir, branch, env)) {
+    if (yield* branchExists(ops, repoDir, branch, env)) {
       return yield* Effect.fail(new WorktreeConflict({ branch, path }))
     }
-    if (yield* exists(path)) return yield* Effect.fail(new WorktreeConflict({ branch, path }))
+    if (yield* ops.exists(path)) return yield* Effect.fail(new WorktreeConflict({ branch, path }))
     const r = yield* runGit(
+      ops,
       repoDir,
       ["worktree", "add", "--no-track", "-b", branch, "--", path, `origin/${base}`],
       env,
@@ -133,7 +130,7 @@ export const worktreeAdd = (
       return yield* Effect.fail(new WorktreeConflict({ branch, path }))
     }
     // The branch did not exist before this call; drop whatever git may have left behind.
-    yield* runGit(repoDir, ["branch", "-D", "--", branch], env)
+    yield* runGit(ops, repoDir, ["branch", "-D", "--", branch], env)
     return yield* Effect.fail(gitError("git worktree add", r.stderr.trim()))
   })
 
@@ -143,17 +140,18 @@ export const worktreeRemove = (
   path: string,
   branch: string,
   env: GitEnv,
+  ops: BotOps = localOps,
 ): Effect.Effect<void, TankError> =>
   Effect.gen(function* () {
     yield* ensureSafeRef("branch", branch)
     yield* ensureSafeRef("path", path)
-    const removed = yield* runGit(repoDir, ["worktree", "remove", "--force", "--", path], env)
-    if (removed.exitCode !== 0 && (yield* exists(path))) {
+    const removed = yield* runGit(ops, repoDir, ["worktree", "remove", "--force", "--", path], env)
+    if (removed.exitCode !== 0 && (yield* ops.exists(path))) {
       return yield* Effect.fail(gitError("git worktree remove", removed.stderr.trim()))
     }
-    yield* git(repoDir, ["worktree", "prune"], env)
-    if (yield* branchExists(repoDir, branch, env)) {
-      yield* git(repoDir, ["branch", "-D", "--", branch], env)
+    yield* git(ops, repoDir, ["worktree", "prune"], env)
+    if (yield* branchExists(ops, repoDir, branch, env)) {
+      yield* git(ops, repoDir, ["branch", "-D", "--", branch], env)
     }
   })
 
@@ -161,8 +159,9 @@ export const worktreeRemove = (
 export const worktreeList = (
   repoDir: string,
   env: GitEnv,
+  ops: BotOps = localOps,
 ): Effect.Effect<ReadonlyArray<WorktreeInfo>, TankError> =>
-  git(repoDir, ["worktree", "list", "--porcelain"], env).pipe(
+  git(ops, repoDir, ["worktree", "list", "--porcelain"], env).pipe(
     Effect.map((out) => parseWorktreeList(out).slice(1)),
   )
 
