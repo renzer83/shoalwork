@@ -19,6 +19,7 @@ import {
 import type { ExecutorRegistry } from "@shoalwork/executors"
 import { Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Cause, Clock, Duration, Effect, Exit, Option, Ref, type Scope, Stream } from "effect"
+import { deliverCode } from "./git-delivery.js"
 import { emit, type TaskStoreShape } from "./tasks.js"
 import {
   ACTOR,
@@ -35,8 +36,22 @@ import {
   SUMMARY_MAX,
   stepIdFor,
   verdictFor,
+  withArtifact,
   withOutcome,
 } from "./verdict.js"
+
+// What a Bot may run in a code task. Commit, push and PR are the Lead's job (git-delivery.ts), not the Bot's.
+const CODE_ALLOWED_TOOLS: ReadonlyArray<string> = [
+  "Bash(pnpm *)",
+  "Bash(npm *)",
+  "Bash(git status *)",
+  "Bash(git diff *)",
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+]
 
 export interface LeadConfig {
   readonly maxTurns: number
@@ -91,6 +106,31 @@ export const makeRunner = (deps: RunnerDeps) => {
       if (from !== to) {
         yield* taskEvent(spec.id, "task.state_changed", { taskId: spec.id, from, to })
       }
+    })
+
+  // Only an ok run of a code task with a repo is delivered, inside the worktree the Bot wrote to (before release).
+  // A failed delivery turns the outcome into a Delivery failure, so the verdict is not ok and the worktree is kept.
+  const deliver = (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>) =>
+    Effect.gen(function* () {
+      const { outcome } = yield* Ref.get(progress)
+      if (outcome._tag !== "Done" || spec.kind !== "code" || spec.repo === undefined) return
+      yield* deliverCode(tank, ctx, {
+        taskId: spec.id,
+        title: spec.title,
+        base: spec.repo.base,
+        issue: spec.repo.issue,
+      }).pipe(
+        Effect.flatMap((artifact) => Ref.update(progress, withArtifact(artifact))),
+        Effect.catch((failure) =>
+          Effect.gen(function* () {
+            yield* raiseError(spec, "lead.delivery", failure._tag, failure.message)
+            yield* Ref.update(
+              progress,
+              withOutcome({ _tag: "Delivery", step: failure.step, message: failure.message }),
+            )
+          }),
+        ),
+      )
     })
 
   // Consumes the executor stream until its first terminal event (or an approval request), recording every event.
@@ -189,7 +229,7 @@ export const makeRunner = (deps: RunnerDeps) => {
         botId: bot.id,
         prompt: buildPrompt(spec),
         tier: spec.tier,
-        allowedTools: [],
+        allowedTools: spec.kind === "code" && spec.repo !== undefined ? [...CODE_ALLOWED_TOOLS] : [],
         permissionMode: "edit",
         maxTurns: config.maxTurns,
         budget: spec.budget,
@@ -206,6 +246,7 @@ export const makeRunner = (deps: RunnerDeps) => {
             cwd: ctx.cwd,
           })
           yield* consume(spec, bot, executor.id, executor.run(task, ctx), stepId, progress, model)
+          yield* deliver(spec, ctx, progress)
         })
       // Keep the worktree for diagnosis unless the run ended in an ok verdict.
       const release = (ctx: TankContext, exit: Exit.Exit<void, unknown>) =>

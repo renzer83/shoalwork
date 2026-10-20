@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import {
+  type Artifact,
   type ExecutorErrorCode,
   type Risk,
   type SessionId,
@@ -39,6 +40,9 @@ export const buildPrompt = (spec: Pick<TaskSpec, "prompt" | "acceptance">): stri
     ? spec.prompt
     : `${spec.prompt}\n\nAcceptance:\n${spec.acceptance.map((line) => `- ${line}`).join("\n")}`
 
+// Git/gh steps the Lead runs after an ok run of a code task (git-delivery.ts).
+export type DeliveryStep = "commit" | "push" | "pr"
+
 // What the executor stream (or the machinery around it) ended with.
 export type Outcome =
   | { readonly _tag: "Pending" }
@@ -48,23 +52,31 @@ export type Outcome =
   | { readonly _tag: "Channel"; readonly tag: string; readonly executor: string }
   | { readonly _tag: "Failure"; readonly tag: string; readonly message: string }
   | { readonly _tag: "TimedOut" }
+  | { readonly _tag: "Delivery"; readonly step: DeliveryStep; readonly message: string }
 
 export interface Progress {
   readonly usage: Usage
   readonly sessionId: SessionId | undefined
   readonly stepId: StepId | undefined
   readonly outcome: Outcome
+  // Artifacts the Lead produced itself (the PR of a delivered code task).
+  readonly artifacts: ReadonlyArray<Artifact>
 }
 
 export const withOutcome =
   (outcome: Outcome) =>
   (p: Progress): Progress => ({ ...p, outcome })
 
+export const withArtifact =
+  (artifact: Artifact) =>
+  (p: Progress): Progress => ({ ...p, artifacts: [...p.artifacts, artifact] })
+
 export const INITIAL: Progress = {
   usage: ZERO_USAGE,
   sessionId: undefined,
   stepId: undefined,
   outcome: { _tag: "Pending" },
+  artifacts: [],
 }
 
 export const clip = (text: string, max: number): string => (text.length > max ? text.slice(0, max) : text)
@@ -80,7 +92,19 @@ export const verdictFor = (progress: Progress, seconds: number): Verdict => {
   const outcome = progress.outcome
   switch (outcome._tag) {
     case "Done":
-      return { kind: "ok", summary: clip(outcome.result, SUMMARY_MAX), evidence: [], ...base }
+      return {
+        kind: "ok",
+        summary: clip(outcome.result, SUMMARY_MAX),
+        evidence: progress.artifacts.map((artifact) => clip(artifact.ref, EVIDENCE_MAX)),
+        ...base,
+      }
+    case "Delivery":
+      return {
+        kind: "failed",
+        summary: clip(`delivery failed at ${outcome.step}: ${outcome.message}`, SUMMARY_MAX),
+        evidence: [`delivery: ${outcome.step}`],
+        ...base,
+      }
     case "ExecutorError": {
       // budget: the CLI stopped on its own limit. protocol/spawn/auth: environment problems a retry will not fix.
       const kind =

@@ -20,6 +20,7 @@
     "db:migrate": "tsx packages/db/src/cli-migrate.ts",
     "db:reset": "tsx scripts/db-reset.ts --yes",
     "db:shell": "tsx scripts/db-shell.ts",
+    "demo:issue": "tsx scripts/demo-issue.ts",
     "gate:no-docs": "sh -c 'f=$(find . -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"./.git/*\"); if [ -n \"$f\" ]; then echo \"$f\"; exit 1; fi'",
     "gate:no-secrets": "gitleaks detect --no-git -s . --redact"
   },

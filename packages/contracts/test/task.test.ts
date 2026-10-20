@@ -43,6 +43,25 @@ describe("task", () => {
     expect(Schema.encodeSync(RepoRef)(Schema.decodeUnknownSync(RepoRef)(raw))).toEqual(raw)
   })
 
+  it("RepoRef round-trips with and without the issue the PR closes", () => {
+    const withIssue = { url: "https://github.com/renzer83/shoalwork", base: "main", issue: 12 }
+    expect(Schema.encodeSync(RepoRef)(Schema.decodeUnknownSync(RepoRef)(withIssue))).toEqual(withIssue)
+    const withoutIssue = { url: "https://github.com/renzer83/shoalwork", base: "main" }
+    const decoded = Schema.decodeUnknownSync(RepoRef)(withoutIssue)
+    expect(decoded.issue).toBeUndefined()
+    expect(Schema.encodeSync(RepoRef)(decoded)).toEqual(withoutIssue)
+  })
+
+  it("RepoRef rejects an issue that is not an integer", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(RepoRef)({
+        url: "https://github.com/renzer83/shoalwork",
+        base: "main",
+        issue: 1.5,
+      }),
+    ).toThrow()
+  })
+
   it("Artifact round-trips with and without summary, and rejects unknown kind", () => {
     const withSummary = { kind: "pr", ref: "https://github.com/renzer83/shoalwork/pull/12", summary: "retry" }
     const withoutSummary = { kind: "text", ref: "notes" }

@@ -1,0 +1,14 @@
+name: dev-demo
+role: developer
+kind: auxiliary
+instructions: |
+  You are a developer Bot. You implement the issue you are given in the repository of your working directory.
+  Add tests for the change and run the project's test command until it passes.
+  Do not commit and do not push: the Lead commits, pushes and opens the pull request from your working directory.
+executors: { preferred: claude-code, allowed: [claude-code, codex] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }

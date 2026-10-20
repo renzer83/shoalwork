@@ -13,7 +13,7 @@ import {
 } from "@shoalwork/contracts"
 import { withTempDb } from "@shoalwork/db/testing"
 import { type Executor, ExecutorRegistry, makeRegistry } from "@shoalwork/executors"
-import { Tank, type TankContext, type TankShape } from "@shoalwork/tank"
+import { type ExecResult, Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Lead, type LeadConfig, LeadLive, TaskStore } from "../src/index.js"
@@ -70,12 +70,37 @@ export type FakeTank = {
   readonly shape: TankShape
   readonly prepared: Array<string>
   readonly released: Array<{ readonly keepWorktree: boolean }>
+  // Every command the Lead ran in a Bot's Tank (argv), in order.
+  readonly commands: Array<ReadonlyArray<string>>
+}
+
+const result = (exitCode: number, stdout = "", stderr = ""): ExecResult => ({
+  exitCode,
+  stdout,
+  stderr,
+  durationMs: 1,
+  timedOut: false,
+})
+
+// Answers the delivery commands like a healthy repo with changes: git diff --cached exits 1 (something staged),
+// gh opens a PR and prints its URL. Any other command succeeds silently.
+export const HEALTHY_EXEC = (argv: ReadonlyArray<string>): ExecResult => {
+  const program = argv.slice(0, 2).join(" ")
+  if (program === "git diff") return result(1)
+  if (program === "gh pr") return result(0, "https://github.com/renzer83/shoalwork-sandbox/pull/1\n")
+  return result(0)
 }
 
 export const makeFakeTank = (
-  opts: { readonly failPrepare?: boolean; readonly hangPrepare?: boolean } = {},
+  opts: {
+    readonly failPrepare?: boolean
+    readonly hangPrepare?: boolean
+    readonly exec?: (argv: ReadonlyArray<string>) => ExecResult
+  } = {},
 ): FakeTank => {
   const prepared: Array<string> = []
+  const commands: Array<ReadonlyArray<string>> = []
+  const answer = opts.exec ?? HEALTHY_EXEC
   // Like the real Tank: a worktree kept for diagnosis blocks a second prepare with the same step id.
   const worktrees = new Set<string>()
   const released: Array<{ readonly keepWorktree: boolean }> = []
@@ -96,9 +121,25 @@ export const makeFakeTank = (
                 if (step.repo !== undefined) {
                   worktrees.add(step.stepId)
                 }
+                if (step.repo !== undefined) {
+                  // Like the real Tank: a repo step runs in its own worktree on the Bot's branch.
+                  const branch = `bot/${bot.name}/${step.stepId}`
+                  return {
+                    botId: bot.id,
+                    botName: bot.name,
+                    cwd: "/work/wt",
+                    home: "/work/home",
+                    env: {},
+                    worktree: { path: "/work/wt", branch, repoDir: "/work/repo" },
+                  }
+                }
                 return { botId: bot.id, botName: bot.name, cwd: "/work/cwd", home: "/work/home", env: {} }
               }),
-    exec: unused,
+    exec: (_ctx, cmd) =>
+      Effect.sync(() => {
+        commands.push(cmd)
+        return answer(cmd)
+      }),
     spawnStream: unused,
     readFile: unused,
     writeFile: unused,
@@ -110,7 +151,7 @@ export const makeFakeTank = (
         }
       }),
   }
-  return { shape, prepared, released }
+  return { shape, prepared, released, commands }
 }
 
 export type Runs = Array<ExecutorTask>

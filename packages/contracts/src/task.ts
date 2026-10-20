@@ -6,6 +6,8 @@ import { BotId, PlanId, StepId, TaskId } from "./ids.js"
 export const RepoRef = Schema.Struct({
   url: Schema.String,
   base: Schema.String, // branch
+  // Issue of this repo that the delivered PR closes ("Closes #n").
+  issue: Schema.optional(Schema.Int),
 })
 export type RepoRef = typeof RepoRef.Type
 
