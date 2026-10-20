@@ -8,6 +8,7 @@ import type { SqlClient } from "effect/sql/SqlClient"
 import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.js"
 import { chooseExecutor } from "./choose.js"
 import { makeConsume } from "./consume.js"
+import { type BriefingMemory, makeInjector } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
 import { CODE_ALLOWED_TOOLS, makeDeliver } from "./deliver.js"
 import { makeLifecycle } from "./lifecycle.js"
@@ -74,6 +75,7 @@ export interface RunnerDeps {
   readonly config: LeadConfig
   // Registers every run so that a stop can reach it.
   readonly control: Pick<ControlShape, "track" | "pause">
+  readonly memory?: BriefingMemory | undefined
 }
 
 // Retries run inside the same runTask call, so the job's lock and heartbeat cover them and the task's time budget
@@ -87,7 +89,7 @@ export const makeRunner = (deps: RunnerDeps) => {
   })
   const consume = makeConsume({ taskEvent, raiseError, tank })
   const deliver = makeDeliver({ tank, raiseError })
-
+  const inject = makeInjector({ tank, memory: deps.memory, raiseError })
   // One executor run, from transition to running until the worktree is released. A retry (carry) continues the
   // previous run's step: same worktree and branch, and the executor session when there is one.
   // Resolves with the context when the run reached its end; never fails: problems become the progress outcome.
@@ -149,7 +151,8 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             cwd: ctx.cwd,
           })
-          yield* consume(spec, bot, executor.id, executor.run(task, ctx), stepId, progress, model, watch)
+          const delivered = yield* inject(ctx, { spec, bot, task, executor: executor.id })
+          yield* consume(spec, bot, executor.id, executor.run(delivered, ctx), stepId, progress, model, watch)
           yield* deliver(spec, ctx, progress)
         }).pipe(Effect.scoped, Effect.as(ctx))
       // Keep the worktree for diagnosis unless the run ended in an ok verdict.

@@ -1,8 +1,9 @@
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { ExecutorRegistry, type TierConfig } from "@shoalwork/executors"
+import { Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { Control, makeControl } from "./control.js"
 import { makeIntake } from "./intake.js"
@@ -28,6 +29,8 @@ export const LeadLive = (
       const tank = yield* Tank
       const executors = yield* ExecutorRegistry
       const tasks = yield* TaskStore
+      // Without a Reef the briefing has no memories; the rest of it is still delivered.
+      const memory = Option.getOrUndefined(yield* Effect.serviceOption(Reef))
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
       const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs })
       const { runTask, abandon } = makeRunner({
@@ -40,6 +43,7 @@ export const LeadLive = (
         tiers,
         config,
         control,
+        memory,
       })
       const { startWorker } = makeWorker({ sql, runTask, abandon, config })
       const lead: LeadShape = {
