@@ -4,6 +4,7 @@ import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
+import { costsReport, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
 import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
@@ -21,6 +22,7 @@ const USAGE = [
   "       shoalwork resume [--bot <bot id or name>]",
   "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
+  "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
   "       shoalwork reflex export --out <file>",
   "       shoalwork memory import --dir <dir> --scope global|bot:<name> --kind semantic|procedural --source <label>",
   "       shoalwork memory search --bot <bot id or name> <query> [--k <1..100>] [--kinds <kind,kind>]",
@@ -101,6 +103,19 @@ const status = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
     const { flags } = yield* parseArgs(argv, SETTINGS_FLAGS)
     const settings = yield* resolveSettings(flags, process.env)
     yield* Console.log(JSON.stringify(yield* controlStatus(settings), null, 2))
+  })
+
+// --json is a switch, not a name-value pair, so it is taken out before the parser sees the arguments.
+const costs = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
+  Effect.gen(function* () {
+    const json = argv.includes("--json")
+    const { flags } = yield* parseArgs(
+      argv.filter((arg) => arg !== "--json"),
+      ["by", "since", "compare", ...SETTINGS_FLAGS],
+    )
+    const settings = yield* resolveSettings(flags, process.env)
+    const body = yield* costsReport(settings, flags)
+    yield* Console.log(renderCosts(body, json))
   })
 
 const events = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
@@ -211,6 +226,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return status(rest)
     case "events":
       return events(rest)
+    case "costs":
+      return costs(rest)
     case "reflex":
       return reflex(rest)
     case "memory":

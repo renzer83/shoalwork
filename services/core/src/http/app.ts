@@ -13,6 +13,7 @@ import {
 } from "./principal.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerControlRoutes } from "./routes/control.js"
+import { registerCostRoutes } from "./routes/costs.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
@@ -145,6 +146,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
   registerControlRoutes(app, deps.runEffect)
+  registerCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
