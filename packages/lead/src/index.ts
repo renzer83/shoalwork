@@ -189,6 +189,17 @@ export {
   makeMcpTokens,
 } from "./mcp-tokens.js"
 export { makeOutcomes, type Outcomes, outcomeFor } from "./outcomes.js"
+export { type CheckInput, checkDraft, MAX_STEPS } from "./plan/check.js"
+export {
+  makePlanner,
+  type Planner,
+  type PlannerDeps,
+  type PlanOutcome,
+  type PlanSignals,
+  shouldPlan,
+} from "./plan/planner.js"
+export { buildPlanPrompt } from "./plan/prompt.js"
+export { PlanDraft, planJsonSchema } from "./plan/schema-json.js"
 export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

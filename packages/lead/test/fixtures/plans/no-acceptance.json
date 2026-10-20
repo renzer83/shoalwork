@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "ref": "only",
+      "title": "The only step",
+      "prompt": "Do everything at once.",
+      "dependsOn": [],
+      "acceptance": [],
+      "budget": { "tokens": 10000, "seconds": 10, "usd": 0.1 },
+      "tier": "light",
+      "parallelizable": false,
+      "assignedBot": "worker-bot"
+    }
+  ]
+}

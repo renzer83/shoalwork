@@ -213,7 +213,17 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
       Effect.annotateLogs({ taskId: id }),
     )
 
-  return { taskEvent, raiseError, transition, finish, record, abandon, cancelUnstarted, botIsPaused }
+  return {
+    taskEvent,
+    raiseError,
+    transition,
+    recordOutcomes,
+    finish,
+    record,
+    abandon,
+    cancelUnstarted,
+    botIsPaused,
+  }
 }
 
 export type Lifecycle = ReturnType<typeof makeLifecycle>

@@ -1,0 +1,26 @@
+{
+  "steps": [
+    {
+      "ref": "one",
+      "title": "First half",
+      "prompt": "Do the first half of the work.",
+      "dependsOn": [],
+      "acceptance": ["first half is done"],
+      "budget": { "tokens": 100000, "seconds": 60, "usd": 1 },
+      "tier": "heavy",
+      "parallelizable": true,
+      "assignedBot": "worker-bot"
+    },
+    {
+      "ref": "two",
+      "title": "Second half",
+      "prompt": "Do the second half of the work.",
+      "dependsOn": [],
+      "acceptance": ["second half is done"],
+      "budget": { "tokens": 100000, "seconds": 60, "usd": 1 },
+      "tier": "heavy",
+      "parallelizable": true,
+      "assignedBot": "worker-bot"
+    }
+  ]
+}
