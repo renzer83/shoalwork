@@ -11,6 +11,8 @@
     "typecheck": "turbo run typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "dev": "pnpm --filter @shoalwork/core dev",
+    "cli": "tsx --tsconfig apps/cli/tsconfig.dev.json apps/cli/src/main.ts",
     "test": "turbo run test",
     "test:scripts": "vitest run scripts/test",
     "build": "turbo run build",

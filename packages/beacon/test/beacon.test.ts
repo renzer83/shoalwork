@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto"
+import { rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { it } from "@effect/vitest"
 import { Conflict, type Event, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
-import { Effect, Layer, Queue, Schema, Stream } from "effect"
+import { makeDbLayer, runMigrations } from "@shoalwork/db"
+import { Effect, Layer, Option, Queue, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
 import { withTempDb } from "../../db/test/helpers.js"
-import { Beacon, BeaconLive } from "../src/index.js"
+import { Beacon, BeaconLive, type BeaconShape } from "../src/index.js"
 
 // Real SQLite per test (fresh file, migrations applied).
 const TestLayer = Layer.provideMerge(BeaconLive, withTempDb())
@@ -28,6 +33,42 @@ const usageRecorded = (): NewEvent => ({
   actor: `bot:${BOT}`,
   correlationId: "corr_beacon_test",
 })
+
+// subscribe() attaches to the PubSub when its stream starts running, so one publish can race the attach.
+// Publish until the forked subscriber delivers. Each round yields a bounded number of times; no timing involved.
+const awaitDelivery = (received: Queue.Queue<Event>, publish: Effect.Effect<unknown>): Effect.Effect<Event> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      yield* publish
+      for (let turn = 0; turn < 20; turn++) {
+        const got = yield* Queue.poll(received)
+        if (Option.isSome(got)) {
+          return got.value
+        }
+        yield* Effect.yieldNow
+      }
+    }
+    return yield* Effect.die("subscriber did not deliver within the probe budget")
+  })
+
+const drained = (received: Queue.Queue<Event>): Effect.Effect<ReadonlyArray<Event>> =>
+  Effect.gen(function* () {
+    const out: Array<Event> = []
+    for (let turn = 0; turn < 20; turn++) {
+      yield* Effect.yieldNow
+      const got = yield* Queue.poll(received)
+      if (Option.isSome(got)) {
+        out.push(got.value)
+      }
+    }
+    return out
+  })
+
+const removeDbFiles = (path: string): void => {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    rmSync(`${path}${suffix}`, { force: true })
+  }
+}
 
 describe("Beacon (SQLite)", () => {
   it.effect("append three events to one stream assigns versions 1, 2, 3", () =>
@@ -56,6 +97,27 @@ describe("Beacon (SQLite)", () => {
       const error = yield* Effect.flip(beacon.append(stateChanged("done"), { expectedVersion: 1 }))
       expect(error).toBeInstanceOf(Conflict)
       expect(yield* beacon.lastVersion(streamIds.task(TASK_ID))).toBe(2)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("expectedVersion 5 on an empty stream fails with Conflict", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const error = yield* Effect.flip(beacon.append(stateChanged("planning"), { expectedVersion: 5 }))
+      expect(error).toBeInstanceOf(Conflict)
+      expect(yield* beacon.lastVersion(streamIds.task(TASK_ID))).toBe(0)
+      expect(yield* Stream.runCollect(beacon.readAll())).toHaveLength(0)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("expectedVersion -1 and 2.5 are rejected with SchemaViolation", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const negative = yield* Effect.flip(beacon.append(stateChanged("planning"), { expectedVersion: -1 }))
+      const fractional = yield* Effect.flip(beacon.append(stateChanged("planning"), { expectedVersion: 2.5 }))
+      expect(negative).toBeInstanceOf(SchemaViolation)
+      expect(fractional).toBeInstanceOf(SchemaViolation)
+      expect(yield* beacon.lastVersion(streamIds.task(TASK_ID))).toBe(0)
     }).pipe(Effect.provide(TestLayer)),
   )
 
@@ -104,6 +166,38 @@ describe("Beacon (SQLite)", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
+  it.effect("20 concurrent appends to one stream get versions 1..20 with no gaps and no Conflict", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const written = yield* Effect.all(
+        Array.from({ length: 20 }, () => beacon.append(stateChanged("planning"))),
+        { concurrency: "unbounded" },
+      )
+      expect(written.map((e) => e.version).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 20 }, (_, i) => i + 1),
+      )
+      expect(yield* beacon.lastVersion(streamIds.task(TASK_ID))).toBe(20)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("two connections to one file append to one stream without gaps", () => {
+    const path = join(tmpdir(), `shoalwork-beacon-${randomUUID()}.db`)
+    const writer = Layer.provide(BeaconLive, makeDbLayer(path))
+    const appendTen = Effect.gen(function* () {
+      const beacon: BeaconShape = yield* Beacon
+      return yield* Effect.all(
+        Array.from({ length: 10 }, () => beacon.append(stateChanged("planning"))),
+        { concurrency: "unbounded" },
+      )
+    }).pipe(Effect.provide(writer))
+    return Effect.gen(function* () {
+      yield* runMigrations.pipe(Effect.provide(makeDbLayer(path)))
+      const [fromA, fromB] = yield* Effect.all([appendTen, appendTen], { concurrency: "unbounded" })
+      const versions = [...fromA, ...fromB].map((e) => e.version).sort((a, b) => a - b)
+      expect(versions).toEqual(Array.from({ length: 20 }, (_, i) => i + 1))
+    }).pipe(Effect.scoped, Effect.ensuring(Effect.sync(() => removeDbFiles(path))))
+  })
+
   it.effect("readStream after version 1 returns only versions 2 and 3", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
@@ -122,17 +216,37 @@ describe("Beacon (SQLite)", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
-  it.effect("subscribe receives the appended event", () =>
+  it.effect("subscribe receives events appended after it attaches", () =>
     Effect.gen(function* () {
       const beacon = yield* Beacon
       const received = yield* Queue.unbounded<Event>()
       yield* Stream.runForEach(beacon.subscribe(), (event) => Queue.offer(received, event)).pipe(
         Effect.forkScoped,
       )
-      yield* Effect.yieldNow
-      const appended = yield* beacon.append(stateChanged("planning"))
-      const delivered = yield* Queue.take(received)
-      expect(delivered.id).toBe(appended.id)
+      const delivered = yield* awaitDelivery(
+        received,
+        beacon.append(stateChanged("planning")).pipe(Effect.orDie),
+      )
+      expect(delivered.type).toBe("task.state_changed")
+      expect(delivered.streamId).toBe(streamIds.task(TASK_ID))
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  )
+
+  it.effect("subscribe(types) delivers only the requested types", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const received = yield* Queue.unbounded<Event>()
+      yield* Stream.runForEach(beacon.subscribe(["usage.recorded"]), (event) =>
+        Queue.offer(received, event),
+      ).pipe(Effect.forkScoped)
+      const publish = Effect.all([
+        beacon.append(stateChanged("planning")),
+        beacon.append(usageRecorded()),
+      ]).pipe(Effect.orDie)
+      const delivered = yield* awaitDelivery(received, publish)
+      expect(delivered.type).toBe("usage.recorded")
+      const rest = yield* drained(received)
+      expect(rest.every((event) => event.type === "usage.recorded")).toBe(true)
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   )
 })

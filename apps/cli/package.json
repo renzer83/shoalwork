@@ -1,0 +1,22 @@
+{
+  "name": "@shoalwork/cli",
+  "type": "module",
+  "bin": {
+    "shoalwork": "./dist/main.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@shoalwork/contracts": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

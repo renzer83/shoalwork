@@ -1,0 +1,27 @@
+{
+  "name": "@shoalwork/core",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc",
+    "dev": "tsx watch --tsconfig tsconfig.dev.json src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.js"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@hono/node-server": "catalog:",
+    "@shoalwork/beacon": "workspace:*",
+    "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "effect": "catalog:",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
