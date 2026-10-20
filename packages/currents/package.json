@@ -1,0 +1,31 @@
+{
+  "name": "@shoalwork/currents",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "catalog:",
+    "@grammyjs/runner": "catalog:",
+    "@shoalwork/beacon": "workspace:*",
+    "@shoalwork/bots": "workspace:*",
+    "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "effect": "catalog:",
+    "grammy": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
