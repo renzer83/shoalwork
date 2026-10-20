@@ -19,6 +19,7 @@
     "@shoalwork/contracts": "workspace:*",
     "@shoalwork/db": "workspace:*",
     "@shoalwork/executors": "workspace:*",
+    "@shoalwork/reef": "workspace:*",
     "@shoalwork/tank": "workspace:*",
     "effect": "catalog:"
   },

@@ -1,3 +1,4 @@
+export * from "./consolidate.js"
 export * from "./embedder.js"
 export * from "./indexer/index.js"
 export * from "./reef.js"

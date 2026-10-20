@@ -258,6 +258,9 @@ importers:
       '@shoalwork/executors':
         specifier: workspace:*
         version: link:../executors
+      '@shoalwork/reef':
+        specifier: workspace:*
+        version: link:../reef
       '@shoalwork/tank':
         specifier: workspace:*
         version: link:../tank
