@@ -78,3 +78,35 @@ export const buildChatArgs = (task: ExecutorTask): ReadonlyArray<string> => [
   "--",
   task.prompt,
 ]
+
+// Warm chat (T-163): one long-lived process per scope. Same flags as the one-shot chat, but messages arrive on stdin
+// as stream-json lines, so there is no `--`/prompt in argv and no `--max-turns` (no tools, so a turn is one reply).
+// --resume and --append-system-prompt only apply when the process is spawned.
+export const buildWarmChatArgs = (task: ExecutorTask): ReadonlyArray<string> => [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--model",
+  CHAT_MODEL,
+  "--effort",
+  "low",
+  "--tools",
+  "",
+  "--permission-mode",
+  "plan",
+  "--strict-mcp-config",
+  "--mcp-config",
+  NO_MCP_SERVERS,
+  ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
+  ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
+]
+
+// One user turn for the warm process stdin (shape verified on CLI 2.1.304, 06-research/claude-code.md §10).
+// U+2028/U+2029 are escaped because JSON.stringify leaves them raw and a line splitter may treat them as breaks.
+export const encodeWarmUserMessage = (text: string): string =>
+  `${JSON.stringify({ type: "user", message: { role: "user", content: text } })
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029")}\n`

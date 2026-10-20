@@ -15,6 +15,7 @@ import { buildChatArgs, CHAT_MODEL } from "./args.js"
 import { dropApiKey } from "./env.js"
 import { ClaudeStreamLine, makeMapperState, toExecutorEvents } from "./events.js"
 import { ChatSessions } from "./sessions.js"
+import type { WarmChatPool } from "./warm.js"
 
 export const CHAT_ID = Schema.decodeUnknownSync(ExecutorId)("claude-code@chat")
 
@@ -168,6 +169,34 @@ export const makeClaudeCodeChat = (opts: ClaudeCodeChatOptions = {}): Executor =
   }
 }
 
+// The one-shot fallback of a warm turn gets what is left of the turn's single budget (the warm attempt used part of it).
+const fallbackWithinBudget = (
+  executor: Executor,
+  turn: ExecutorTask,
+  ctx: TankContext,
+  budgetMs: number,
+  startedTurn: number,
+): Effect.Effect<
+  ReadonlyArray<ExecutorEvent>,
+  ExecutorSpawnError | ExecutorProtocolError,
+  Tank | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const timedOut = failure("unknown", `chat turn exceeded ${budgetMs} ms`)
+    const remaining = budgetMs - (Date.now() - startedTurn)
+    if (remaining <= 0) return [timedOut]
+    const events = yield* Stream.runCollect(executor.run(turn, ctx)).pipe(
+      Effect.timeoutOption(Duration.millis(remaining)),
+    )
+    return Option.isSome(events) ? events.value : [timedOut]
+  })
+
+export type RunChatTurnOptions = {
+  // When set, chat/decision turns go through the pool's long-lived process of the scope (T-163). If no warm process
+  // can answer, the turn runs as the one-shot chat above, resuming the stored session.
+  readonly warm?: WarmChatPool
+}
+
 // One turn of a conversation: resumes the scope's session when there is one and stores the session id of the
 // `done` event, so the next turn of the same scope resumes it. The whole turn (get → run → set) holds the scope's
 // lock, so two messages of one topic never run at the same time. A failed save is logged; the events still arrive.
@@ -176,6 +205,7 @@ export const runChatTurn = (
   scope: string,
   task: ExecutorTask,
   ctx: TankContext,
+  opts: RunChatTurnOptions = {},
 ): Stream.Stream<
   ExecutorEvent,
   ExecutorSpawnError | ExecutorProtocolError | SqlError,
@@ -191,7 +221,19 @@ export const runChatTurn = (
           const turn: ExecutorTask = Option.isSome(previous)
             ? { ...task, resumeSessionId: previous.value }
             : task
-          const collected = yield* Stream.runCollect(executor.run(turn, ctx))
+          const startedTurn = Date.now()
+          const warm =
+            opts.warm !== undefined && CHAT_TIERS.has(turn.tier)
+              ? yield* opts.warm.turn(scope, turn, ctx)
+              : undefined
+          const collected: ReadonlyArray<ExecutorEvent> =
+            warm?.kind === "events"
+              ? warm.events
+              : warm?.kind === "timeout"
+                ? [failure("unknown", `chat turn exceeded ${warm.timeoutMs} ms`)]
+                : opts.warm !== undefined && warm !== undefined
+                  ? yield* fallbackWithinBudget(executor, turn, ctx, opts.warm.timeoutMs, startedTurn)
+                  : yield* Stream.runCollect(executor.run(turn, ctx))
           for (const event of collected) {
             if (event.kind === "done" && event.sessionId !== undefined) {
               yield* sessions.set(scope, event.sessionId).pipe(
