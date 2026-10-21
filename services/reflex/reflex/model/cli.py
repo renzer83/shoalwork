@@ -1,15 +1,18 @@
 """`reflex-model` commands, run as `uv run python -m reflex.model.cli`.
 
-`export` writes the ONNX model and tokenizer; `bench` prints per-text latency of Embedder.encode.
+`export` writes the ONNX model and tokenizer; `bench` prints per-text latency of Embedder.encode; `train` fits,
+calibrates and packages the heads (`reflex-v<N>`); `eval` re-scores an artifact on a dataset's test split.
 """
 
 import argparse
 import math
 import os
+import re
 import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from reflex.model.export import DEFAULT_MODEL_ID, ExportError, export_onnx
 
@@ -55,6 +58,57 @@ def bench(model_dir: Path, n: int) -> list[str]:
     return lines
 
 
+EVAL_HEADER = (
+    f"{'question':<16} {'kind':<7} {'macro_f1':>9} {'qwk':>7} {'ece':>7} {'coverage':>9} {'n_test':>7}  status"
+)
+
+
+def _num(value: object) -> str:
+    return f"{value:.3f}" if isinstance(value, float) else "-"
+
+
+def format_eval(report: dict[str, dict[str, Any]]) -> str:
+    lines = [EVAL_HEADER]
+    for question_id, row in report.items():
+        metrics = row["metrics"]
+        status = "disabled" if row["disabled"] else f"tau={row['tau']:.3f}"
+        lines.append(
+            f"{question_id:<16} {row['kind']:<7} {_num(metrics['macro_f1']):>9} {_num(metrics['qwk']):>7} "
+            f"{_num(metrics['ece']):>7} {_num(metrics['coverage']):>9} {metrics['n_test']:>7}  {status}"
+        )
+    return "\n".join(lines)
+
+
+def _version_of(out: Path, explicit: int | None) -> int:
+    if explicit is not None:
+        return explicit
+    match = re.fullmatch(r"reflex-v([1-9][0-9]*)", out.name)
+    if match is None:
+        raise ValueError("pass --version N or name the output directory reflex-v<N>")
+    return int(match.group(1))
+
+
+def _train_and_eval(args: argparse.Namespace) -> int:
+    from reflex.model.artifact import Artifact, ArtifactError
+    from reflex.model.embedder import Embedder
+    from reflex.model.train import TrainConfig, TrainError, eval_artifact, train_all
+
+    try:
+        embedder = Embedder(str(args.model_dir))
+        if args.command == "train":
+            config = TrainConfig(target_accuracy=args.target_accuracy)
+            manifest = train_all(args.dataset, args.out, embedder, _version_of(args.out, args.version), config)
+            print(f"wrote {manifest.version} to {args.out}")
+            artifact = Artifact.load(args.out)
+        else:
+            artifact = Artifact.load(args.artifact)
+        print(format_eval(eval_artifact(artifact, args.dataset, embedder)))
+    except (ArtifactError, TrainError, ValueError, OSError, RuntimeError) as error:
+        print(f"reflex-model: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="reflex-model", description="Export and benchmark the Reflex encoder.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -73,7 +127,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     bench_cmd.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL_DIR))
     bench_cmd.add_argument("--n", type=int, default=200)
 
+    train = commands.add_parser("train", help="fit, calibrate and package one head per question")
+    train.add_argument("dataset", type=Path, help="directory written by `reflex-data build`, e.g. data/v1")
+    train.add_argument("--out", required=True, type=Path, help="new artifact directory, e.g. models/reflex-v1")
+    train.add_argument("--version", type=int, default=None, help="N of reflex-v<N>; default: from the --out name")
+    train.add_argument("--target-accuracy", type=float, default=0.90, help="accuracy tau must reach (default 0.90)")
+    train.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL_DIR))
+
+    evaluate_cmd = commands.add_parser("eval", help="print per-question metrics of an artifact on a dataset")
+    evaluate_cmd.add_argument("artifact", type=Path, help="artifact directory, e.g. models/reflex-v1")
+    evaluate_cmd.add_argument("dataset", type=Path, help="dataset directory, e.g. data/v1")
+    evaluate_cmd.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL_DIR))
+
     args = parser.parse_args(argv)
+    if args.command in ("train", "eval"):
+        if args.command == "train" and not 0 < args.target_accuracy <= 1:
+            parser.error("--target-accuracy must be in (0, 1]")
+        return _train_and_eval(args)
     try:
         if args.command == "export":
             export_onnx(

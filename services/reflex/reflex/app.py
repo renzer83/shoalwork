@@ -19,8 +19,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from reflex.answers import resolve
 from reflex.config import config_path, load_rules_config
-from reflex.contract import Answer, SystemOneRequest, SystemOneResponse
+from reflex.contract import Answer, Question, SystemOneRequest, SystemOneResponse
 from reflex.model.metrics import EmbedMetrics
+from reflex.model.predict import Predictor, load_predictor
 from reflex.rules import RulesConfig, compile_rules, score_all
 
 MODEL_VERSION = "rules-py-1"
@@ -34,8 +35,17 @@ UVICORN_DEFAULT_HOST = "127.0.0.1"
 logger = logging.getLogger("reflex")
 
 
-def create_app(config: RulesConfig, token: str | None, embed_metrics: EmbedMetrics | None = None) -> FastAPI:
+def create_app(
+    config: RulesConfig,
+    token: str | None,
+    embed_metrics: EmbedMetrics | None = None,
+    predictor: Predictor | None = None,
+) -> FastAPI:
     rules = compile_rules(config)
+    # With a model attached, its artifact tag is the version; without one the service is the rules, as before.
+    model_version = predictor.version if predictor is not None else MODEL_VERSION
+    if embed_metrics is None and predictor is not None:
+        embed_metrics = predictor.embed_metrics
     expected = token.encode("utf-8") if token is not None else None
     app = FastAPI(title="reflex", version=MODEL_VERSION)
 
@@ -50,28 +60,31 @@ def create_app(config: RulesConfig, token: str | None, embed_metrics: EmbedMetri
     # The embedding metrics appear only when an embedder is attached; without one the body keeps its v0 shape.
     @app.get("/health")
     def health() -> dict[str, object]:
-        body: dict[str, object] = {"ok": True, "modelVersion": MODEL_VERSION}
+        body: dict[str, object] = {"ok": True, "modelVersion": model_version}
         if embed_metrics is not None:
             body.update(embed_metrics.snapshot())
         return body
 
     @app.get("/v1/version")
     def version() -> dict[str, str]:
-        return {"modelVersion": MODEL_VERSION, "contract": CONTRACT}
+        return {"modelVersion": model_version, "contract": CONTRACT}
 
     @app.post("/v1/systemone", response_model=SystemOneResponse, dependencies=[Depends(require_token)])
     def systemone(request: SystemOneRequest) -> SystemOneResponse:
         started = time.perf_counter()
         scores = score_all(request.facts, rules)
-        answers = []
-        for question in request.questions:
+
+        def by_rule(question: Question) -> Answer:
             resolved = resolve(question, scores, request.facts)
-            answers.append(
-                Answer(id=question.id, value=resolved.value, confidence=resolved.confidence, source="rule")
-            )
+            return Answer(id=question.id, value=resolved.value, confidence=resolved.confidence, source="rule")
+
+        if predictor is not None:
+            answers = predictor.answer(request.facts, request.questions, by_rule)
+        else:
+            answers = [by_rule(question) for question in request.questions]
         return SystemOneResponse(
             answers=answers,
-            modelVersion=MODEL_VERSION,
+            modelVersion=model_version,
             latencyMs=(time.perf_counter() - started) * 1000,
         )
 
@@ -159,7 +172,7 @@ def build_default_app(environ: Mapping[str, str], argv: Sequence[str]) -> FastAP
     check_token_policy(
         effective_host(argv, environ), token, allow_no_token=environ.get(ALLOW_NO_TOKEN_ENV) == "1"
     )
-    return create_app(load_rules_config(config_path(environ)), token)
+    return create_app(load_rules_config(config_path(environ)), token, predictor=load_predictor(environ))
 
 
 @cache
