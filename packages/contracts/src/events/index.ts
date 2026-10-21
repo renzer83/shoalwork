@@ -33,6 +33,7 @@ import {
   WatchdogRecoveredPayload,
 } from "./ops.js"
 import { PodClosedPayload, PodOpenedPayload } from "./pod.js"
+import { SecretAccessedPayload } from "./secret.js"
 import { TaskPlannedPayload, TaskReceivedPayload, TaskStateChangedPayload } from "./task.js"
 import { TideFiredPayload, TideSkippedPayload } from "./tide.js"
 import { ReviewDecidedPayload, StepVerifiedPayload } from "./verify.js"
@@ -78,6 +79,7 @@ export const EventType = Schema.Literals([
   "step.verified",
   "review.decided",
   "project_task.state_changed",
+  "secret.accessed",
 ])
 export type EventType = typeof EventType.Type
 
@@ -122,6 +124,7 @@ export const EventPayloads = {
   "step.verified": StepVerifiedPayload,
   "review.decided": ReviewDecidedPayload,
   "project_task.state_changed": ProjectTaskStateChangedPayload,
+  "secret.accessed": SecretAccessedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

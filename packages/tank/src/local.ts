@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { dirname, join, resolve } from "node:path"
 import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
-import { Effect, Layer, Semaphore } from "effect"
+import { Effect, Layer, Redacted, Semaphore } from "effect"
 import { publishArtifacts } from "./artifacts.js"
 import { checkSegment, escapes, isInside, resolveUnder } from "./confine.js"
 import { type BaseEnv, buildBotEnv, STEP_ENV_PATTERN } from "./env.js"
@@ -17,7 +17,16 @@ export type TankLocalConfig = {
   readonly baseEnv: BaseEnv
   // Explicit values the core passes to every Bot process, applied last (ADR-011: ANTHROPIC_API_KEY is always dropped).
   readonly extraEnv?: Readonly<Record<string, string>>
+  // Secrets resolved from the Vault (T-064), still Redacted. Unwrapped here and applied as extraEnv: they
+  // reach the Bot process env, never the prompt or argv.
+  readonly secretEnv?: Readonly<Record<string, Redacted.Redacted<string>>>
 }
+
+// Last-moment unwrap of Redacted secrets into process env. The plain values never leave this boundary.
+const unwrapSecretEnv = (
+  secrets: Readonly<Record<string, Redacted.Redacted<string>>>,
+): Record<string, string> =>
+  Object.fromEntries(Object.entries(secrets).map(([key, value]) => [key, Redacted.value(value)]))
 
 // Where a Tank keeps a Bot's directories and how it runs commands for it. Local and server mode differ only here.
 export type TankLayout = {
@@ -268,6 +277,9 @@ const noPreflight = (): Effect.Effect<void, TankError> => Effect.void
 
 export const makeTankLocal = (config: TankLocalConfig): TankShape => {
   const root = resolve(config.root)
+  // Vault secrets join the explicit extraEnv: buildBotEnv applies both after the allowlist and drops
+  // ANTHROPIC_API_KEY (ADR-011) the same way.
+  const extraEnv = { ...config.extraEnv, ...unwrapSecretEnv(config.secretEnv ?? {}) }
   return makeBotTank(
     {
       mode: "local",
@@ -279,7 +291,7 @@ export const makeTankLocal = (config: TankLocalConfig): TankShape => {
       artifactsRoot: root,
     },
     config.baseEnv,
-    config.extraEnv,
+    extraEnv,
   )
 }
 
