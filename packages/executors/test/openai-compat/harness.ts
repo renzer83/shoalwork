@@ -96,8 +96,14 @@ export const fakeTank = (
         if (cmd[0] === "realpath")
           return { ...OK_EXEC, stdout: `${options.links?.[cmd[2] ?? ""] ?? cmd[2]}\n` }
         if (cmd[0] === "test") {
-          const known = options.files?.[cmd[2] ?? ""] !== undefined
-          return { ...OK_EXEC, exitCode: known ? 0 : 1, stdout: "" }
+          const path = cmd[2] ?? ""
+          const known = options.files?.[path] !== undefined
+          // `-e` also holds for the workspace and for the directories above a known file; `-f` is files only.
+          const directory =
+            cmd[1] === "-e" &&
+            path !== "" &&
+            (path === CWD || Object.keys(options.files ?? {}).some((file) => file.startsWith(`${path}/`)))
+          return { ...OK_EXEC, exitCode: known || directory ? 0 : 1, stdout: "" }
         }
         if (cmd[0] === "wc") {
           const content = options.files?.[cmd[2] ?? ""]

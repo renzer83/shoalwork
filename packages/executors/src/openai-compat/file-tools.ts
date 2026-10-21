@@ -36,9 +36,17 @@ const lineOf = (stdout: string): string => stdout.replace(/\r?\n$/, "")
 const toWorkspace = (deps: ToolDeps, real: string, root: string): string | undefined =>
   isInside(root, real) ? resolve(deps.ctx.cwd, relative(root, real)) : undefined
 
+// realpath is not portable about a missing last component: GNU answers (its default mode needs only the parent), BSD
+// and macOS fail. Confirming that the answer exists makes "undefined when the path does not exist" hold on both.
 const realOf = (deps: ToolDeps, path: string): Effect.Effect<string | undefined> =>
   probe(deps, ["realpath", "--", path]).pipe(
-    Effect.map((r) => (r === undefined || r.exitCode !== 0 ? undefined : lineOf(r.stdout))),
+    Effect.flatMap((r) => {
+      if (r === undefined || r.exitCode !== 0) return Effect.succeed(undefined)
+      const real = lineOf(r.stdout)
+      return probe(deps, ["test", "-e", real]).pipe(
+        Effect.map((exists) => (exists !== undefined && exists.exitCode === 0 ? real : undefined)),
+      )
+    }),
   )
 
 // The path as the Bot's filesystem resolves it (symlinks followed), mapped back under the workspace path the Policy
