@@ -1,5 +1,6 @@
 import { type EventType, type NewBot, SchemaViolation, TaskSpec } from "@shoalwork/contracts"
 import { Effect, Schema, Struct } from "effect"
+import { beaconApi } from "./beacon-client.js"
 import { HttpError } from "./errors.js"
 import { metricsApi, projectsApi } from "./projects-client.js"
 import {
@@ -222,6 +223,8 @@ export class ApiClient {
     pause: (bot: string) => this.post("/control/pause", { bot }, ControlOk),
     resume: (bot: string) => this.post("/control/resume", { bot }, ControlOk),
   }
+
+  readonly beacon = beaconApi(this)
 
   readonly tasks = {
     create: (spec: NewTaskBody) =>

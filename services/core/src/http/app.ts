@@ -12,6 +12,7 @@ import {
   setPrincipal,
 } from "./principal.js"
 import { registerApprovalRoutes } from "./routes/approvals.js"
+import { registerBeaconRoutes } from "./routes/beacon.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerBotWriteRoutes } from "./routes/bots-write.js"
 import { registerControlRoutes } from "./routes/control.js"
@@ -195,6 +196,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerLiveRoutes(app, deps.runEffect)
   registerMessageRoutes(app, deps.runEffect)
   registerPodRoutes(app, deps.runEffect)
+  registerBeaconRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
   if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)
   if (deps.runMemory !== undefined) {

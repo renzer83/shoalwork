@@ -9,6 +9,7 @@ const decodeUsageRecorded = Schema.decodeUnknownOption(EventPayloads["usage.reco
 const decodeExecutorStarted = Schema.decodeUnknownOption(EventPayloads["executor.started"])
 const decodeExecutorFinished = Schema.decodeUnknownOption(EventPayloads["executor.finished"])
 const decodeContextAssembled = Schema.decodeUnknownOption(EventPayloads["context.assembled"])
+const decodeTaskReceived = Schema.decodeUnknownOption(EventPayloads["task.received"])
 
 // The only types the report reads. The type filter uses events_type_idx; the time window is applied here.
 export const COST_EVENT_TYPES: ReadonlyArray<EventType> = [
@@ -18,7 +19,10 @@ export const COST_EVENT_TYPES: ReadonlyArray<EventType> = [
   "context.assembled",
 ]
 
-export type CostBy = "task" | "bot" | "executor"
+// The Farol reads the same types plus task.received, which gives each task its tier (by=tier).
+export const COST_BY_TIER_TYPES: ReadonlyArray<EventType> = [...COST_EVENT_TYPES, "task.received"]
+
+export type CostBy = "task" | "bot" | "executor" | "tier"
 
 // Half-open window on occurredAt, in epoch ms: [since, until).
 export interface CostWindow {
@@ -57,6 +61,7 @@ export interface CostReport {
 }
 
 const UNKNOWN_EXECUTOR = "unknown"
+const UNKNOWN_TIER = "unknown"
 
 interface Execution {
   readonly taskId: string
@@ -87,6 +92,7 @@ interface Attribution {
   readonly contexts: ReadonlyArray<ContextSize>
   readonly taskBot: ReadonlyMap<string, string>
   readonly taskExecutor: ReadonlyMap<string, string>
+  readonly taskTier: ReadonlyMap<string, string>
 }
 
 const stepKey = (taskId: string, stepId: string | undefined): string => `${taskId}|${stepId ?? ""}`
@@ -100,9 +106,13 @@ const attribute = (events: ReadonlyArray<Event>): Attribution => {
   const executions: Array<Execution> = []
   const spends: Array<Spend> = []
   const contexts: Array<ContextSize> = []
+  const taskTier = new Map<string, string>()
   for (const event of events) {
     const at = DateTime.toEpochMillis(event.occurredAt)
-    if (event.type === "executor.started") {
+    if (event.type === "task.received") {
+      const payload = Option.getOrUndefined(decodeTaskReceived(event.payload))
+      if (payload !== undefined) taskTier.set(payload.task.id, payload.task.tier)
+    } else if (event.type === "executor.started") {
       const payload = Option.getOrUndefined(decodeExecutorStarted(event.payload))
       if (payload === undefined) continue
       startedByStep.set(stepKey(payload.taskId, payload.stepId), payload.executor)
@@ -141,12 +151,12 @@ const attribute = (events: ReadonlyArray<Event>): Attribution => {
       contexts.push({ taskId: payload.taskId, used: payload.used, at })
     }
   }
-  return { executions, spends, contexts, taskBot, taskExecutor: executorByTask }
+  return { executions, spends, contexts, taskBot, taskExecutor: executorByTask, taskTier }
 }
 
 const inWindow = (at: number, window: CostWindow): boolean => at >= window.since && at < window.until
 
-const groupKey = (by: CostBy, taskId: string, botId: string, executor: string): string => {
+const groupKey = (by: CostBy, taskId: string, botId: string, executor: string, tier: string): string => {
   switch (by) {
     case "task":
       return taskId
@@ -154,6 +164,8 @@ const groupKey = (by: CostBy, taskId: string, botId: string, executor: string): 
       return botId
     case "executor":
       return executor
+    case "tier":
+      return tier
   }
 }
 
@@ -199,15 +211,18 @@ const rowsFor = (a: Attribution, window: CostWindow, by: CostBy): ReadonlyArray<
     slots.set(key, created)
     return created
   }
+  const tierOf = (taskId: string): string => a.taskTier.get(taskId) ?? UNKNOWN_TIER
   for (const execution of a.executions) {
     if (!inWindow(execution.at, window)) continue
-    const s = slot(groupKey(by, execution.taskId, execution.botId, execution.executor))
+    const s = slot(
+      groupKey(by, execution.taskId, execution.botId, execution.executor, tierOf(execution.taskId)),
+    )
     s.n += 1
     if (execution.ok) s.ok += 1
   }
   for (const spend of a.spends) {
     if (!inWindow(spend.at, window)) continue
-    const s = slot(groupKey(by, spend.taskId, spend.botId, spend.executor))
+    const s = slot(groupKey(by, spend.taskId, spend.botId, spend.executor, tierOf(spend.taskId)))
     s.tokensIn += spend.usage.tokensIn
     s.tokensOut += spend.usage.tokensOut
     s.usd += spend.usage.usd
@@ -219,7 +234,9 @@ const rowsFor = (a: Attribution, window: CostWindow, by: CostBy): ReadonlyArray<
         ? context.taskId
         : by === "bot"
           ? a.taskBot.get(context.taskId)
-          : a.taskExecutor.get(context.taskId)
+          : by === "executor"
+            ? a.taskExecutor.get(context.taskId)
+            : tierOf(context.taskId)
     if (key === undefined) continue
     const s = slot(key)
     s.contextSum += context.used
