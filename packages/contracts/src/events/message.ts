@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { AgentMsg } from "../agent-msg.js"
 import { BotId, EventId, PodId } from "../ids.js"
 
-export const Channel = Schema.Literals(["telegram", "api", "cli"])
+export const Channel = Schema.Literals(["telegram", "api", "cli", "app"])
 
 export const MessageInboundPayload = Schema.Struct({
   channel: Channel,

@@ -22,6 +22,7 @@ import { registerExecutorRoutes } from "./routes/executors.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { MCP_OAUTH_CALLBACK_PATH, type RunMcpServers, registerMcpServerRoutes } from "./routes/mcp-servers.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
+import { registerMessageRoutes } from "./routes/messages.js"
 import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
 import { registerProjectRoutes } from "./routes/projects.js"
 import { registerReefRoutes } from "./routes/reef.js"
@@ -52,11 +53,11 @@ export interface AppDeps {
   // Without it neither route exists and an execution token reaches nothing but the read routes.
   readonly runPolicy?: RunPolicy | undefined
   // The MCP registry routes (T-083): /mcp-servers, /bots/:id/mcp and the OAuth callback. Without it none is mounted.
-  // The directory of bots/*.yaml. Mounts the write routes (POST /bots, PATCH /bots/:id, clone) when given.
-  readonly botsDir?: string | undefined
   readonly runMcpServers?: RunMcpServers | undefined
   // GITHUB_WEBHOOK_SECRET (config.ts). Unset: the GitHub route answers 503 and processes nothing.
   readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
+  // The directory of bots/*.yaml. Mounts the write routes (POST /bots, PATCH /bots/:id, clone) when given.
+  readonly botsDir?: string | undefined
 }
 
 export interface HealthBody {
@@ -178,6 +179,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   })
 
   registerBotRoutes(app, deps.runEffect)
+  if (deps.botsDir !== undefined) registerBotWriteRoutes(app, deps.runEffect, deps.botsDir)
   registerTaskRoutes(app, deps.runEffect)
   registerProjectRoutes(app, deps.runEffect)
   registerApprovalRoutes(app, deps.runEffect)
@@ -190,8 +192,8 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerEventRoutes(app, deps.runEffect)
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
+  registerMessageRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
-  if (deps.botsDir !== undefined) registerBotWriteRoutes(app, deps.runEffect, deps.botsDir)
   if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)
   if (deps.runMemory !== undefined) {
     registerMemoryRoutes(app, deps.runMemory)
