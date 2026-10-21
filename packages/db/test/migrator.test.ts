@@ -47,6 +47,7 @@ describe("runMigrations", () => {
         "0027_notion_sync.sql",
         "0028_mcp_servers.sql",
         "0029_tokenizer.sql",
+        "0030_summaries.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

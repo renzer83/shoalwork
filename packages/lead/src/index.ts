@@ -179,6 +179,8 @@ export {
   parseMemoryCallback,
   rememberCommand,
 } from "./commands/memory.js"
+export { extractiveSummarizer, type Summarizer } from "./context/compact.js"
+export { type SummaryCache, sqlSummaryCache } from "./context/compact-cache.js"
 export { type ContextConfig, loadContextConfig } from "./context/config.js"
 export { Tokenizer, TokenizerLive, type TokenizerShape, TokenizerTest } from "./context/tokenizer.js"
 export {

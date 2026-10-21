@@ -31,6 +31,15 @@ levels:
     memory: 8
     code: 6
 
+# Compaction (T-097): when the blocks do not fit, the code, memory, working and rules blocks are shortened before any
+# item is dropped. Level 1 drops comments, blank lines and imports of code; levels 2 and 3 summarize the text to at most
+# 40% and 15% of it. levels: the deepest level allowed. minItemTokens: smaller items are not summarized.
+# cache_ttl_hours: how long a summary is reused before it is made again.
+compaction:
+  levels: 3
+  minItemTokens: 60
+  cache_ttl_hours: 168
+
 # Ranking of code candidates (6 signals). The weights are in [0, 1] and add up to 1; the weekly rank-tune stores its own
 # in the database and those win over these.
 rank:

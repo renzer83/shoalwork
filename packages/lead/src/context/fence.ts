@@ -1,6 +1,7 @@
 // A fence longer than any run of backticks inside the content, so that the content cannot close it.
 export const fenceFor = (content: string): string => {
-  const longest = Math.max(0, ...(content.match(/`+/g) ?? []).map((run) => run.length))
+  // A reduce, not a spread: a spread of every run overflows the call stack on a text with many runs (R14).
+  const longest = (content.match(/`+/g) ?? []).reduce((most, run) => Math.max(most, run.length), 0)
   return "`".repeat(Math.max(3, longest + 1))
 }
 

@@ -31,7 +31,9 @@ import {
   taskBlock,
   workingBlock,
 } from "./blocks.js"
-import type { ContextConfig } from "./config.js"
+import { type CompactionEntry, compactToBudget, type Summarizer } from "./compact.js"
+import type { SummaryCache } from "./compact-cache.js"
+import { type ContextConfig, DEFAULT_COMPACTION } from "./config.js"
 import type { ContextLevel, ContextPlan } from "./planner.js"
 import { isAbsent, readRuleItems } from "./rules.js"
 import { type ContextTokenSource, type TokenizerShape, tokenSourceOf } from "./tokenizer.js"
@@ -146,6 +148,8 @@ export interface BriefingDeps {
   // The Tokenizer counts the blocks with the executor's calibrated factors (needs `executor` in the input); without it
   // the default approximation counts.
   readonly tokenizer?: TokenizerShape | undefined
+  readonly summarizer?: Summarizer | undefined
+  readonly summaries?: SummaryCache | undefined
 }
 
 export interface BriefingInput {
@@ -172,6 +176,7 @@ export interface Briefing {
   readonly tokenSource: ContextTokenSource
   // The code candidates the ranker considered, when the code was ranked.
   readonly ranked?: RankedCode["considered"] | undefined
+  readonly compaction: ReadonlyArray<CompactionEntry> // blocks shortened before any was dropped (T-097)
 }
 
 // A source that fails is reported and replaced by `fallback`; an interruption is never swallowed.
@@ -262,14 +267,23 @@ export const buildBriefing = (deps: BriefingDeps, input: BriefingInput): Effect.
         : yield* tokenSourceOf(tokenizer, executor, blocks)
     const count: TokenCounter =
       tokenizer === undefined || executor === undefined ? estimateTokens : yield* tokenizer.counter(executor)
-    const assembled = assemble(blocks, plan.budgetTokens, config.reserve_for_answer, count)
+    const available = Math.max(0, plan.budgetTokens - config.reserve_for_answer)
+    const compacted = yield* compactToBudget(blocks, available, {
+      count,
+      summarizer: deps.summarizer,
+      cache: deps.summaries,
+      counterId: executor,
+      config: config.compaction ?? DEFAULT_COMPACTION,
+    })
+    const assembled = assemble(compacted.blocks, plan.budgetTokens, config.reserve_for_answer, count)
     return {
       text: assembled.text,
       level: plan.level,
       used: assembled.used,
-      budget: Math.max(0, plan.budgetTokens - config.reserve_for_answer),
+      budget: available,
       dropped: assembled.dropped,
       tokenSource,
+      compaction: compacted.compaction,
       // A chunk is used only if the assembled text still carries it: the budget may have cut it after ranking.
       ...(ranked === undefined
         ? {}

@@ -55,6 +55,15 @@ export const RankedCandidatePayload = Schema.Struct({
   ]),
 })
 
+// One block that compaction shortened before anything was dropped (T-097): the deepest level it reached and its tokens
+// before and after. Counts only, never the text.
+export const CompactionEntryPayload = Schema.Struct({
+  block: Schema.String,
+  level: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 3 })),
+  before: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+})
+
 // What went into the context of one run: ids and counts, never the text. `budget` is the room left after the
 // answer reserve; `dropped` lists the blocks that lost items to fit it. `ranked` is present when the code was ranked.
 // `tokenSource` says how the counts were made: "approx" (computed) or "mixed" (some answered from the cache, T-095).
@@ -67,6 +76,8 @@ export const ContextAssembledPayload = Schema.Struct({
   dropped: Schema.Array(Schema.Struct({ block: Schema.String, items: Schema.Int })),
   ranked: Schema.optionalKey(Schema.Array(RankedCandidatePayload)),
   tokenSource: Schema.optionalKey(Schema.Literals(["approx", "mixed"])),
+  // Present only when compaction shortened some block (T-097).
+  compaction: Schema.optionalKey(Schema.Array(CompactionEntryPayload)),
 })
 
 const RankWeightsPayload = Schema.Struct({

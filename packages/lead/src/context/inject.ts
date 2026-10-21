@@ -11,7 +11,9 @@ import {
   type BriefingRankedCode,
   buildBriefing,
 } from "./briefing.js"
-import { type ContextConfig, DEFAULT_CONTEXT_CONFIG } from "./config.js"
+import type { Summarizer } from "./compact.js"
+import { makeMemorySummaryCache, type SummaryCache } from "./compact-cache.js"
+import { type ContextConfig, DEFAULT_COMPACTION, DEFAULT_CONTEXT_CONFIG } from "./config.js"
 import { removeInstructionFiles, writeInstructionFiles } from "./instructions-file.js"
 import { fallbackDecision, makeContextPlanner, type PlanningDecision } from "./planner.js"
 import type { ContextTokenSource, TokenizerShape } from "./tokenizer.js"
@@ -27,6 +29,8 @@ export interface ContextAssembled {
   readonly dropped: Briefing["dropped"]
   // "approx" or "mixed" (T-095): how the token counts were made.
   readonly tokenSource?: ContextTokenSource | undefined
+  // The blocks that compaction shortened before anything was dropped (T-097), with their level and tokens before/after.
+  readonly compaction?: Briefing["compaction"] | undefined
   // Code candidates the ranker considered: normalized signals (bm25, cosine, recency, imports, success, proximity).
   readonly ranked?: ReadonlyArray<RankedEntry> | undefined
 }
@@ -67,6 +71,10 @@ export interface InjectDeps {
   readonly config?: ContextConfig | undefined
   // The Tokenizer (T-095) counts the briefing's blocks with the executor's factors; without it the default counts.
   readonly tokenizer?: TokenizerShape | undefined
+  // The summarizer of the compaction (T-097); without it the deterministic one summarizes.
+  readonly summarizer?: Summarizer | undefined
+  // Summaries reused across briefings (T-097); without it the Lead keeps them in memory for the TTL of the config.
+  readonly summaries?: SummaryCache | undefined
   // Records the context.assembled event. A failure to record never fails the run.
   readonly recordAssembled?:
     | ((spec: Pick<TaskSpec, "id">, payload: ContextAssembled) => Effect.Effect<void, unknown>)
@@ -107,6 +115,12 @@ const asInstructions = (task: ExecutorTask, executor: ExecutorId, briefing: Brie
 export const makeInjector = (deps: InjectDeps) => {
   const config = deps.config ?? DEFAULT_CONTEXT_CONFIG
   const planner = makeContextPlanner(config)
+  const summaries =
+    deps.summaries ??
+    makeMemorySummaryCache({
+      ttlMs: (config.compaction ?? DEFAULT_COMPACTION).cache_ttl_hours * 60 * 60 * 1000,
+      now: () => Date.now(),
+    })
   return (ctx: TankContext, input: InjectInput): Effect.Effect<ExecutorTask, never, Scope.Scope> => {
     const { spec, bot, task, executor } = input
     const report = (cause: Cause.Cause<unknown>, where = "lead.context") => {
@@ -127,6 +141,7 @@ export const makeInjector = (deps: InjectDeps) => {
               budget: briefing.budget,
               dropped: briefing.dropped,
               tokenSource: briefing.tokenSource,
+              ...(briefing.compaction.length === 0 ? {} : { compaction: briefing.compaction }),
               ...(briefing.ranked === undefined ? {} : { ranked: rankedEntries(briefing) }),
             })
             .pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause))))
@@ -141,6 +156,8 @@ export const makeInjector = (deps: InjectDeps) => {
           docs: deps.docs,
           tank: deps.tank,
           tokenizer: deps.tokenizer,
+          summarizer: deps.summarizer,
+          summaries,
           onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
         },
         {
