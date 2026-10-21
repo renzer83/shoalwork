@@ -43,6 +43,7 @@ import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
+import { acpExecutors } from "./acp-executors.js"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
@@ -86,6 +87,11 @@ const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<
         }),
       ]
     : []
+  const acp = acpExecutors({
+    onPath: (bin) => findOnPath(bin, hostEnvSnapshot().PATH),
+    quotaWindowSeconds: config.codexQuotaWindowSeconds,
+    quotaSoftLimitTokens: config.codexQuotaSoftLimitTokens,
+  })
   return [
     makeClaudeCode({
       mapTier: tierMappingFrom(tiers, CLAUDE_CODE_ID, defaultMapTier),
@@ -93,6 +99,7 @@ const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<
     }),
     makeClaudeCodeChat({ mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) }),
     ...codex,
+    ...acp,
   ]
 }
 
