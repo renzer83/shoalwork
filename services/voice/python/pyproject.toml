@@ -6,6 +6,7 @@ dependencies = [
     "fastapi==0.147.0",
     "kokoro-onnx==0.6.1",
     "numpy==2.5.4",
+    "openwakeword==0.6.0",
     "uvicorn==0.54.0",
 ]
 
@@ -17,6 +18,9 @@ dev = [
 
 [tool.uv]
 package = false
+# openwakeword 0.6.0 pins tflite-runtime on Linux, which has no cp313 wheel. The sidecar runs ONNX only
+# (inference_framework="onnx"), so the TFLite backend is dropped from the resolution.
+exclude-dependencies = ["tflite-runtime"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

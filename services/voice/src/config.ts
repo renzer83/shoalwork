@@ -2,7 +2,8 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { SynthesizeLanguage } from "@shoalwork/contracts"
-import { Config, Option, Schema } from "effect"
+import { Config, ConfigProvider, Option, Schema } from "effect"
+import { TriggerMode } from "./wake/triggers.js"
 
 export type VoiceConfigShape = {
   // Server mode (no spawn): when set, the sidecar at this URL is used as is.
@@ -61,6 +62,67 @@ export const VoiceConfig = Config.all({
       ...values,
       ttsCommand: join(VOICE_ROOT, "python", ".venv", "bin", "uvicorn"),
       ttsCwd: join(VOICE_ROOT, "python"),
+      childEnv: { PATH: path, HOME: homedir() },
+    }),
+  ),
+)
+
+// Wake word, hotkey and push-to-talk (T-105). Kept apart from VoiceConfig: the voice service composes it on its own.
+export type WakeConfigShape = {
+  readonly trigger: TriggerMode
+  // A path to an .onnx model, or the name of a pretrained openWakeWord model.
+  readonly model: string
+  readonly threshold: number
+  // Bearer token of the trigger HTTP routes (POST /voice/wake, POST /voice/ptt). Never logged.
+  readonly token: string
+  // The Python venv that runs wake_server.py (services/voice/python, synced with uv).
+  readonly command: string
+  readonly script: string
+  readonly cwd: string
+  readonly childEnv: Readonly<Record<string, string>>
+}
+
+const WAKE_MODEL_DEFAULT = "hey_jarvis"
+const WAKE_THRESHOLD_DEFAULT = 0.5
+const TRIGGER_DEFAULT: TriggerMode = "hotkey"
+
+const wakeTrigger: Config.Config<TriggerMode> = Config.String("VOICE_TRIGGER").pipe(
+  Config.withDefault(""),
+  Config.map((value) => value.trim()),
+  Config.flatMap((value) => {
+    if (value === "") return Config.succeed(TRIGGER_DEFAULT)
+    return Schema.is(TriggerMode)(value)
+      ? Config.succeed(value)
+      : Config.fail(
+          new ConfigProvider.SourceError({
+            message: "VOICE_TRIGGER is invalid: expected one of wake, hotkey, ptt, wake+hotkey",
+          }),
+        )
+  }),
+)
+
+// Out-of-range values take the default, like VOICE_VAD_THRESHOLD.
+const wakeThreshold: Config.Config<number> = setting(
+  "WAKE_THRESHOLD",
+  (value) => Number(value),
+  WAKE_THRESHOLD_DEFAULT,
+).pipe(
+  Config.map((value) => (Number.isFinite(value) && value > 0 && value <= 1 ? value : WAKE_THRESHOLD_DEFAULT)),
+)
+
+export const WakeConfig = Config.all({
+  trigger: wakeTrigger,
+  model: setting("WAKE_MODEL", (value) => value, WAKE_MODEL_DEFAULT),
+  threshold: wakeThreshold,
+  token: setting("VOICE_TRIGGER_TOKEN", (value) => value, ""),
+  path: Config.String("PATH").pipe(Config.withDefault("/usr/bin:/bin")),
+}).pipe(
+  Config.map(
+    ({ path, ...values }): WakeConfigShape => ({
+      ...values,
+      command: join(VOICE_ROOT, "python", ".venv", "bin", "python"),
+      script: join(VOICE_ROOT, "python", "wake_server.py"),
+      cwd: join(VOICE_ROOT, "python"),
       childEnv: { PATH: path, HOME: homedir() },
     }),
   ),

@@ -38,7 +38,7 @@ const signalGroup = (pid: number, signal: NodeJS.Signals): void => {
 }
 
 const start = (
-  op: "capture" | "playback",
+  op: "capture" | "playback" | "wake",
   spawnProcess: AudioSpawn,
   command: string,
   args: ReadonlyArray<string>,
@@ -88,7 +88,7 @@ const start = (
 
 // The child lives as long as the surrounding scope: closing it kills the process group.
 export const spawnAudioProcess = (
-  op: "capture" | "playback",
+  op: "capture" | "playback" | "wake",
   spawnProcess: AudioSpawn,
   command: string,
   args: ReadonlyArray<string>,

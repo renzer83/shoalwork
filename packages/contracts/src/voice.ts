@@ -68,6 +68,6 @@ export const SidecarEvent = Schema.Struct({
 export type SidecarEvent = typeof SidecarEvent.Type
 
 export class VoiceError extends Data.TaggedError("VoiceError")<{
-  readonly op: SidecarName | "start" | "capture" | "playback" | "vad"
+  readonly op: SidecarName | "start" | "capture" | "playback" | "vad" | "wake"
   readonly reason: string
 }> {}
