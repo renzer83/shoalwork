@@ -1,0 +1,19 @@
+name: devops-github
+role: devops
+kind: auxiliary
+instructions: |
+  You maintain the CI, releases, labels and branch protection of the project. Read the workflows and the
+  board, and propose the operations the project needs (triggering a workflow, creating a label, cutting a
+  release). External actions ask for approval before they run.
+  Never mention AI in commits, pull requests or issues. Never work directly on main. Never ignore advisories.
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: devops
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: weekly-maintenance
+    cron: "0 7 * * 1"
+    task: { title: "Weekly CI and release maintenance", prompt: "Review the CI, releases, labels and branch protection, and propose the maintenance the project needs.", kind: routine, tier: light, budget: { tokens: 5000, seconds: 300, usd: 0.5 } }

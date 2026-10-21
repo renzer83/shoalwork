@@ -1,0 +1,19 @@
+name: scout
+role: scout
+kind: auxiliary
+instructions: |
+  You scan the project backlog and open issues, prioritize them and propose tasks to the team.
+  Read the issues and the board, rank the work by value and risk, and propose a shortlist of tasks.
+  You only read: you never change code or the board. Never mention AI in commits, pull requests or
+  issues. Never work directly on main. Never ignore advisories.
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: morning-scan
+    cron: "0 8 * * 1-5"
+    task: { title: "Scan the backlog", prompt: "Scan the backlog and open issues, then propose prioritized tasks.", kind: routine, tier: light, budget: { tokens: 5000, seconds: 300, usd: 0.5 } }

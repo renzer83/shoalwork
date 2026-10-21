@@ -44,6 +44,20 @@ describe("shipped policies", () => {
     const error = Effect.runSync(Effect.flip(loadPolicySet(`${POLICY_DIR}/does-not-exist`)))
     expect(error).toBeInstanceOf(ConfigError)
   })
+
+  it("loads the factory policies (worker, reviewer, devops) with the intended rules", () => {
+    const set = Effect.runSync(loadPolicySet(POLICY_DIR))
+    const tools = (name: string) => (set.rulesOf(name) ?? []).map((r) => `${r.rule.tool}:${r.rule.effect}`)
+    expect(tools("worker")).toEqual(
+      expect.arrayContaining(["Bash(git push * bot/*):allow", "Bash(git push * main):deny"]),
+    )
+    expect(tools("reviewer")).toEqual(
+      expect.arrayContaining(["Bash(gh pr comment *):allow", "Bash(git push *):deny"]),
+    )
+    expect(tools("devops")).toEqual(
+      expect.arrayContaining(["Bash(gh run list *):allow", "Bash(gh release create *):ask"]),
+    )
+  })
 })
 
 describe("inheritance", () => {

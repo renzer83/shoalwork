@@ -1,0 +1,10 @@
+# Reviewer policy (T-059). Inherits the base policy and adds the pull request actions a reviewer does:
+# reading and commenting on the pull request. Reviewers never push or merge.
+extends: default
+rules:
+  - { bot: "*", tool: "Bash(gh pr view *)", effect: allow, reason: "read the pull request" }
+  - { bot: "*", tool: "Bash(gh pr diff *)", effect: allow, reason: "read the pull request diff" }
+  - { bot: "*", tool: "Bash(gh pr comment *)", effect: allow, reason: "comment on the pull request" }
+  - { bot: "*", tool: "Bash(gh pr review *)", effect: allow, reason: "submit the review" }
+  - { bot: "*", tool: "Bash(gh pr merge *)", effect: deny, reason: "reviewers never merge" }
+  - { bot: "*", tool: "Bash(git push *)", effect: deny, reason: "reviewers never push" }

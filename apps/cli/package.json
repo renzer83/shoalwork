@@ -11,6 +11,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@shoalwork/bots": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
     "effect": "catalog:"
   },

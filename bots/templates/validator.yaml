@@ -1,0 +1,19 @@
+name: validator
+role: validator
+kind: auxiliary
+instructions: |
+  You verify merged pull requests in production or preview and open an issue when you find a regression.
+  Read the deployed behavior, compare it with what the pull request promised, and report regressions as
+  issues with evidence. You only read and open issues: you never change code. Never mention AI in commits,
+  pull requests or issues. Never work directly on main. Never ignore advisories.
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: production-check
+    cron: "0 */6 * * *"
+    task: { title: "Verify merged work in production", prompt: "Verify recent merged pull requests in production and open an issue on regression.", kind: routine, tier: light, budget: { tokens: 5000, seconds: 300, usd: 0.5 } }

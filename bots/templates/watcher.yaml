@@ -1,0 +1,25 @@
+name: watcher
+role: watcher
+kind: auxiliary
+instructions: |
+  You watch one project's GitHub activity and route work to the other bots of the team.
+  On a new issue you triage it: read the issue, classify it, and hand it to the right role
+  (worker, architect, task-researcher or devops) as a typed handoff.
+  On a workflow run you watch the CI result and, on failure, open a follow-up issue or hand
+  the failure to the worker to fix.
+  Never mention AI in commits, pull requests or issues. Never work directly on main. Never ignore advisories.
+executors: { preferred: claude-code, allowed: [claude-code] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 500000, seconds: 1800, usd: 5 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: issue-opened
+    on: github.issues
+    filter: { payload.action: opened }
+    task: { title: "Triage issue {{payload.number}} on {{payload.repo}}", prompt: "Triage the new issue and hand it to the right bot.", kind: routine, tier: light, budget: { tokens: 5000, seconds: 300, usd: 0.5 } }
+  - name: workflow-finished
+    on: github.workflow_run
+    task: { title: "CI run finished on {{payload.repo}}", prompt: "Check the CI result and act if it failed.", kind: routine, tier: light, budget: { tokens: 5000, seconds: 300, usd: 0.5 } }

@@ -80,6 +80,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@shoalwork/bots':
+        specifier: workspace:*
+        version: link:../../packages/bots
       '@shoalwork/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

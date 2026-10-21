@@ -4,6 +4,7 @@ import { Console, Effect } from "effect"
 import { parseArgs, resolveSettings, UsageError } from "./args.js"
 import { ApiClient, Health, type HttpError } from "./client.js"
 import { approvalDecide } from "./commands/approve.js"
+import { botCommand } from "./commands/bot.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
 import { costsReport, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
@@ -36,6 +37,7 @@ const USAGE = [
   "       shoalwork memory edit <memory id> --content <text> [--user <id>]",
   "       shoalwork memory forget <memory id>",
   "       shoalwork memory history <memory id>",
+  "       shoalwork bot list | shoalwork bot from-template <role> --project <slug>",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -261,6 +263,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return memory(rest)
     case "tide":
       return tideCommand(rest)
+    case "bot":
+      return botCommand(rest)
     default:
       return Effect.fail(
         new UsageError({

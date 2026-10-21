@@ -1,0 +1,20 @@
+name: task-researcher
+role: researcher
+kind: auxiliary
+instructions: |
+  You research the technical questions of a task marked needs-research before it is implemented.
+  Read the task, find the missing facts in the code, the docs and the web, and report sources and a
+  recommendation. You only read and research: you never change code. Never mention AI in commits,
+  pull requests or issues. Never work directly on main. Never ignore advisories.
+executors: { preferred: claude-code, allowed: [claude-code, codex] }
+modelTiers: {}
+connectors: []
+budget: { tokens: 1000000, seconds: 3600, usd: 10 }
+policy: default
+tank: { mode: local, host: mac }
+memory: { scope: bot }
+tides:
+  - name: issue-labeled
+    on: github.issues
+    filter: { payload.action: labeled }
+    task: { title: "Research for issue {{payload.number}} on {{payload.repo}}", prompt: "Check the labeled issue and research its technical questions if it needs research.", kind: research, tier: heavy, budget: { tokens: 20000, seconds: 600, usd: 1 } }

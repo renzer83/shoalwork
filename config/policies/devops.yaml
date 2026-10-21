@@ -1,0 +1,11 @@
+# DevOps policy (T-059). Inherits the base policy and adds the read-only GitHub operations the devops role
+# does on its own. The actions that change the remote (triggering workflows, cutting releases) ask first,
+# as every external action does in the base policy.
+extends: default
+rules:
+  - { bot: "*", tool: "Bash(gh run list *)", effect: allow, reason: "read CI runs" }
+  - { bot: "*", tool: "Bash(gh run view *)", effect: allow, reason: "read a CI run" }
+  - { bot: "*", tool: "Bash(gh label list *)", effect: allow, reason: "read labels" }
+  - { bot: "*", tool: "Bash(gh workflow run *)", effect: ask, reason: "triggering CI asks" }
+  - { bot: "*", tool: "Bash(gh label create *)", effect: ask, reason: "creating a label asks" }
+  - { bot: "*", tool: "Bash(gh release create *)", effect: ask, reason: "cutting a release asks" }

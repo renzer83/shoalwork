@@ -1,0 +1,8 @@
+# Worker policy (T-059). Inherits the base policy and adds the pushes a worker does: push the bot branch
+# is allowed, pushing main or master is never allowed. Everything else (including force pushes, which are
+# irreversible and always ask) follows the base policy.
+extends: default
+rules:
+  - { bot: "*", tool: "Bash(git push * bot/*)", effect: allow, reason: "push the bot branch" }
+  - { bot: "*", tool: "Bash(git push * main)", effect: deny, reason: "never push to main" }
+  - { bot: "*", tool: "Bash(git push * master)", effect: deny, reason: "never push to master" }
