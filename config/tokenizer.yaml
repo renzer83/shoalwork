@@ -1,0 +1,14 @@
+# Token approximation per executor (T-095). No API is called: tokens = ceil(chars / factor), where the factor depends on
+# the language of the text (code, prose_pt, prose_en). Factors are chars per token; the calibration moves them from
+# the usage the executor reports (tokenizer_calibration), starting from the values below.
+cache:
+  # Counts of a block are kept this long, and at most this many entries (least recently used goes first).
+  ttl_hours: 24
+  max_entries: 10000
+
+# One entry per executor id; `default` serves every executor that has no entry of its own.
+executors:
+  default:
+    code: 3.2
+    prose_pt: 3.5
+    prose_en: 4.0

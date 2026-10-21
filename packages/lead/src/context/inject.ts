@@ -14,6 +14,7 @@ import {
 import { type ContextConfig, DEFAULT_CONTEXT_CONFIG } from "./config.js"
 import { removeInstructionFiles, writeInstructionFiles } from "./instructions-file.js"
 import { fallbackDecision, makeContextPlanner, type PlanningDecision } from "./planner.js"
+import type { ContextTokenSource, TokenizerShape } from "./tokenizer.js"
 
 export type { BriefingCode, BriefingDocs, BriefingMemory, BriefingRankedCode } from "./briefing.js"
 
@@ -24,6 +25,8 @@ export interface ContextAssembled {
   readonly used: number
   readonly budget: number
   readonly dropped: Briefing["dropped"]
+  // "approx" or "mixed" (T-095): how the token counts were made.
+  readonly tokenSource?: ContextTokenSource | undefined
   // Code candidates the ranker considered: normalized signals (bm25, cosine, recency, imports, success, proximity).
   readonly ranked?: ReadonlyArray<RankedEntry> | undefined
 }
@@ -62,6 +65,8 @@ export interface InjectDeps {
   readonly docs?: BriefingDocs | undefined
   // config/context.yaml (or the defaults): budgets per tier, block caps and the size of each level.
   readonly config?: ContextConfig | undefined
+  // The Tokenizer (T-095) counts the briefing's blocks with the executor's factors; without it the default counts.
+  readonly tokenizer?: TokenizerShape | undefined
   // Records the context.assembled event. A failure to record never fails the run.
   readonly recordAssembled?:
     | ((spec: Pick<TaskSpec, "id">, payload: ContextAssembled) => Effect.Effect<void, unknown>)
@@ -121,6 +126,7 @@ export const makeInjector = (deps: InjectDeps) => {
               used: briefing.used,
               budget: briefing.budget,
               dropped: briefing.dropped,
+              tokenSource: briefing.tokenSource,
               ...(briefing.ranked === undefined ? {} : { ranked: rankedEntries(briefing) }),
             })
             .pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause))))
@@ -134,9 +140,19 @@ export const makeInjector = (deps: InjectDeps) => {
           rankedCode: deps.rankedCode,
           docs: deps.docs,
           tank: deps.tank,
+          tokenizer: deps.tokenizer,
           onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
         },
-        { spec, bot, ctx, plan, config, working: input.carry?.working, activeFiles: input.activeFiles },
+        {
+          spec,
+          bot,
+          ctx,
+          plan,
+          config,
+          working: input.carry?.working,
+          activeFiles: input.activeFiles,
+          executor,
+        },
       ).pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause).pipe(Effect.as(undefined)))))
       if (built === undefined) return task
       yield* announce(built)

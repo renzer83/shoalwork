@@ -1,3 +1,4 @@
+import type { TokenCounter } from "./tokenizer-approx.js"
 import { estimateTokens } from "./tokens.js"
 
 // Canonical order of the prompt: what is the same from run to run comes first, so that a provider's prompt cache
@@ -75,6 +76,9 @@ const render = (block: Block, items: ReadonlyArray<BlockItem>): string =>
         ...items.map((item) => item.text),
       ].join("\n")
 
+// The text a block contributes to the prompt when all its items are in (what the Tokenizer counts per block).
+export const renderBlock = (block: Block): string => render(block, block.items)
+
 // Trims a block to its cap without cutting any item: items are taken in rank order, one that does not fit is skipped
 // and the next is tried. What is left out is counted in `omitted`, so it shows up in the report.
 export const fitBlock = (block: Block): Block => {
@@ -96,11 +100,13 @@ interface State {
 // for its answer). Blocks that can be cut first keep to their own cap, then, while the whole is still over the
 // budget, the block using the most tokens loses its lowest-ranked item. If only fixed blocks are left over the
 // budget, they lose their lowest-ranked items too (rules, then acceptance, then instructions), never the task block.
-// An item is dropped whole, never cut. `used` is within the budget whenever the task block alone is.
+// An item is dropped whole, never cut. `used` is within the budget whenever the task block alone is. `count` is the
+// Tokenizer's counter of the executor (the default approximation when there is none).
 export const assemble = (
   blocks: ReadonlyArray<Block>,
   budgetTokens: number,
   reserveForAnswer: number,
+  count: TokenCounter = estimateTokens,
 ): Assembled => {
   const available = Math.max(0, budgetTokens - reserveForAnswer)
   const states: Array<State> = BLOCK_ORDER.flatMap((name) =>
@@ -108,7 +114,7 @@ export const assemble = (
       .filter((block) => block.name === name)
       .map((block) => ({ block, items: rank(block.items), dropped: 0 })),
   )
-  const cost = (state: State): number => estimateTokens(render(state.block, state.items))
+  const cost = (state: State): number => count(render(state.block, state.items))
   const whole = (): string =>
     states
       .map((state) => render(state.block, state.items))
@@ -125,7 +131,7 @@ export const assemble = (
     while (state.items.length > 0 && cost(state) > state.block.maxTokens) dropLast(state)
   }
   for (;;) {
-    if (estimateTokens(whole()) <= available) break
+    if (count(whole()) <= available) break
     const loose = states.filter((state) => !state.block.fixed && state.items.length > 0)
     const [first, ...rest] = loose
     if (first !== undefined) {
@@ -153,5 +159,5 @@ export const assemble = (
   const kept = new Set(
     states.flatMap((state) => state.items.flatMap((item) => (item.id === undefined ? [] : [item.id]))),
   )
-  return { text, used: estimateTokens(text), dropped, kept }
+  return { text, used: count(text), dropped, kept }
 }

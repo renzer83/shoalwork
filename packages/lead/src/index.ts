@@ -180,6 +180,7 @@ export {
   rememberCommand,
 } from "./commands/memory.js"
 export { type ContextConfig, loadContextConfig } from "./context/config.js"
+export { Tokenizer, TokenizerLive, type TokenizerShape, TokenizerTest } from "./context/tokenizer.js"
 export {
   botTarget,
   Control,

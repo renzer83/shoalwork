@@ -1,4 +1,4 @@
-import type { Bot, RepoRef, TankError, TaskSpec } from "@shoalwork/contracts"
+import type { Bot, ExecutorId, RepoRef, TankError, TaskSpec } from "@shoalwork/contracts"
 import {
   activeFilesFromText,
   type CodeSearchHit,
@@ -34,6 +34,9 @@ import {
 import type { ContextConfig } from "./config.js"
 import type { ContextLevel, ContextPlan } from "./planner.js"
 import { isAbsent, readRuleItems } from "./rules.js"
+import { type ContextTokenSource, type TokenizerShape, tokenSourceOf } from "./tokenizer.js"
+import type { TokenCounter } from "./tokenizer-approx.js"
+import { estimateTokens } from "./tokens.js"
 
 // Only what the memory search needs: the Reef's search, so tests can answer with a fixture.
 export type BriefingMemory = Pick<ReefShape, "search">
@@ -140,6 +143,9 @@ export interface BriefingDeps {
   readonly tank: Pick<TankShape, "readFile">
   // A source that fails is reported here and left out; the briefing is built with the others.
   readonly onSourceError: (source: BriefingSource, cause: Cause.Cause<unknown>) => Effect.Effect<void>
+  // The Tokenizer counts the blocks with the executor's calibrated factors (needs `executor` in the input); without it
+  // the default approximation counts.
+  readonly tokenizer?: TokenizerShape | undefined
 }
 
 export interface BriefingInput {
@@ -152,6 +158,8 @@ export interface BriefingInput {
   readonly working?: ReadonlyArray<string> | undefined
   // Files the task is about besides the ones its prompt names (the files the previous attempt edited, on a retry).
   readonly activeFiles?: ReadonlyArray<string> | undefined
+  // The executor the briefing is for: its factors count the blocks when the deps have a Tokenizer.
+  readonly executor?: ExecutorId | undefined
 }
 
 // The text handed to the executor (AGENTS.md body, system prompt or head of the prompt) and what it cost.
@@ -161,6 +169,7 @@ export interface Briefing {
   readonly used: number
   readonly budget: number
   readonly dropped: ReadonlyArray<{ readonly block: string; readonly items: number }>
+  readonly tokenSource: ContextTokenSource
   // The code candidates the ranker considered, when the code was ranked.
   readonly ranked?: RankedCode["considered"] | undefined
 }
@@ -245,13 +254,22 @@ export const buildBriefing = (deps: BriefingDeps, input: BriefingInput): Effect.
       ...(spec.origin === "bot" ? [handoffBlock(spec)] : []),
       taskBlock(spec, config),
     ]
-    const assembled = assemble(blocks, plan.budgetTokens, config.reserve_for_answer)
+    const tokenizer = deps.tokenizer
+    const executor = input.executor
+    const tokenSource: ContextTokenSource =
+      tokenizer === undefined || executor === undefined
+        ? "approx"
+        : yield* tokenSourceOf(tokenizer, executor, blocks)
+    const count: TokenCounter =
+      tokenizer === undefined || executor === undefined ? estimateTokens : yield* tokenizer.counter(executor)
+    const assembled = assemble(blocks, plan.budgetTokens, config.reserve_for_answer, count)
     return {
       text: assembled.text,
       level: plan.level,
       used: assembled.used,
       budget: Math.max(0, plan.budgetTokens - config.reserve_for_answer),
       dropped: assembled.dropped,
+      tokenSource,
       // A chunk is used only if the assembled text still carries it: the budget may have cut it after ranking.
       ...(ranked === undefined
         ? {}

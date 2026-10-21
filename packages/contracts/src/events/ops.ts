@@ -57,6 +57,8 @@ export const RankedCandidatePayload = Schema.Struct({
 
 // What went into the context of one run: ids and counts, never the text. `budget` is the room left after the
 // answer reserve; `dropped` lists the blocks that lost items to fit it. `ranked` is present when the code was ranked.
+// `tokenSource` says how the counts were made: "approx" (computed) or "mixed" (some answered from the cache, T-095).
+// Absent in events written before it existed.
 export const ContextAssembledPayload = Schema.Struct({
   taskId: TaskId,
   level: Schema.Literals(["none", "top3", "full"]),
@@ -64,6 +66,7 @@ export const ContextAssembledPayload = Schema.Struct({
   budget: Schema.Int,
   dropped: Schema.Array(Schema.Struct({ block: Schema.String, items: Schema.Int })),
   ranked: Schema.optionalKey(Schema.Array(RankedCandidatePayload)),
+  tokenSource: Schema.optionalKey(Schema.Literals(["approx", "mixed"])),
 })
 
 const RankWeightsPayload = Schema.Struct({
