@@ -95,55 +95,94 @@ const show = (seen: Array<string>) =>
 
 afterEach(cleanup)
 
+// Each wait is bounded on its own. A case gets more than its waits add up to (up to four waits per case),
+// so a slow runner fails on a named wait instead of hitting the test timeout.
+const WAIT = { timeout: 4_000 }
+const CASE_TIMEOUT = 20_000
+
 describe("BeaconScreen", () => {
-  it("shows the savings of the period from the savings fixture", async () => {
-    show([])
-    await waitFor(() => expect(screen.getByText("75.0%")).toBeTruthy())
-    expect(screen.getByText("US$ 0.0900")).toBeTruthy()
-    expect(screen.getByText("40.0%")).toBeTruthy()
-    expect(screen.getByText("US$ 0.0400")).toBeTruthy()
-  })
+  it(
+    "shows the savings of the period from the savings fixture",
+    async () => {
+      show([])
+      await screen.findByText("75.0%", {}, WAIT)
+      await screen.findByText("US$ 0.0900", {}, WAIT)
+      await screen.findByText("40.0%", {}, WAIT)
+      await screen.findByText("US$ 0.0400", {}, WAIT)
+    },
+    CASE_TIMEOUT,
+  )
 
-  it("draws one bar per day of the daily cost", async () => {
-    show([])
-    const chart = await waitFor(() => screen.getByLabelText("Custo por dia (USD): 3 barras"))
-    expect(chart.querySelectorAll("rect")).toHaveLength(3)
-  })
+  it(
+    "draws one bar per day of the daily cost",
+    async () => {
+      show([])
+      const chart = await screen.findByLabelText("Custo por dia (USD): 3 barras", {}, WAIT)
+      await waitFor(() => expect(chart.querySelectorAll("rect")).toHaveLength(3), WAIT)
+    },
+    CASE_TIMEOUT,
+  )
 
-  it("sends the free-text search as q and shows only the matching events", async () => {
-    const seen: Array<string> = []
-    show(seen)
-    await waitFor(() => expect(screen.getByText("decision.made")).toBeTruthy())
-    fireEvent.change(screen.getByLabelText("Busca no log"), { target: { value: "haiku" } })
-    fireEvent.click(screen.getByRole("button", { name: "Buscar" }))
-    await waitFor(() => expect(seen.some((url) => url.includes("q=haiku"))).toBe(true))
-    await waitFor(() => expect(screen.queryByText("decision.made")).toBeNull())
-    expect(screen.getByText("usage.recorded")).toBeTruthy()
-  })
+  it(
+    "sends the free-text search as q and shows only the matching events",
+    async () => {
+      const seen: Array<string> = []
+      show(seen)
+      await screen.findByText("decision.made", {}, WAIT)
+      const search = await screen.findByLabelText("Busca no log", {}, WAIT)
+      fireEvent.change(search, { target: { value: "haiku" } })
+      const button = await screen.findByRole("button", { name: "Buscar" }, WAIT)
+      fireEvent.click(button)
+      await waitFor(() => expect(seen.some((url) => url.includes("q=haiku"))).toBe(true), WAIT)
+      await waitFor(() => expect(screen.queryByText("decision.made")).toBeNull(), WAIT)
+      await screen.findByText("usage.recorded", {}, WAIT)
+    },
+    CASE_TIMEOUT,
+  )
 
-  it("pages older events with the cursor of the previous page", async () => {
-    const seen: Array<string> = []
-    show(seen)
-    await waitFor(() => expect(screen.getByText("usage.recorded")).toBeTruthy())
-    expect(screen.queryByText("executor.finished")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "Carregar mais" }))
-    await waitFor(() => expect(screen.getByText("executor.finished")).toBeTruthy())
-    expect(seen.some((url) => url.includes("/beacon/events") && url.includes("before=6"))).toBe(true)
-    expect(screen.getByText("decision.made")).toBeTruthy()
-  })
+  it(
+    "pages older events with the cursor of the previous page",
+    async () => {
+      const seen: Array<string> = []
+      show(seen)
+      await screen.findByText("usage.recorded", {}, WAIT)
+      expect(screen.queryByText("executor.finished")).toBeNull()
+      const more = await screen.findByRole("button", { name: "Carregar mais" }, WAIT)
+      fireEvent.click(more)
+      await screen.findByText("executor.finished", {}, WAIT)
+      expect(seen.some((url) => url.includes("/beacon/events") && url.includes("before=6"))).toBe(true)
+      await screen.findByText("decision.made", {}, WAIT)
+    },
+    CASE_TIMEOUT,
+  )
 
-  it("prints the selected event's payload as text", async () => {
-    show([])
-    await waitFor(() => expect(screen.getByText("decision.made")).toBeTruthy())
-    fireEvent.click(screen.getByRole("button", { name: /decision\.made/ }))
-    expect(screen.getByText(/"source": "rule"/)).toBeTruthy()
-  })
+  it(
+    "prints the selected event's payload as text",
+    async () => {
+      show([])
+      const row = await screen.findByRole("button", { name: /decision\.made/ }, WAIT)
+      fireEvent.click(row)
+      await screen.findByText(/"source": "rule"/, {}, WAIT)
+    },
+    CASE_TIMEOUT,
+  )
 
-  it("asks the core for the window of the chosen period", async () => {
-    const seen: Array<string> = []
-    show(seen)
-    await waitFor(() => expect(seen.some((url) => url.startsWith("/beacon/savings?since=7d"))).toBe(true))
-    fireEvent.click(screen.getByRole("button", { name: "Período 24 h" }))
-    await waitFor(() => expect(seen.some((url) => url.startsWith("/beacon/savings?since=24h"))).toBe(true))
-  })
+  it(
+    "asks the core for the window of the chosen period",
+    async () => {
+      const seen: Array<string> = []
+      show(seen)
+      await waitFor(
+        () => expect(seen.some((url) => url.startsWith("/beacon/savings?since=7d"))).toBe(true),
+        WAIT,
+      )
+      const period = await screen.findByRole("button", { name: "Período 24 h" }, WAIT)
+      fireEvent.click(period)
+      await waitFor(
+        () => expect(seen.some((url) => url.startsWith("/beacon/savings?since=24h"))).toBe(true),
+        WAIT,
+      )
+    },
+    CASE_TIMEOUT,
+  )
 })
