@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { lstat, readdir } from "node:fs/promises"
+import { lstatSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { TankError } from "@shoalwork/contracts"
 import { DEFAULT_MAX_FILE_BYTES, isIgnoredPath, looksLikeSecret } from "@shoalwork/reef"
@@ -138,11 +138,12 @@ const isMissing = (cause: unknown): boolean =>
 
 // The direct children of one rules directory of the worktree that are regular files with the suffix, and that the
 // indexer would not skip. A symlink (to a file or to a directory) is not a rules directory and not a rules file.
-const listRuleDir = async (root: string, dir: string, suffix: string): Promise<ReadonlyArray<string>> => {
+// Synchronous on purpose: three metadata calls, and no event-loop hop before the executor of the run starts.
+const listRuleDir = (root: string, dir: string, suffix: string): ReadonlyArray<string> => {
   const absolute = join(root, dir)
   try {
-    if (!(await lstat(absolute)).isDirectory()) return []
-    const entries = await readdir(absolute, { withFileTypes: true })
+    if (!lstatSync(absolute).isDirectory()) return []
+    const entries = readdirSync(absolute, { withFileTypes: true })
     return entries
       .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
       .map((entry) => `${dir}/${entry.name}`)
@@ -166,7 +167,7 @@ export const collectRules = (
     const files: Array<{ readonly rel: string; readonly keep?: RegExp | undefined }> = []
     for (const source of RULE_SOURCES) {
       if ("dir" in source) {
-        const listed = yield* Effect.tryPromise({
+        const listed = yield* Effect.try({
           try: () => listRuleDir(root, source.dir, source.suffix),
           catch: (cause) => new TankError({ op: "listRules", cause }),
         })
