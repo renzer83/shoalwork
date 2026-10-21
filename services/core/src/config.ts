@@ -116,6 +116,9 @@ export const AppConfig = Config.all({
   reflexConfigPath: setting("REFLEX_CONFIG_PATH", Config.String, "config/reflex.config.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
+  // Reflex HTTP backend (T-067): when REFLEX_URL is set the Python service answers, else the TypeScript rules do.
+  reflexUrl: optionalSetting("REFLEX_URL", Config.String),
+  reflexToken: optionalSetting("REFLEX_TOKEN", Config.Redacted),
   // Embeddings for the Reef (T-034). Nothing connects until a memory is saved or searched.
   ollamaUrl: setting("OLLAMA_URL", Config.String, "http://127.0.0.1:11434").pipe(
     Config.map((value) => value.trim()),

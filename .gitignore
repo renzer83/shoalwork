@@ -7,6 +7,10 @@ coverage/
 *.log
 .DS_Store
 data/
+!services/reflex/reflex/data/
+.venv/
+__pycache__/
+.pytest_cache/
 out/
 .vite/
 .expo/

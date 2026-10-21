@@ -7,5 +7,6 @@ export {
   exportDataset,
   toNdjsonLine,
 } from "./dataset.js"
+export { ReflexHttpError, ReflexHttpLive, type ReflexHttpOptions } from "./http-client.js"
 export { makeReflexLive, Reflex, type ReflexShape } from "./reflex.js"
 export { criterionRule, type TestsOutcome } from "./rules.js"

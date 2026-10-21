@@ -33,10 +33,10 @@ import {
 } from "@shoalwork/lead"
 import { makeApprovalsLive, makePolicyLive, UNRESOLVED_POLICY } from "@shoalwork/policy"
 import { EmbedderOllamaLive, IndexerLive, RankerLive, ReefLive } from "@shoalwork/reef"
-import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
+import { loadReflexConfig, makeReflexLive, ReflexHttpLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Tides, TidesLive } from "@shoalwork/tides"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { executorsFor, RegistryFromConfig } from "./executors-compose.js"
@@ -148,7 +148,13 @@ export const AppLayer = Layer.unwrap(
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
     // The delivery cycle (T-061) sits above the Lead, the Policy and the Approvals it asks, and the GitHub client.
     const withFactory = FactorySchedulerLive.pipe(Layer.provideMerge(withTides))
-    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withFactory))
+    // REFLEX_URL set: the Python service answers (T-067), with the TypeScript rules as its fallback; else the rules.
+    const reflexLayer = Option.match(config.reflexUrl, {
+      onNone: () => makeReflexLive(reflexConfig),
+      onSome: (url) =>
+        ReflexHttpLive(reflexConfig, { url, token: Option.getOrUndefined(config.reflexToken) }),
+    })
+    const withReflex = reflexLayer.pipe(Layer.provideMerge(withFactory))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withSessions))
     // The one door for a decision: web, CLI and the Telegram buttons all go through it.

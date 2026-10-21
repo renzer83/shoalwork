@@ -24,7 +24,7 @@
     "demo:issue": "tsx scripts/demo-issue.ts",
     "deploy:unit": "tsx scripts/deploy-unit.ts",
     "soak:check": "tsx scripts/soak-check.ts",
-    "gate:no-docs": "sh -c 'f=$(find . -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"./.git/*\"); if [ -n \"$f\" ]; then echo \"$f\"; exit 1; fi'",
+    "gate:no-docs": "sh -c 'f=$(find . -name \"*.md\" -not -path \"*/node_modules/*\" -not -path \"./.git/*\" -not -path \"*/.venv/*\"); if [ -n \"$f\" ]; then echo \"$f\"; exit 1; fi'",
     "gate:no-secrets": "gitleaks detect --no-git -s . --redact"
   },
   "devDependencies": {

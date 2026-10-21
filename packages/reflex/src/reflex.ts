@@ -5,7 +5,9 @@ import type { ReflexConfig } from "./config.js"
 import {
   type AnswerRecord,
   type AnswerValue,
+  choiceOptions,
   type Facts,
+  fitsQuestion,
   type Question,
   type Scored,
   STANDARD_IDS,
@@ -32,37 +34,8 @@ const isStandardId = (id: string): id is StandardQuestionId => STANDARD_ID_SET.h
 const scoreOf = (scores: StandardScores, id: string): Scored<AnswerValue> | undefined =>
   isStandardId(id) ? scores[id] : undefined
 
-type ChoiceQuestion = Extract<Question, { readonly kind: "choice" }>
-
-// Static options when the question declares them. Owner and executor declare none: their options come from facts.
-// Any other choice without options accepts any string (undefined).
-const choiceOptions = (question: ChoiceQuestion, facts: Facts): ReadonlyArray<string> | undefined => {
-  if (question.options.length > 0) {
-    return question.options
-  }
-  if (question.id === "owner") {
-    return [...facts.bots.map((bot) => bot.id), "new"]
-  }
-  if (question.id === "executor") {
-    return [...facts.executors.map((e) => e.id), "none"]
-  }
-  return undefined
-}
-
-// A value fits the question when its type matches the kind (and the scale or the options).
-const fits = (question: Question, value: AnswerValue, facts: Facts): boolean => {
-  if (question.kind === "noul") {
-    return typeof value === "boolean"
-  }
-  if (question.kind === "score") {
-    return typeof value === "number" && value >= question.scale[0] && value <= question.scale[1]
-  }
-  const options = choiceOptions(question, facts)
-  return typeof value === "string" && (options === undefined || options.includes(value))
-}
-
 // Neutral value of the right type, used with confidence 0 when no rule answers or the answer does not fit.
-const neutralFor = (question: Question, facts: Facts): AnswerValue => {
+export const neutralFor = (question: Question, facts: Facts): AnswerValue => {
   if (question.kind === "noul") {
     return false
   }
@@ -78,7 +51,7 @@ const resolve = (
   facts: Facts,
 ): { readonly value: AnswerValue; readonly confidence: number } => {
   const scored = scoreOf(scores, question.id)
-  if (scored !== undefined && fits(question, scored.value, facts)) {
+  if (scored !== undefined && fitsQuestion(question, scored.value, facts)) {
     return { value: scored.value, confidence: scored.confidence }
   }
   return { value: neutralFor(question, facts), confidence: 0 }
@@ -87,8 +60,45 @@ const resolve = (
 const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max)}...[truncated]`
 
+// One decision.made per answer, appended as one batch. Each row keeps its own decision id.
+// A failed write is logged and the caller goes on: the answers are returned anyway.
+export const recordDecisions = (
+  beacon: BeaconShape,
+  payloadChars: number,
+  correlationId: string,
+  facts: Facts,
+  rows: ReadonlyArray<{ readonly question: Question; readonly record: AnswerRecord }>,
+): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    if (rows.length === 0) {
+      return
+    }
+    const payloadFacts = { ...facts, text: truncate(facts.text, payloadChars) }
+    const events: ReadonlyArray<NewEvent> = rows.map(({ question, record }) => ({
+      streamId: streamIds.system,
+      type: "decision.made",
+      payload: {
+        decisionId: record.decisionId,
+        questionId: record.id,
+        kind: question.kind,
+        value: record.value,
+        confidence: record.confidence,
+        source: record.source,
+        facts: payloadFacts,
+      },
+      actor: "system:reflex",
+      correlationId,
+    }))
+    yield* beacon
+      .appendMany(events)
+      .pipe(
+        Effect.catchCause(() =>
+          Effect.logError("reflex: decision.made not persisted; answers returned anyway"),
+        ),
+      )
+  })
+
 // Each decision is a fresh evt_ id; Beacon assigns the stored event id itself, so the two differ.
-// A failed write is logged and the answers are still returned: the caller must not die for it.
 const decideAndRecord = (
   beacon: BeaconShape,
   c: CompiledRules,
@@ -98,7 +108,6 @@ const decideAndRecord = (
   Effect.gen(function* () {
     const scores = scoreAll(facts, c)
     const correlationId = facts.correlationId ?? newEventId()
-    const payloadFacts = { ...facts, text: truncate(facts.text, c.payloadChars) }
     const rows = questions.map((question) => {
       const { value, confidence } = resolve(question, scores, facts)
       const record: AnswerRecord = {
@@ -110,34 +119,12 @@ const decideAndRecord = (
       }
       return { question, record }
     })
-    if (rows.length > 0) {
-      const events: ReadonlyArray<NewEvent> = rows.map(({ question, record }) => ({
-        streamId: streamIds.system,
-        type: "decision.made",
-        payload: {
-          decisionId: record.decisionId,
-          questionId: record.id,
-          kind: question.kind,
-          value: record.value,
-          confidence: record.confidence,
-          source: record.source,
-          facts: payloadFacts,
-        },
-        actor: "system:reflex",
-        correlationId,
-      }))
-      yield* beacon
-        .appendMany(events)
-        .pipe(
-          Effect.catchCause(() =>
-            Effect.logError("reflex: decision.made not persisted; answers returned anyway"),
-          ),
-        )
-    }
+    yield* recordDecisions(beacon, c.payloadChars, correlationId, facts, rows)
     return { scores, records: rows.map((row) => row.record) }
   })
 
-const makeReflex = (beacon: BeaconShape, c: CompiledRules): ReflexShape => ({
+// The v0 rules as a Reflex shape over a Beacon: the fallback of the HTTP backend, and the whole of ReflexRulesLive.
+export const makeReflex = (beacon: BeaconShape, c: CompiledRules): ReflexShape => ({
   ask: (facts, questions = STANDARD_QUESTIONS) =>
     Effect.map(decideAndRecord(beacon, c, facts, questions), (decided) => decided.records),
   standard: (facts) =>

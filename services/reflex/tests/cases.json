@@ -1,0 +1,4228 @@
+{
+  "config": {
+    "thresholds": {
+      "default": 0.6,
+      "perQuestion": {}
+    },
+    "intent": {
+      "code": [
+        "implementa",
+        "implementar",
+        "implement",
+        "fix",
+        "bug",
+        "bugs",
+        "refactor",
+        "refatorar",
+        "test",
+        "testar",
+        "testes",
+        "tests",
+        "PR",
+        "PRs",
+        "issue",
+        "issues",
+        "deploy"
+      ],
+      "research": ["pesquisa", "pesquisar", "research", "compare", "quanto custa"],
+      "app_op": ["posta", "publicar", "publish", "envia email", "stripe", "notion"],
+      "routine": ["todo dia", "every day"]
+    },
+    "verbs": [
+      "implementa",
+      "implement",
+      "fix",
+      "corrige",
+      "refactor",
+      "refatora",
+      "test",
+      "testa",
+      "cria",
+      "create",
+      "adiciona",
+      "add",
+      "remove",
+      "deleta",
+      "delete",
+      "escreve",
+      "write",
+      "edita",
+      "edit",
+      "deploy",
+      "publica",
+      "publish",
+      "envia",
+      "send",
+      "pesquisa",
+      "research",
+      "compara",
+      "compare",
+      "posta",
+      "migra",
+      "migrate",
+      "atualiza",
+      "update",
+      "revisa",
+      "review",
+      "configura",
+      "configure",
+      "roda",
+      "run"
+    ],
+    "sequence": ["e depois", "and then"],
+    "risk": {
+      "high": [
+        "deploy",
+        "prod",
+        "delete",
+        "deleta",
+        "deletar",
+        "apaga",
+        "apagar",
+        "remove",
+        "pagar",
+        "pagamento",
+        "stripe",
+        "rm -rf"
+      ],
+      "external": ["push", "merge", "email", "post"],
+      "local": ["edit", "write"]
+    },
+    "language": {
+      "pt": ["que", "não", "para", "com"],
+      "en": ["the", "and", "with"],
+      "es": ["el", "la", "con", "para"]
+    },
+    "owner": {
+      "roles": ["dev", "worker"],
+      "leadName": "lead"
+    },
+    "limits": {
+      "ruleChars": 8000,
+      "payloadChars": 2000
+    }
+  },
+  "cases": [
+    {
+      "name": "/status",
+      "facts": {
+        "text": "/status",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "system",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "implementa o login para o app",
+      "facts": {
+        "text": "implementa o login para o app",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "fix the bug in the parser",
+      "facts": {
+        "text": "fix the bug in the parser",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "please refactor the auth module and add tests",
+      "facts": {
+        "text": "please refactor the auth module and add tests",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 1,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "deploy to production now",
+      "facts": {
+        "text": "deploy to production now",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "pesquisa o preço do ETH com a concorrência",
+      "facts": {
+        "text": "pesquisa o preço do ETH com a concorrência",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "compare the fees of two exchanges",
+      "facts": {
+        "text": "compare the fees of two exchanges",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "quanto custa uma VPS na Hetzner",
+      "facts": {
+        "text": "quanto custa uma VPS na Hetzner",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "posta no twitter sobre o lançamento",
+      "facts": {
+        "text": "posta no twitter sobre o lançamento",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "publish the release notes",
+      "facts": {
+        "text": "publish the release notes",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "envia email para o cliente",
+      "facts": {
+        "text": "envia email para o cliente",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 2,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "stripe cobrança do mês",
+      "facts": {
+        "text": "stripe cobrança do mês",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "todo dia às 9 manda o resumo",
+      "facts": {
+        "text": "todo dia às 9 manda o resumo",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "routine",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "every day at 9 send the summary",
+      "facts": {
+        "text": "every day at 9 send the summary",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "routine",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "me manda um oi",
+      "facts": {
+        "text": "me manda um oi",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "hi, how are you",
+      "facts": {
+        "text": "hi, how are you",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "delete the old branch",
+      "facts": {
+        "text": "delete the old branch",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "edit the readme with the new title",
+      "facts": {
+        "text": "edit the readme with the new title",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 1,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "@dev-demo revisa isso",
+      "facts": {
+        "text": "@dev-demo revisa isso",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.9
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "writer, escreve um post sobre IA",
+      "facts": {
+        "text": "writer, escreve um post sobre IA",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000003",
+          "confidence": 0.9
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 2,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "push the branch and then open a PR",
+      "facts": {
+        "text": "push the branch and then open a PR",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 1,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 2,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "bom dia, tudo bem?",
+      "facts": {
+        "text": "bom dia, tudo bem?",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "que horas são",
+      "facts": {
+        "text": "que horas são",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "implement the feature with tests",
+      "facts": {
+        "text": "implement the feature with tests",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "ajusta o parser do repo",
+      "facts": {
+        "text": "ajusta o parser do repo",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": true
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.6
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "resume o texto com cuidado",
+      "facts": {
+        "text": "resume o texto com cuidado",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "edit the config and then write docs",
+      "facts": {
+        "text": "edit the config and then write docs",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 2,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 1,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "implementar o login e testar",
+      "facts": {
+        "text": "implementar o login e testar",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "tests are failing, fix bugs",
+      "facts": {
+        "text": "tests are failing, fix bugs",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "revisar as PRs abertas",
+      "facts": {
+        "text": "revisar as PRs abertas",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "pesquisar preços de VPS",
+      "facts": {
+        "text": "pesquisar preços de VPS",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "publicar o release",
+      "facts": {
+        "text": "publicar o release",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "deletar a branch antiga",
+      "facts": {
+        "text": "deletar a branch antiga",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "remove the cache",
+      "facts": {
+        "text": "remove the cache",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "en",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "pagamento pendente do cliente",
+      "facts": {
+        "text": "pagamento pendente do cliente",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 3,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "el informe con los datos",
+      "facts": {
+        "text": "el informe con los datos",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "es",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "la reunión es mañana",
+      "facts": {
+        "text": "la reunión es mañana",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "es",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "hola, ¿cómo estás?",
+      "facts": {
+        "text": "hola, ¿cómo estás?",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "para ti",
+      "facts": {
+        "text": "para ti",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    },
+    {
+      "name": "NFD text reads as NFC",
+      "facts": {
+        "text": "pesquisa a café do mercado",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "NFC text twin of the NFD case",
+      "facts": {
+        "text": "pesquisa a café do mercado",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "text beyond ruleChars is ignored",
+      "facts": {
+        "text": "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a delete",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 3,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "astral cut at ruleChars counts UTF-16 units",
+      "facts": {
+        "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀 delete",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 3,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "astral chars count two UTF-16 units each",
+      "facts": {
+        "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 implementa",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 1,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "botHint wins over a mention",
+      "facts": {
+        "text": "@writer implementa o login",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false,
+        "botHint": "bot_00000000-0000-4000-8000-000000000002"
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.9
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "mention first in the text wins",
+      "facts": {
+        "text": "pede pro writer e depois dev-demo implementa",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 1,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000003",
+          "confidence": 0.9
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "executor falls back to allowed list",
+      "facts": {
+        "text": "implementa o login",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": false
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "codex",
+          "confidence": 0.6
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "no executor available",
+      "facts": {
+        "text": "implementa o login",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": false
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "no candidates gives owner new",
+      "facts": {
+        "text": "oi tudo bem",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "new",
+          "confidence": 0.3
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "complexity from length verbs and sequence",
+      "facts": {
+        "text": "pesquisa o preco, depois compara, e depois envia o relatorio com detalhes para o time e atualiza a documentacao do projeto com exemplos e revisa tudo",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "research",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 4,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "list line makes parallelizable at complexity 3",
+      "facts": {
+        "text": "1. implementa login\n2. testa o login\n3. revisa o PR e atualiza o doc com exemplos extensos para o time inteiro, detalhando cada etapa do processo de forma completa e clara",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 3,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": true,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.9
+        }
+      }
+    },
+    {
+      "name": "routine hour pattern",
+      "facts": {
+        "text": "lembra de mandar o resumo às 9 da manha",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "routine",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "repo presence is weak code",
+      "facts": {
+        "text": "ok valeu",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": true
+      },
+      "expected": {
+        "intent": {
+          "value": "code",
+          "confidence": 0.6
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000002",
+          "confidence": 0.7
+        },
+        "executor": {
+          "value": "claude-code",
+          "confidence": 0.9
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "slash command after trim",
+      "facts": {
+        "text": "  /status",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "system",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "whitespace only",
+      "facts": {
+        "text": "   \n\t  ",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "chat",
+          "confidence": 0.5
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 0,
+          "confidence": 0.5
+        },
+        "needs_approval": {
+          "value": false,
+          "confidence": 0.5
+        },
+        "language": {
+          "value": "other",
+          "confidence": 0.5
+        }
+      }
+    },
+    {
+      "name": "needs approval at risk 2",
+      "facts": {
+        "text": "envia email para o cliente",
+        "channel": "telegram",
+        "userId": "42",
+        "bots": [
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000001",
+            "name": "lead",
+            "role": "coordinator"
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000002",
+            "name": "dev-demo",
+            "role": "developer",
+            "routing": {
+              "preferred": ["claude-code"],
+              "allowed": ["claude-code", "codex"]
+            }
+          },
+          {
+            "id": "bot_00000000-0000-4000-8000-000000000003",
+            "name": "writer",
+            "role": "content"
+          }
+        ],
+        "executors": [
+          {
+            "id": "claude-code",
+            "available": true
+          },
+          {
+            "id": "codex",
+            "available": true
+          }
+        ],
+        "hasRepo": false
+      },
+      "expected": {
+        "intent": {
+          "value": "app_op",
+          "confidence": 0.9
+        },
+        "complexity": {
+          "value": 0,
+          "confidence": 0.6
+        },
+        "owner": {
+          "value": "bot_00000000-0000-4000-8000-000000000001",
+          "confidence": 0.6
+        },
+        "executor": {
+          "value": "none",
+          "confidence": 0
+        },
+        "parallelizable": {
+          "value": false,
+          "confidence": 0.6
+        },
+        "risk": {
+          "value": 2,
+          "confidence": 0.9
+        },
+        "needs_approval": {
+          "value": true,
+          "confidence": 0.9
+        },
+        "language": {
+          "value": "pt",
+          "confidence": 0.6
+        }
+      }
+    }
+  ]
+}
