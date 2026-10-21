@@ -19,11 +19,16 @@ export type ExecResult = {
   readonly stderr: string
   readonly durationMs: number
   readonly timedOut: boolean
+  // Set when `maxOutputBytes` was reached: the output was cut there and the process group was killed.
+  readonly outputTruncated?: boolean
 }
 
 export type ExecOptions = {
   readonly timeoutMs?: number
   readonly stdin?: string
+  // Stops accumulating stdout+stderr at this many bytes and kills the process group (result.outputTruncated).
+  // Without it the output is unbounded, as before.
+  readonly maxOutputBytes?: number
   // Run under the lock of the Bot's clone that owns ctx.worktree (the one prepare/release/worktree-add take), so a
   // fetch or rebase never races with them. Ignored for a context without a worktree.
   readonly lockRepo?: boolean

@@ -1,5 +1,5 @@
 import { lstat, realpath } from "node:fs/promises"
-import { dirname, isAbsolute, relative, resolve } from "node:path"
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
 import { TankError } from "@shoalwork/contracts"
 import { Effect } from "effect"
 import type { BotOps } from "./ops.js"
@@ -14,7 +14,8 @@ export const checkSegment = (what: string, value: string): Effect.Effect<void, T
 
 export const isInside = (parent: string, child: string): boolean => {
   const rel = relative(parent, child)
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))
+  // A name that merely starts with two dots (..hidden) is inside; only ".." and "../x" climb out.
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
 const isEnoent = (cause: unknown): boolean =>

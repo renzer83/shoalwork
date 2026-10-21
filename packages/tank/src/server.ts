@@ -35,6 +35,7 @@ type Call = PassEnv & {
   readonly env?: Readonly<Record<string, string>> | undefined
   readonly timeoutMs?: number | undefined
   readonly stdin?: string | undefined
+  readonly maxOutputBytes?: number | undefined
 }
 
 const checkExit = (op: string, r: ExecResult): Effect.Effect<void, TankError> =>
@@ -67,6 +68,7 @@ const botOps = (
         env: plan.env,
         ...(call.timeoutMs === undefined ? {} : { timeoutMs: call.timeoutMs }),
         ...(call.stdin === undefined ? {} : { stdin: call.stdin }),
+        ...(call.maxOutputBytes === undefined ? {} : { maxOutputBytes: call.maxOutputBytes }),
       })
       const refused = sudo ? sudoRefusal(r.exitCode, r.stderr) : undefined
       if (refused !== undefined) return yield* Effect.fail(refused)

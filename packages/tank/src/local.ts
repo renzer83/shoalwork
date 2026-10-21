@@ -246,6 +246,7 @@ export const makeBotTank = (
             passEnv: ctx.stepEnv ?? {},
             ...(opts?.timeoutMs === undefined ? {} : { timeoutMs: opts.timeoutMs }),
             ...(opts?.stdin === undefined ? {} : { stdin: opts.stdin }),
+            ...(opts?.maxOutputBytes === undefined ? {} : { maxOutputBytes: opts.maxOutputBytes }),
           })
           return opts?.lockRepo === true && ctx.worktree !== undefined
             ? lockFor(ctx.worktree.repoDir).withPermits(1)(run)

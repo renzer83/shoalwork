@@ -32,6 +32,12 @@ export {
   mcpConfigFor,
 } from "./mcp-config.js"
 export { parseNdjsonLines } from "./ndjson.js"
+export {
+  type FetchLike,
+  makeOpenAICompat,
+  type OpenAICompatOptions,
+  type OpenAICompatPolicy,
+} from "./openai-compat/index.js"
 export { type OpencodeProvider, opencodeConfigFor, writeOpencodeConfig } from "./opencode/config.js"
 export { makeOpencode, OPENCODE_ID, type OpencodeOptions } from "./opencode/index.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"

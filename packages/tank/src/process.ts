@@ -10,7 +10,11 @@ export type ProcessOptions = {
   readonly env: Readonly<Record<string, string>>
 }
 
-export type RunOptions = ProcessOptions & { readonly timeoutMs?: number; readonly stdin?: string }
+export type RunOptions = ProcessOptions & {
+  readonly timeoutMs?: number
+  readonly stdin?: string
+  readonly maxOutputBytes?: number
+}
 
 // Grace period between SIGTERM and SIGKILL of the process group.
 const KILL_GRACE_MS = 5000
@@ -32,6 +36,15 @@ const signalGroup = (pid: number, signal: "SIGTERM" | "SIGKILL" | 0): boolean =>
 }
 
 const POLL_MS = 25
+
+// The first `max` bytes of the text, never ending inside a multi-byte character.
+const cutBytes = (text: string, max: number): string => {
+  const buf = Buffer.from(text, "utf8")
+  let end = Math.min(max, buf.length)
+  // The byte after the cut is a continuation byte (10xxxxxx): the cut is inside a character, back up to its start.
+  while (end > 0 && end < buf.length && ((buf[end] ?? 0) & 0xc0) === 0x80) end -= 1
+  return buf.toString("utf8", 0, end)
+}
 
 // Every process a Tank spawns while it runs, keyed by pid. The watchdog reads it to find processes that run too long.
 export type TrackedProcess = {
@@ -170,6 +183,7 @@ export const spawnProcess = (
   })
 
 // Runs to completion, collecting raw stdout/stderr. Interruption kills the process group (scope finalizer).
+// With maxOutputBytes the output stops growing at the cap and the group is killed (outputTruncated).
 export const runProcess = (
   cmd: ReadonlyArray<string>,
   opts: RunOptions,
@@ -179,23 +193,43 @@ export const runProcess = (
       const started = Date.now()
       let stdout = ""
       let stderr = ""
+      let bytes = 0
+      let truncated = false
+      const cap = opts.maxOutputBytes
+      const overflow = Deferred.makeUnsafe<void>()
+      // Appends what fits under the cap; the first excess chunk flags the overflow and later chunks are dropped.
+      const take = (chunk: string, into: "out" | "err") => {
+        let text = chunk
+        if (cap !== undefined) {
+          if (truncated) return
+          const size = Buffer.byteLength(chunk)
+          if (bytes + size > cap) {
+            text = cutBytes(chunk, Math.max(0, cap - bytes))
+            truncated = true
+            Deferred.doneUnsafe(overflow, Effect.void)
+          }
+          bytes = Math.min(cap, bytes + size)
+        }
+        if (into === "out") stdout += text
+        else stderr += text
+      }
       const p = yield* spawnRaw(cmd, opts, (child) => {
-        child.stdout.on("data", (chunk: string) => {
-          stdout += chunk
-        })
-        child.stderr.on("data", (chunk: string) => {
-          stderr += chunk
-        })
+        child.stdout.on("data", (chunk: string) => take(chunk, "out"))
+        child.stderr.on("data", (chunk: string) => take(chunk, "err"))
       })
       // Always close stdin so commands that read it do not hang.
       p.child.stdin.end(opts.stdin ?? "")
-      const awaited = Deferred.await(p.closed)
+      // None = the output cap fired (or the timeout, below); Some = the leader closed.
+      const waited = Effect.raceFirst(
+        Deferred.await(p.closed).pipe(Effect.map(Option.some)),
+        Deferred.await(overflow).pipe(Effect.as(Option.none<Closed>())),
+      )
       const result =
         opts.timeoutMs === undefined
-          ? Option.some(yield* awaited)
-          : yield* awaited.pipe(Effect.timeoutOption(opts.timeoutMs))
-      const timedOut = Option.isNone(result)
-      if (timedOut) yield* p.terminate
+          ? yield* waited
+          : Option.flatten(yield* waited.pipe(Effect.timeoutOption(opts.timeoutMs)))
+      const timedOut = Option.isNone(result) && !truncated
+      if (Option.isNone(result)) yield* p.terminate
       // After terminate the leader is closed unless even SIGKILL failed; never hang on it.
       const closed = Option.isSome(result)
         ? Option.some(result.value)
@@ -206,6 +240,7 @@ export const runProcess = (
         stderr,
         durationMs: Date.now() - started,
         timedOut,
+        ...(truncated ? { outputTruncated: true } : {}),
       }
     }),
   )
