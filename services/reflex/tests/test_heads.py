@@ -104,7 +104,7 @@ def test_choose_tau_is_the_smallest_qualifying_threshold_and_none_when_impossibl
 
 
 def test_question_with_two_examples_is_disabled_and_has_no_head(tmp_path: Path) -> None:
-    data = write_dataset(tmp_path, {"urgent": 100, "bot": 2}, noise=0.1)
+    data = write_dataset(tmp_path, {"urgent": 300, "bot": 2}, noise=0.1)
     out = tmp_path / "models" / "reflex-v1"
     manifest = train_all(data, out, FakeEncoder(), version=1, now=NOW)
     assert manifest.questions["bot"].disabled and manifest.questions["bot"].sha256 is None

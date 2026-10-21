@@ -18,6 +18,8 @@ class Metrics(TypedDict):
     qwk: float | None
     ece: float | None
     coverage: float
+    # Accuracy of the answered rows (confidence >= tau) of the test split; None when nothing is answered.
+    selective_accuracy: float | None
     n_train: int
     n_test: int
 
@@ -72,7 +74,9 @@ def choose_tau(
 def evaluate(head: Head, X: np.ndarray, y: list[str], n_train: int, disabled: bool) -> Metrics:
     n = len(y)
     if n == 0:
-        return Metrics(macro_f1=None, qwk=None, ece=None, coverage=0.0, n_train=n_train, n_test=0)
+        return Metrics(
+            macro_f1=None, qwk=None, ece=None, coverage=0.0, selective_accuracy=None, n_train=n_train, n_test=0
+        )
     found = predictions(head, X)
     truth = np.array(y)
     guessed = np.array(found.labels)
@@ -83,12 +87,15 @@ def evaluate(head: Head, X: np.ndarray, y: list[str], n_train: int, disabled: bo
     if head.kind == "score":
         kappa = float(cohen_kappa_score([int(v) for v in y], [int(v) for v in found.labels], weights="quadratic"))
         qwk = None if np.isnan(kappa) else kappa
-    coverage = 0.0 if disabled else float((found.confidence >= head.tau).mean())
+    answered = found.confidence >= head.tau
+    coverage = 0.0 if disabled else float(answered.mean())
+    selective = None if disabled or not answered.any() else float(correct[answered].mean())
     return Metrics(
         macro_f1=macro,
         qwk=qwk,
         ece=ece(found.confidence, correct),
         coverage=coverage,
+        selective_accuracy=selective,
         n_train=n_train,
         n_test=n,
     )

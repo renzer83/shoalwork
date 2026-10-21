@@ -3,6 +3,7 @@
 Class keys are strings: "true"/"false" for noul, the option id for choice, an integer text ("0".."4") for score.
 """
 
+import io
 from pathlib import Path
 from typing import Any, Literal
 
@@ -127,17 +128,25 @@ class Head:
             path,
         )
 
-    # joblib is pickle: only artifacts whose sha256 matches the manifest are ever loaded (see artifact.py).
+    # joblib is pickle: only bytes whose sha256 matches the manifest reach this (see artifact.py).
     @classmethod
-    def load(cls, path: Path) -> "Head":
-        state: Any = joblib.load(path)
+    def from_bytes(cls, data: bytes) -> "Head":
+        state: Any = joblib.load(io.BytesIO(data))
         if not isinstance(state, dict) or set(state) != STATE_KEYS:
-            raise HeadError(f"{path.name}: not a head file")
+            raise HeadError("not a head file")
+        classifier, calibrated = state["classifier"], state["calibrated"]
+        if not isinstance(classifier, LogisticRegression):
+            raise HeadError("classifier is not a LogisticRegression")
+        if calibrated is not None and not isinstance(calibrated, CalibratedClassifierCV):
+            raise HeadError("calibrator is not a CalibratedClassifierCV")
+        tau, method = state["tau"], state["method"]
+        if not isinstance(tau, float) or not 0.0 <= tau <= 1.0 or method not in (None, "sigmoid", "isotonic"):
+            raise HeadError("calibration state is out of range")
         head = cls(state["question_id"], state["kind"], state["classes"])
-        head.tau = float(state["tau"])
-        head.method = state["method"]
-        head._classifier = state["classifier"]
-        head._calibrated = state["calibrated"]
+        head.tau = tau
+        head.method = method
+        head._classifier = classifier
+        head._calibrated = calibrated
         return head
 
     def _require_classifier(self) -> LogisticRegression:

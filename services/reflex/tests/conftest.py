@@ -3,6 +3,7 @@
 import hashlib
 import json
 import random
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
@@ -32,8 +33,13 @@ VOCAB: dict[str, dict[str, list[str]]] = {
         "3": ["alta", "cliente"],
         "4": ["critica", "incidente"],
     },
+    "owner": {
+        "bot_a": ["fatura", "pagamento", "boleto"],
+        "bot_b": ["relatorio", "grafico", "planilha"],
+        "new": ["novo", "projeto", "inicio"],
+    },
 }
-KINDS = {"urgent": "noul", "bot": "choice", "priority": "score"}
+KINDS = {"urgent": "noul", "bot": "choice", "priority": "score", "owner": "choice"}
 
 
 class FakeEncoder:
@@ -102,10 +108,25 @@ def encoder() -> FakeEncoder:
     return FakeEncoder()
 
 
-# 3 questions, 400 rows (100 + 100 + 200), 15% of rows show another class's words.
+def copy_artifact(source: Path, target: Path) -> Path:
+    shutil.copytree(source, target)
+    return target
+
+
+def replace_head(directory: Path, question_id: str, data: bytes) -> None:
+    """Writes head bytes and stamps their sha256 into the manifest: the hash matches, the content is what it is."""
+    (directory / "heads" / f"{question_id}.joblib").write_bytes(data)
+    path = directory / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["questions"][question_id]["sha256"] = hashlib.sha256(data).hexdigest()
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+# 3 questions, 900 rows (300 each): 210 train, 45 calib (>= min_calib 30), 45 test. 5% of rows show another
+# class's words: at 15% the 3-class `bot` head cannot reach 0.90 accuracy at 50% coverage (not separable).
 @pytest.fixture(scope="module")
 def dataset(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    return write_dataset(tmp_path_factory.mktemp("synthetic"), {"urgent": 100, "bot": 100, "priority": 200}, noise=0.15)
+    return write_dataset(tmp_path_factory.mktemp("synthetic"), {"urgent": 300, "bot": 300, "priority": 300}, noise=0.05)
 
 
 YAML_PATH = Path(__file__).resolve().parents[3] / "config" / "reflex.config.yaml"

@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +34,8 @@ from reflex.model.heads import Head, HeadError, HeadKind, Label, class_key, labe
 
 SPLITS = ("train", "calib", "test")
 DEFAULT_MIN_TRAIN = 10
+# Fewer calibration rows than this and tau is noise: the question stays disabled.
+DEFAULT_MIN_CALIB = 30
 DEFAULT_DIMS = 384
 
 
@@ -48,6 +52,7 @@ class TrainConfig:
     target_accuracy: float = DEFAULT_TARGET_ACCURACY
     min_coverage: float = DEFAULT_MIN_COVERAGE
     min_train: int = DEFAULT_MIN_TRAIN
+    min_calib: int = DEFAULT_MIN_CALIB
 
 
 Rows = tuple[list[str], list[Label]]
@@ -84,6 +89,34 @@ def _embed(embedder: Encoder, texts: list[str]) -> np.ndarray:
     return np.asarray(embedder.encode(texts, kind="query"), dtype=np.float32)
 
 
+def _staging_dir(out_dir: Path) -> Path:
+    """A sibling of out_dir, claimed for this run. Another run on the same output fails here, with a message."""
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    prefix = f"{out_dir.name}.tmp-"
+    leftovers = sorted(p.name for p in out_dir.parent.iterdir() if p.name.startswith(prefix))
+    if leftovers:
+        raise TrainError(
+            f"{out_dir}: another training run is writing it, or left {', '.join(leftovers)} behind; "
+            "wait for it or remove the leftovers"
+        )
+    staging = out_dir.with_name(f"{prefix}{os.getpid()}")
+    try:
+        staging.mkdir()
+    except FileExistsError as error:
+        raise TrainError(f"{out_dir}: another training run is writing it ({staging.name})") from error
+    return staging
+
+
+def _publish(staging: Path, out_dir: Path) -> None:
+    """Moves the finished staging directory to out_dir in one rename: the artifact appears whole or not at all."""
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise TrainError(f"{out_dir} was written by a concurrent run: artifacts are immutable")
+    try:
+        os.rename(staging, out_dir)
+    except OSError as error:
+        raise TrainError(f"cannot publish {out_dir} (a concurrent run may have written it): {error}") from error
+
+
 def train_all(
     data_dir: Path,
     out_dir: Path,
@@ -96,6 +129,24 @@ def train_all(
         raise TrainError("version must be at least 1")
     if out_dir.exists() and any(out_dir.iterdir()):
         raise TrainError(f"{out_dir} already exists and is not empty: artifacts are immutable, pick a new version")
+    staging = _staging_dir(out_dir)
+    try:
+        manifest = _build(data_dir, staging, embedder, version, config, now)
+        _publish(staging, out_dir)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return manifest
+
+
+def _build(
+    data_dir: Path,
+    staging: Path,
+    embedder: Encoder,
+    version: int,
+    config: TrainConfig,
+    now: datetime | None,
+) -> Manifest:
     stats = load_stats(data_dir)
     for question_id in stats:
         if not QUESTION_ID.fullmatch(question_id):
@@ -119,8 +170,7 @@ def train_all(
         dataset_sha256=dataset_sha256(data_dir, list(stats)),
         questions=entries,
     )
-    out_dir.mkdir(parents=True, exist_ok=True)
-    return Artifact.write(out_dir, manifest, heads)
+    return Artifact.write(staging, manifest, heads)
 
 
 def _disabled(kind: HeadKind, classes: list[str], metrics: Metrics, reason: str) -> QuestionEntry:
@@ -130,7 +180,9 @@ def _disabled(kind: HeadKind, classes: list[str], metrics: Metrics, reason: str)
 
 
 def _empty_metrics(n_train: int, n_test: int) -> Metrics:
-    return Metrics(macro_f1=None, qwk=None, ece=None, coverage=0.0, n_train=n_train, n_test=n_test)
+    return Metrics(
+        macro_f1=None, qwk=None, ece=None, coverage=0.0, selective_accuracy=None, n_train=n_train, n_test=n_test
+    )
 
 
 def _train_question(
@@ -156,6 +208,9 @@ def _train_question(
         return _disabled("choice", [], _empty_metrics(n_train, n_test), str(error)), None, None
     if n_train < config.min_train:
         return _disabled(kind, classes, _empty_metrics(n_train, n_test), f"only {n_train} training rows"), None, None
+    if len(calib_y) < config.min_calib:
+        reason = f"only {len(calib_y)} calibration rows (min {config.min_calib})"
+        return _disabled(kind, classes, _empty_metrics(n_train, n_test), reason), None, None
     if len(classes) < 2:
         return _disabled(kind, classes, _empty_metrics(n_train, n_test), "a single class in training"), None, None
 

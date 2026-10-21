@@ -5,15 +5,16 @@ from typing import Any
 
 import numpy as np
 import pytest
-from conftest import FakeEncoder
+from conftest import FakeEncoder, copy_artifact, replace_head, write_dataset
 from fastapi.testclient import TestClient
 
 from reflex.app import MODEL_VERSION, build_default_app, create_app
-from reflex.contract import Answer, Facts, Question
+from reflex.contract import Answer, BotFact, Facts, Question
 from reflex.model import embedder as embedder_module
 from reflex.model.artifact import Artifact, ArtifactError
+from reflex.model.embedder import EmbedderError
 from reflex.model.predict import MODEL_DIR_ENV, Predictor, load_predictor
-from reflex.model.train import train_all
+from reflex.model.train import TrainConfig, train_all
 from reflex.rules import RulesConfig
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
@@ -174,3 +175,61 @@ def test_model_dir_is_optional_and_a_bad_one_stops_the_boot(
     assert client.get("/v1/version").json()["modelVersion"] == "reflex-v1"
     plain = TestClient(build_default_app({"REFLEX_CONFIG": str(rules_config_path)}, ["uvicorn"]))
     assert plain.get("/v1/version").json()["modelVersion"] == MODEL_VERSION
+
+
+def bot_fact(bot_id: str) -> BotFact:
+    return BotFact(id=bot_id, name=bot_id.upper(), role="dev")
+
+
+def test_owner_options_come_from_the_request_bots_and_new(tmp_path: Path) -> None:
+    out = tmp_path / "reflex-v1"
+    train_all(write_dataset(tmp_path, {"owner": 300}, noise=0.05), out, FakeEncoder(), 1, now=NOW)
+    predictor = Predictor(Artifact.load(out), FakeEncoder())
+    owner = Question(id="owner", kind="choice")
+
+    def ask(text: str, bots: list[BotFact]) -> Answer:
+        request = Facts(text=text, channel="api", userId="42", bots=bots, executors=[])
+        return predictor.answer(request, [owner], rule)[0]
+
+    both = ask("fatura pagamento ok", [bot_fact("bot_a"), bot_fact("bot_b")])
+    assert (both.value, both.source, both.abstained) == ("bot_a", "model", False)
+    # bot_a is not among this request's bots, so the model's class cannot be the answer: the rule answers.
+    absent = ask("fatura pagamento ok", [bot_fact("bot_b")])
+    assert (absent.source, absent.abstained) == ("rule", True)
+    # "new" is always offered.
+    created = ask("novo projeto inicio", [bot_fact("bot_b")])
+    assert (created.value, created.source) == ("new", "model")
+
+
+def test_a_head_disabled_at_tau_one_is_never_used(dataset: Path, tmp_path: Path) -> None:
+    out = tmp_path / "reflex-v1"
+    train_all(dataset, out, FakeEncoder(), 1, TrainConfig(target_accuracy=1.0, min_coverage=0.99), NOW)
+    artifact = Artifact.load(out)
+    assert artifact.heads and all(head.tau == 1.0 for head in artifact.heads.values())
+    assert all(entry.disabled for entry in artifact.manifest.questions.values())
+    spy = FakeEncoder()
+    answers = Predictor(artifact, spy).answer(facts("agora urgente fatura"), [URGENT, BOT, PRIORITY], rule)
+    assert [(a.source, a.abstained) for a in answers] == [("rule", False)] * 3
+    assert spy.calls == []
+
+
+def test_a_corrupt_head_stops_the_boot_with_one_message(
+    trained: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    copy = copy_artifact(trained, tmp_path / "reflex-v1")
+    replace_head(copy, "urgent", b"\x00not a pickle")
+    monkeypatch.setattr(embedder_module, "Embedder", lambda directory: FakeEncoder())
+    with pytest.raises(RuntimeError, match="refusing to serve") as refusal:
+        load_predictor({MODEL_DIR_ENV: str(copy)})
+    assert "urgent.joblib" in str(refusal.value)
+
+
+def test_an_embedder_that_cannot_load_stops_the_boot_with_one_message(
+    trained: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unavailable(directory: str) -> None:
+        raise EmbedderError("no model.onnx")
+
+    monkeypatch.setattr(embedder_module, "Embedder", unavailable)
+    with pytest.raises(RuntimeError, match=f"refusing to serve: {MODEL_DIR_ENV}="):
+        load_predictor({MODEL_DIR_ENV: str(trained)})

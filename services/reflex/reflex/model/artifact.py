@@ -1,7 +1,12 @@
 """Versioned artifact `reflex-v<N>/`: `manifest.json` + `heads/<question>.joblib`.
 
-The loader refuses an artifact whose schema, version tag, encoder or scikit-learn release differs from this code, and
-any head file whose sha256 differs from the manifest (joblib is pickle: an unchecked file would run code on load).
+The loader refuses an artifact whose schema, version tag, encoder or scikit-learn release differs from this code.
+
+The sha256 of each head is anti-corruption (truncated copies, partial writes, bit rot), NOT anti-tampering: the manifest
+sits in the same directory, so whoever can write a head can rewrite its hash too. joblib is pickle, so the artifact
+directory must be writable only by the operator of the service. Each head is read once; its bytes are hashed and
+unpickled as the same bytes (no window between check and load). Symlinks, and paths that resolve outside the artifact
+directory, are refused.
 """
 
 import hashlib
@@ -15,7 +20,7 @@ import sklearn
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from reflex.model.calibrate import Metrics
-from reflex.model.heads import Head, HeadError, HeadKind
+from reflex.model.heads import Head, HeadKind
 
 SCHEMA_VERSION = 1
 EMBEDDER_NAME = "e5-small"
@@ -38,6 +43,8 @@ class MetricsEntry(_Strict):
     qwk: float | None
     ece: float | None
     coverage: float
+    # Optional so manifests written before this field still load; new artifacts always write it.
+    selective_accuracy: float | None = None
     n_train: int
     n_test: int
 
@@ -80,10 +87,29 @@ def _minor(release: str) -> str:
     return ".".join(release.split(".")[:2])
 
 
-def head_path(directory: Path, question_id: str) -> Path:
+def _check_question_id(question_id: str) -> None:
     if not QUESTION_ID.fullmatch(question_id):
         raise ArtifactError(f"question id {question_id!r} cannot be used as a file name")
+
+
+def head_path(directory: Path, question_id: str) -> Path:
+    _check_question_id(question_id)
     return directory / HEADS_DIR / f"{question_id}.joblib"
+
+
+def _read_head(directory: Path, question_id: str) -> bytes:
+    path = head_path(directory, question_id)
+    if path.is_symlink():
+        raise ArtifactError(f"{path.name}: symlinks are refused")
+    if not path.resolve().is_relative_to(directory.resolve()):
+        raise ArtifactError(f"{path.name}: resolves outside the artifact directory")
+    try:
+        # O_NOFOLLOW makes the open itself refuse a symlink swapped in after the checks above.
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            return handle.read()
+    except OSError as error:
+        raise ArtifactError(f"{path.name}: missing or unreadable ({error})") from error
 
 
 @dataclass(frozen=True)
@@ -120,11 +146,12 @@ class Artifact:
             if entry.sha256 is None:
                 continue
             path = head_path(directory, question_id)
-            if not path.is_file() or file_sha256(path) != entry.sha256:
-                raise ArtifactError(f"{path.name}: missing or does not match the manifest hash")
+            data = _read_head(directory, question_id)
+            if hashlib.sha256(data).hexdigest() != entry.sha256:
+                raise ArtifactError(f"{path.name}: does not match the manifest hash")
             try:
-                head = Head.load(path)
-            except (HeadError, OSError, ValueError, EOFError) as error:
+                head = Head.from_bytes(data)
+            except Exception as error:  # any unpickling failure (corrupt bytes, missing module...) is an artifact error
                 raise ArtifactError(f"{path.name}: cannot be loaded ({error})") from error
             if (head.question_id, head.kind, head.classes, head.tau) != (
                 question_id,
@@ -153,6 +180,8 @@ class Artifact:
             manifest = Manifest.model_validate(raw)
         except ValidationError as error:
             raise ArtifactError(f"{path}: invalid manifest ({error.error_count()} problems)") from error
+        for question_id in manifest.questions:
+            _check_question_id(question_id)
         if manifest.embedder != EMBEDDER_NAME:
             raise ArtifactError(f"artifact was trained on encoder {manifest.embedder!r}, expected {EMBEDDER_NAME!r}")
         if _minor(manifest.sklearn) != _minor(sklearn.__version__):

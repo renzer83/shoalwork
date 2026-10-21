@@ -110,9 +110,10 @@ def load_predictor(environ: Mapping[str, str] = os.environ) -> Predictor | None:
 
     try:
         artifact = Artifact.load(Path(model_dir))
-    except ArtifactError as error:
+        embedder = Embedder((environ.get(EMBEDDER_DIR_ENV) or "").strip() or DEFAULT_EMBEDDER_DIR)
+        predictor = Predictor(artifact, embedder)
+    except Exception as error:  # whatever the loader or the ONNX runtime raised, the boot stops with one message
         raise RuntimeError(f"refusing to serve: {MODEL_DIR_ENV}={model_dir}: {error}") from error
-    embedder = Embedder((environ.get(EMBEDDER_DIR_ENV) or "").strip() or DEFAULT_EMBEDDER_DIR)
     active = sum(not entry.disabled for entry in artifact.manifest.questions.values())
     logger.info("serving %s with %d active heads", artifact.version, active)
-    return Predictor(artifact, embedder)
+    return predictor
