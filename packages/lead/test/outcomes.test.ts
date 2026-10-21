@@ -1,6 +1,6 @@
 import { it } from "@effect/vitest"
 import { Beacon, BeaconTest } from "@shoalwork/beacon"
-import { type NewEvent, NotFound, streamIds, TaskId } from "@shoalwork/contracts"
+import { type NewEvent, NotFound, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
 import { Effect, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
 import { isTerminal, makeOutcomes, outcomeFor } from "../src/outcomes.js"
@@ -134,8 +134,9 @@ describe("makeOutcomes", () => {
       const outcomes = makeOutcomes(yield* Beacon)
       yield* outcomes.recordTaskOutcomes(TASK, "done")
 
-      expect(yield* outcomes.recordHumanCorrection("d-intent", "devia ir para o writer")).toBe(true)
-      expect(yield* outcomes.recordHumanCorrection("d-intent", "devia ir para o writer")).toBe(false)
+      const text = { kind: "text", note: "devia ir para o writer" } as const
+      expect(yield* outcomes.recordHumanCorrection("d-intent", text)).toBe(true)
+      expect(yield* outcomes.recordHumanCorrection("d-intent", text)).toBe(false)
 
       const latest = yield* outcomesNow
       expect(latest.get("d-intent")).toEqual({
@@ -150,9 +151,77 @@ describe("makeOutcomes", () => {
   it.effect("fails with NotFound when the decision does not exist", () =>
     Effect.gen(function* () {
       const outcomes = makeOutcomes(yield* Beacon)
-      const failure = yield* outcomes.recordHumanCorrection("d-missing", "nota").pipe(Effect.flip)
+      const failure = yield* outcomes
+        .recordHumanCorrection("d-missing", { kind: "text", note: "nota" })
+        .pipe(Effect.flip)
       expect(failure).toBeInstanceOf(NotFound)
       expect(failure).toMatchObject({ entity: "Decision", id: "d-missing" })
+    }).pipe(Effect.provide(BeaconTest)),
+  )
+
+  it.effect('stores a value correction as "-> <valor>" when the value is one of the question options', () =>
+    Effect.gen(function* () {
+      yield* appendAll(decisionsFor(TASK))
+      const outcomes = makeOutcomes(yield* Beacon)
+      yield* outcomes.recordTaskOutcomes(TASK, "done")
+
+      expect(yield* outcomes.recordHumanCorrection("d-intent", { kind: "value", value: "research" })).toBe(
+        true,
+      )
+
+      const latest = yield* outcomesNow
+      expect(latest.get("d-intent")).toEqual({
+        decisionId: "d-intent",
+        outcome: "corrected_by_human",
+        note: "-> research",
+      })
+    }).pipe(Effect.provide(BeaconTest)),
+  )
+
+  it.effect("accepts the owner and executor values of the roster and rejects any other", () =>
+    Effect.gen(function* () {
+      yield* appendAll(decisionsFor(TASK))
+      const outcomes = makeOutcomes(yield* Beacon)
+      yield* outcomes.recordTaskOutcomes(TASK, "done")
+
+      // decisionMade carries an empty roster: the owner options are only "new".
+      expect(yield* outcomes.recordHumanCorrection("d-owner", { kind: "value", value: "new" })).toBe(true)
+      const rejected = yield* outcomes
+        .recordHumanCorrection("d-executor", { kind: "value", value: "bot_not_in_roster" })
+        .pipe(Effect.flip)
+      expect(rejected).toBeInstanceOf(SchemaViolation)
+      expect(rejected).toMatchObject({ where: "correction.value" })
+    }).pipe(Effect.provide(BeaconTest)),
+  )
+
+  it.effect("rejects a value outside the options and writes nothing", () =>
+    Effect.gen(function* () {
+      yield* appendAll(decisionsFor(TASK))
+      const outcomes = makeOutcomes(yield* Beacon)
+      yield* outcomes.recordTaskOutcomes(TASK, "done")
+
+      const failure = yield* outcomes
+        .recordHumanCorrection("d-intent", { kind: "value", value: "writer" })
+        .pipe(Effect.flip)
+      expect(failure).toBeInstanceOf(SchemaViolation)
+      expect(failure).toMatchObject({ where: "correction.value", issue: "writer" })
+
+      const latest = yield* outcomesNow
+      expect(latest.get("d-intent")?.outcome).toBe("correct")
+    }).pipe(Effect.provide(BeaconTest)),
+  )
+
+  it.effect("rejects free text that would read as a value and keeps the decision open", () =>
+    Effect.gen(function* () {
+      yield* appendAll(decisionsFor(TASK))
+      const outcomes = makeOutcomes(yield* Beacon)
+      yield* outcomes.recordTaskOutcomes(TASK, "done")
+
+      const failure = yield* outcomes
+        .recordHumanCorrection("d-intent", { kind: "text", note: "-> writer" })
+        .pipe(Effect.flip)
+      expect(failure).toBeInstanceOf(SchemaViolation)
+      expect((yield* outcomesNow).get("d-intent")?.outcome).toBe("correct")
     }).pipe(Effect.provide(BeaconTest)),
   )
 })

@@ -74,6 +74,8 @@ describe("GET /reflex/export", () => {
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0] ?? "")).toMatchObject({
       decisionId: "evt_export_decision_1",
+      ts: expect.any(String),
+      correlationId: CORRELATION,
       question: { id: "intent", kind: "choice" },
       outcome: "correct",
     })

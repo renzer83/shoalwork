@@ -4,11 +4,19 @@ import {
   EventPayloads,
   type NewEvent,
   NotFound,
-  type SchemaViolation,
+  SchemaViolation,
   streamIds,
   type TaskState,
 } from "@shoalwork/contracts"
-import { Effect, Schema, Stream } from "effect"
+import {
+  type AnswerValue,
+  fitsKind,
+  fitsQuestion,
+  formatCorrection,
+  parseCorrection,
+  STANDARD_QUESTIONS,
+} from "@shoalwork/reflex"
+import { Effect, Option, Schema, Stream } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import { ACTOR } from "./verdict.js"
 
@@ -17,6 +25,18 @@ const CONFIRMED_QUESTIONS: ReadonlySet<string> = new Set(["intent", "owner", "ex
 
 const DecisionMade = EventPayloads["decision.made"]
 const DecisionOutcome = EventPayloads["decision.outcome"]
+
+// Renan's correction: free text kept as written, or the value he picked for the question (validated, then stored
+// as "-> <valor>" so the export can read it back).
+export type HumanCorrection =
+  | { readonly kind: "text"; readonly note: string }
+  | { readonly kind: "value"; readonly value: AnswerValue }
+
+// The bots and executors a decision was answered against. Owner and executor options come from them.
+const RosterFacts = Schema.Struct({
+  bots: Schema.Array(Schema.Struct({ id: Schema.String })),
+  executors: Schema.Array(Schema.Struct({ id: Schema.String })),
+})
 
 export const isTerminal = (state: TaskState): boolean =>
   state === "done" || state === "failed" || state === "cancelled"
@@ -70,6 +90,31 @@ const outcomeEvent = (
   correlationId,
 })
 
+// The note a correction stores. A value must fit the question it answers; free text must not read as a value,
+// or the export would take it for one.
+const correctionNote = (
+  decision: DecisionRow,
+  correction: HumanCorrection,
+): Effect.Effect<string, SchemaViolation> =>
+  Effect.gen(function* () {
+    if (correction.kind === "text") {
+      if (Option.isSome(parseCorrection(correction.note))) {
+        return yield* Effect.fail(new SchemaViolation({ where: "correction.note", issue: correction.note }))
+      }
+      return correction.note
+    }
+    const roster = yield* Schema.decodeUnknownEffect(RosterFacts)(decision.payload.facts).pipe(Effect.orDie)
+    const standard = STANDARD_QUESTIONS.find((question) => question.id === decision.payload.questionId)
+    const fits =
+      standard === undefined
+        ? fitsKind(decision.payload.kind, correction.value)
+        : fitsQuestion(standard, correction.value, roster)
+    if (!fits) {
+      return yield* Effect.fail(new SchemaViolation({ where: "correction.value", issue: correction.value }))
+    }
+    return formatCorrection(correction.value)
+  })
+
 // Outcomes of the Reflex decisions that belong to a task: those whose correlationId is the id of the message that
 // originated it (TaskSpec.correlationId) or, as a fallback, the task id itself. Called by the lifecycle on the
 // terminal transition; a decision that already has an outcome is left alone.
@@ -98,15 +143,17 @@ export const makeOutcomes = (beacon: BeaconShape) => {
     })
 
   // Renan's correction of a decision. Returns false when the decision was already corrected by a human.
+  // A value that does not fit its question fails with SchemaViolation and writes nothing.
   const recordHumanCorrection = (
     decisionId: string,
-    note: string,
+    correction: HumanCorrection,
   ): Effect.Effect<boolean, NotFound | SqlError | Conflict | SchemaViolation> =>
     Effect.gen(function* () {
       const decision = (yield* readDecisions(beacon)).find((row) => row.payload.decisionId === decisionId)
       if (decision === undefined) {
         return yield* Effect.fail(new NotFound({ entity: "Decision", id: decisionId }))
       }
+      const note = yield* correctionNote(decision, correction)
       const settled = yield* latestOutcomes(beacon)
       if (settled.get(decisionId)?.outcome === "corrected_by_human") {
         return false
