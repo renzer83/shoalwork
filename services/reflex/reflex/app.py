@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from reflex.answers import resolve
 from reflex.config import config_path, load_rules_config
 from reflex.contract import Answer, SystemOneRequest, SystemOneResponse
+from reflex.model.metrics import EmbedMetrics
 from reflex.rules import RulesConfig, compile_rules, score_all
 
 MODEL_VERSION = "rules-py-1"
@@ -33,7 +34,7 @@ UVICORN_DEFAULT_HOST = "127.0.0.1"
 logger = logging.getLogger("reflex")
 
 
-def create_app(config: RulesConfig, token: str | None) -> FastAPI:
+def create_app(config: RulesConfig, token: str | None, embed_metrics: EmbedMetrics | None = None) -> FastAPI:
     rules = compile_rules(config)
     expected = token.encode("utf-8") if token is not None else None
     app = FastAPI(title="reflex", version=MODEL_VERSION)
@@ -46,9 +47,13 @@ def create_app(config: RulesConfig, token: str | None) -> FastAPI:
         if not hmac.compare_digest(presented, expected):
             raise HTTPException(status_code=401, detail="invalid token")
 
+    # The embedding metrics appear only when an embedder is attached; without one the body keeps its v0 shape.
     @app.get("/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "modelVersion": MODEL_VERSION}
+        body: dict[str, object] = {"ok": True, "modelVersion": MODEL_VERSION}
+        if embed_metrics is not None:
+            body.update(embed_metrics.snapshot())
+        return body
 
     @app.get("/v1/version")
     def version() -> dict[str, str]:
