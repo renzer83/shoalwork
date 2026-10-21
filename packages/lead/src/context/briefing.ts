@@ -130,7 +130,12 @@ export const buildBriefing = (deps: BriefingDeps, input: BriefingInput): Effect.
           : []
     const ruleItems =
       wantsContext && ctx.worktree !== undefined
-        ? yield* soft(readRuleItems(deps.tank, ctx, query), [], "rules", deps)
+        ? yield* soft(
+            readRuleItems(deps.tank, ctx, { text: query, activeFiles, kind: spec.kind }),
+            [],
+            "rules",
+            deps,
+          )
         : []
     const blocks: ReadonlyArray<Block> = [
       instructionsBlock(bot, config),
