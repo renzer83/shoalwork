@@ -655,7 +655,8 @@ describe("one id from inbound to outcome", () => {
         const taskId = Schema.decodeUnknownSync(EventPayloads["task.received"])(received?.payload).task.id
         yield* lead_.runOnce(taskId)
         const withId = Array.from(yield* allEvents).filter((e) => e.correlationId === event.correlationId)
-        expect(withId.filter((e) => e.type === "decision.made")).toHaveLength(8)
+        // The Reflex's decisions plus the executor choice the runner records under the same correlation (T-074).
+        expect(withId.filter((e) => e.type === "decision.made")).toHaveLength(9)
         expect(withId.filter((e) => e.type === "decision.outcome").length).toBeGreaterThan(0)
         // The reply points at the inbound event, whose correlation id the connector copies to message.outbound.
         expect(h.telegram.sent[0]?.inReplyTo).toBe(event.id)

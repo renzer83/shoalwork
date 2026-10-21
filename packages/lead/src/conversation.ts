@@ -1,6 +1,6 @@
-import { Beacon } from "@shoalwork/beacon"
+import { Beacon, readExecutorQualityRows } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import type { Bot, BotId, Event, TaskId } from "@shoalwork/contracts"
+import type { Bot, BotId, Event, ExecutorId, TaskId } from "@shoalwork/contracts"
 import { TelegramOut } from "@shoalwork/currents"
 import { ChatSessions, ExecutorRegistry, makeWarmChatPool, type TierConfig } from "@shoalwork/executors"
 import { Approvals } from "@shoalwork/policy"
@@ -16,6 +16,7 @@ export type { BotFactoryOptions, ConversationOptions } from "./conversation-opti
 import { startApprovalNotifier } from "./approval-notify.js"
 import { BOT_BUDGET_WINDOW_MS, botOverBudget } from "./budget.js"
 import { ChatFailure, makeChat } from "./chat.js"
+import { rankForBot } from "./choose.js"
 import { Control } from "./control.js"
 import { makeCommandAnswers } from "./conversation-commands.js"
 import {
@@ -120,6 +121,22 @@ export const ConversationLive = (
       const layerScope = yield* Effect.scope
       const languages = new Map<TaskId, Lang>()
       const context = { beacon, bots, executors }
+      // The Reflex's executor question sees the ranking of the code tier's executors that this Bot may use (T-074).
+      // A failed read is an empty ranking, never a failed message.
+      const executorRanking = (bot: Bot) =>
+        Effect.gen(function* () {
+          const quality = yield* readExecutorQualityRows(factorySql)
+          const ranked = yield* rankForBot(tiers, bot, tiers.routing.code, "code", executors, quality)
+          return ranked
+            .filter((entry) => Number.isFinite(entry.score))
+            .map((entry) => ({ id: entry.executor, score: entry.score }))
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("executor ranking not computed", error).pipe(
+              Effect.map((): ReadonlyArray<{ readonly id: ExecutorId; readonly score: number }> => []),
+            ),
+          ),
+        )
 
       const say = (botId: BotId, text: string, inReplyTo?: Event["id"]) =>
         telegram
@@ -160,7 +177,11 @@ export const ConversationLive = (
           }
           // A message in another Bot's topic is addressed to that Bot; in the Lead's topic the rules pick the owner.
           const hint = topicBot.name === reflexConfig.owner.leadName ? undefined : topicBot.id
-          const facts = yield* factsFor(context, event, text, userId, hint)
+          // Not typed as Facts on purpose: executorRanking travels to the Reflex (T-072 adds it to the Facts type).
+          const facts = {
+            ...(yield* factsFor(context, event, text, userId, hint)),
+            executorRanking: yield* executorRanking(topicBot),
+          }
           const decided = yield* reflex.standard(facts)
           const language = langOf(decided.language)
           // "continua a task <id|título>": decided by the text, the Reflex only supplied the language.

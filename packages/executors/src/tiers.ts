@@ -1,9 +1,23 @@
 import { readFileSync } from "node:fs"
-import { ConfigError, Effort, ExecutorId, ModelTier, type ModelTierMap } from "@shoalwork/contracts"
+import {
+  ConfigError,
+  Effort,
+  ExecutorId,
+  ModelTier,
+  type ModelTierMap,
+  type TaskKind,
+} from "@shoalwork/contracts"
 import { Effect, Schema } from "effect"
 import { parse } from "yaml"
 import type { TierMapping } from "./claude-code/args.js"
 import type { Executor } from "./executor.js"
+import {
+  DEFAULT_ROUTE_WEIGHTS,
+  type RankedExecutor,
+  type RouteQuality,
+  RouteWeights,
+  rankExecutors,
+} from "./routing.js"
 
 // One tier of config/model-tiers.yaml. `alternatives` lists executors to try, in order, when `executor` is unavailable.
 export const TierEntry = Schema.Struct({
@@ -25,6 +39,8 @@ export const TierRouting = Schema.Struct({
   system: ModelTier,
   app_op: ModelTier,
   routine: ModelTier,
+  // Score weights of the executor ranking (routing.ts). Missing → DEFAULT_ROUTE_WEIGHTS.
+  weights: Schema.optionalKey(RouteWeights),
 })
 export type TierRouting = typeof TierRouting.Type
 
@@ -67,28 +83,38 @@ export interface ResolvedTier {
   readonly executor: ExecutorId
   readonly model: string
   readonly effort?: Effort
-  // True when the tier's own executor was unavailable and an alternative answers.
+  // True when the tier's own executor was unavailable (or ranked below an alternative) and another answers.
   readonly fallback: boolean
+  // Only with a route: the reasons of the chosen executor's score (routing.ts).
+  readonly reasons?: ReadonlyArray<string>
+}
+
+// Quality history for the ranking. `kind` is the task kind the run is routed for.
+export interface RouteOptions {
+  readonly kind: TaskKind
+  readonly quality: ReadonlyArray<RouteQuality>
 }
 
 // Precedence: the Bot's override for the tier, then the global entry. The fallback list always comes from the global
 // entry. The first candidate whose executor is registered and reports quota().available wins. An alternative uses its
 // own mapTier for the model, because the yaml model belongs to the primary executor only.
 // `exclude` lists executors that may not serve this resolution (e.g. the worker's executor, for a reviewer).
+// With `route`, the candidates are ranked by rankExecutors instead (quality, quota, cost); ties keep the yaml order.
 export const resolveTier = (
   config: TierConfig,
   botTiers: ModelTierMap,
   tier: ModelTier,
   executors: ReadonlyArray<Executor>,
-  options: { readonly exclude?: ReadonlyArray<ExecutorId> } = {},
+  options: { readonly exclude?: ReadonlyArray<ExecutorId>; readonly route?: RouteOptions } = {},
 ): Effect.Effect<ResolvedTier, ConfigError> =>
   Effect.gen(function* () {
     const global = config.model_tiers[tier]
     const primary = botTiers[tier] ?? global
     const excluded = options.exclude ?? []
-    const candidates: ReadonlyArray<ExecutorId> = [primary.executor, ...(global.alternatives ?? [])].filter(
-      (id) => !excluded.includes(id),
-    )
+    if (options.route !== undefined) {
+      return yield* resolveRanked(config, botTiers, tier, executors, options.route, excluded)
+    }
+    const candidates = candidatesOf(config, botTiers, tier, excluded)
     for (const id of candidates) {
       const executor = executors.find((candidate) => candidate.id === id)
       if (executor === undefined) continue
@@ -110,12 +136,94 @@ export const resolveTier = (
         fallback: true,
       }
     }
-    return yield* Effect.fail(
-      new ConfigError({
-        key: `model_tiers.${tier}`,
-        message: `no available executor for tier ${tier} (tried: ${candidates.join(", ") || "none"}${excluded.length === 0 ? "" : `; excluded: ${excluded.join(", ")}`})`,
-      }),
+    return yield* Effect.fail(noExecutorError(tier, candidates, excluded))
+  })
+
+// The primary executor of the tier (Bot override first, then global) and the global alternatives, in yaml order,
+// without the excluded ones.
+const candidatesOf = (
+  config: TierConfig,
+  botTiers: ModelTierMap,
+  tier: ModelTier,
+  excluded: ReadonlyArray<ExecutorId>,
+): ReadonlyArray<ExecutorId> => {
+  const global = config.model_tiers[tier]
+  const primary = botTiers[tier] ?? global
+  return [primary.executor, ...(global.alternatives ?? [])].filter((id) => !excluded.includes(id))
+}
+
+const noExecutorError = (
+  tier: ModelTier,
+  candidates: ReadonlyArray<ExecutorId>,
+  excluded: ReadonlyArray<ExecutorId>,
+): ConfigError =>
+  new ConfigError({
+    key: `model_tiers.${tier}`,
+    message: `no available executor for tier ${tier} (tried: ${candidates.join(", ") || "none"}${excluded.length === 0 ? "" : `; excluded: ${excluded.join(", ")}`})`,
+  })
+
+// Ranks the candidates of a tier for `kind` (rankExecutors). Only executors that are registered are ranked, in yaml
+// order; an alternative that is not registered is never a candidate, so it cannot win by its missing history. Repeats
+// and `exclude` are dropped. quota() is read once per ranked candidate. Weights come from routing.weights of the config.
+export const rankTier = (
+  config: TierConfig,
+  botTiers: ModelTierMap,
+  tier: ModelTier,
+  kind: TaskKind,
+  executors: ReadonlyArray<Executor>,
+  quality: ReadonlyArray<RouteQuality>,
+  exclude: ReadonlyArray<ExecutorId> = [],
+): Effect.Effect<ReadonlyArray<RankedExecutor>> =>
+  Effect.gen(function* () {
+    const candidates = candidatesOf(config, botTiers, tier, exclude).filter(
+      (id, index, all) => all.indexOf(id) === index && executors.some((executor) => executor.id === id),
     )
+    const registered = executors.filter((executor) => candidates.includes(executor.id))
+    const quota = yield* Effect.forEach(registered, (executor) => executor.quota())
+    return rankExecutors(kind, candidates, {
+      quality,
+      quota,
+      weights: config.routing.weights ?? DEFAULT_ROUTE_WEIGHTS,
+    })
+  })
+
+// The route picks the best eligible candidate. `fallback` is true when that is not the tier's own executor.
+const resolveRanked = (
+  config: TierConfig,
+  botTiers: ModelTierMap,
+  tier: ModelTier,
+  executors: ReadonlyArray<Executor>,
+  route: RouteOptions,
+  excluded: ReadonlyArray<ExecutorId>,
+): Effect.Effect<ResolvedTier, ConfigError> =>
+  Effect.gen(function* () {
+    const primary = botTiers[tier] ?? config.model_tiers[tier]
+    const ranked = yield* rankTier(config, botTiers, tier, route.kind, executors, route.quality, excluded)
+    const winner = ranked.find((entry) => Number.isFinite(entry.score))
+    const chosen =
+      winner === undefined ? undefined : executors.find((executor) => executor.id === winner.executor)
+    if (winner === undefined || chosen === undefined) {
+      return yield* Effect.fail(
+        noExecutorError(tier, candidatesOf(config, botTiers, tier, excluded), excluded),
+      )
+    }
+    if (winner.executor === primary.executor) {
+      return {
+        executor: winner.executor,
+        model: primary.model,
+        ...(primary.effort === undefined ? {} : { effort: primary.effort }),
+        fallback: false,
+        reasons: winner.reasons,
+      }
+    }
+    const mapping = chosen.mapTier(tier)
+    return {
+      executor: winner.executor,
+      model: mapping.model,
+      ...(mapping.effort === undefined ? {} : { effort: mapping.effort }),
+      fallback: true,
+      reasons: winner.reasons,
+    }
   })
 
 // Mapping for one adapter: the tiers whose executor is this one take their model from the config; the rest use

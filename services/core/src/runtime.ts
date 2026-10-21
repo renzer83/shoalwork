@@ -1,4 +1,4 @@
-import { type Beacon, BeaconLive } from "@shoalwork/beacon"
+import { BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { GhClientLive } from "@shoalwork/currents"
 import { makeDbLayer } from "@shoalwork/db"
@@ -32,16 +32,16 @@ import {
   TaskStoreLive,
 } from "@shoalwork/lead"
 import { makeApprovalsLive, makePolicyLive, UNRESOLVED_POLICY } from "@shoalwork/policy"
-import { EmbedderOllamaLive, IndexerLive, Ranker, RankerLive, ReefLive, runRankTune } from "@shoalwork/reef"
+import { EmbedderOllamaLive, IndexerLive, RankerLive, ReefLive } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
-import { startSystemTide, Tides, TidesLive } from "@shoalwork/tides"
+import { Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime } from "effect"
-import { SqlClient } from "effect/sql/SqlClient"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
 import { executorsFor, RegistryFromConfig } from "./executors-compose.js"
 import { loadModelTiers } from "./model-tiers.js"
+import { startExecutorQualityTide, startRankTuneTide } from "./system-tides.js"
 import {
   PodInboundSlot,
   PodInboundSlotLive,
@@ -246,25 +246,22 @@ export const startIndexFiber = (options: IndexHookOptions) =>
     }).pipe(Effect.scoped),
   )
 
-// Sundays at 04:00 UTC.
-export const RANK_TUNE_CRON = "0 4 * * 0"
+export { RANK_TUNE_CRON } from "./system-tides.js"
 
-// The weekly rank-tune (T-096) in its own fiber, as a system tide: tunes the ranking weights on the last briefings and
-// records context.weights_updated. The config weights (or the stored ones) are where the tuning starts from.
+// The weekly rank-tune (T-096) in its own fiber, as a system tide (system-tides.ts).
 export const startRankTuneFiber = (options: { readonly pollMs: number }) =>
   appRuntime.runFork(
     Effect.gen(function* () {
-      const sql = yield* SqlClient
-      const ranker = yield* Ranker
-      const context = yield* Effect.context<SqlClient | Beacon>()
-      yield* startSystemTide(sql, {
-        name: "rank-tune",
-        expr: RANK_TUNE_CRON,
-        pollMs: options.pollMs,
-        run: Effect.flatMap(ranker.weights(), (weights) => runRankTune(weights)).pipe(
-          Effect.provide(context),
-        ),
-      })
+      yield* startRankTuneTide(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// The hourly executor-quality job (T-074) in its own fiber, as a system tide (system-tides.ts).
+export const startExecutorQualityFiber = (options: { readonly pollMs: number }) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      yield* startExecutorQualityTide(options)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

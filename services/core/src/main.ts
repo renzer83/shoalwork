@@ -17,6 +17,7 @@ import {
   runEffect,
   startConsolidateFiber,
   startConversationFiber,
+  startExecutorQualityFiber,
   startFactoryFiber,
   startIndexFiber,
   startLeadWorker,
@@ -177,6 +178,12 @@ const serveUntilInterrupted = (
     const rankTune = startRankTuneFiber({ pollMs: TIDES_POLL_MS })
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(rankTune).pipe(Effect.andThen(Effect.logInfo("shutdown: rank-tune stopped"))),
+    )
+    const executorQuality = startExecutorQualityFiber({ pollMs: TIDES_POLL_MS })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(executorQuality).pipe(
+        Effect.andThen(Effect.logInfo("shutdown: executor-quality stopped")),
+      ),
     )
     // Without TELEGRAM_BOT_TOKEN this fiber ends at once (the Telegram layer is a no-op).
     const conversation = startConversationFiber()

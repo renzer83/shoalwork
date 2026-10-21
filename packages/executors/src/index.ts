@@ -59,9 +59,18 @@ export {
 } from "./quota/store.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
 export {
+  DEFAULT_ROUTE_WEIGHTS,
+  type RankedExecutor,
+  type RouteQuality,
+  RouteWeights,
+  rankExecutors,
+} from "./routing.js"
+export {
   decodeTierConfig,
   loadTierConfig,
   type ResolvedTier,
+  type RouteOptions,
+  rankTier,
   resolveTier,
   TierConfig,
   TierEntry,

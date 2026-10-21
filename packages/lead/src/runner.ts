@@ -9,7 +9,6 @@ import { Cause, Clock, Effect, Exit, Option, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
 import { type ApprovalGate, makeApprovalRunner } from "./approval-request.js"
 import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.js"
-import { chooseExecutor } from "./choose.js"
 import { makeConsume } from "./consume.js"
 import type { ContextConfig } from "./context/config.js"
 import type { BriefingMemory } from "./context/inject.js"
@@ -25,6 +24,7 @@ import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
 import { executorTaskFor, type McpServerConfig, makeRunSetup, withBridgeMode } from "./run-setup.js"
+import { chooseForTask } from "./runner-choose.js"
 import { crashResult } from "./runner-crash.js"
 import { makeDeliverFor } from "./step-delivery.js"
 import { raceWithStop } from "./stoppable.js"
@@ -143,7 +143,7 @@ export const makeRunner = (deps: RunnerDeps) => {
       yield* Ref.update(progress, (p) => ({ ...p, stepId, attempt: attempts }))
       yield* setup.markWorking(spec)
       const bot = yield* bots.get(spec.botId)
-      const chosen = yield* chooseExecutor(tiers, bot, spec.tier, executors, spec.review?.excludeExecutors)
+      const chosen = yield* chooseForTask(tiers, bot, spec, executors)
       if (Option.isNone(chosen)) {
         const message = `no executor available for tier ${spec.tier}`
         yield* raiseError(spec, "lead.executor", "NoExecutor", message)

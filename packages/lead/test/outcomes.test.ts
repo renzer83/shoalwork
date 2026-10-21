@@ -176,7 +176,8 @@ describe("terminal task outcome (lifecycle)", () => {
         expect(latest.get("d-executor")?.outcome).toBe("correct")
         expect(latest.get("d-complexity")?.outcome).toBe("unknown")
         const all = yield* allEvents
-        expect(all.filter((event) => event.type === "decision.outcome")).toHaveLength(4)
+        // Four seeded decisions plus the executor choice the runner records (T-074).
+        expect(all.filter((event) => event.type === "decision.outcome")).toHaveLength(5)
       }).pipe(Effect.provide(leadLayer({ executor: fakeExecutor(eventsOf(OK_EVENTS)), tank })))
     },
   )

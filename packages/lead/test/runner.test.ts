@@ -44,6 +44,7 @@ describe("Lead.runOnce", () => {
         "task.received",
         "task.state_changed",
         "bot.state_changed",
+        "decision.made", // the executor choice (T-074)
         "executor.started",
         "context.assembled",
         "executor.event", // started
@@ -53,6 +54,7 @@ describe("Lead.runOnce", () => {
         "executor.event", // done
         "executor.finished",
         "task.state_changed",
+        "decision.outcome", // the executor choice closes as correct
         "bot.state_changed",
       ])
 
@@ -316,10 +318,14 @@ describe("Lead.runOnce", () => {
     "a re-run after an interrupted attempt gets a new step id, so the kept worktree does not collide",
     () => {
       const tank = makeFakeTank()
+      // Resolved by the first attempt's executor when it starts: the signal that the attempt is mid-run.
+      const firstStarted = Deferred.makeUnsafe<void>()
       let calls = 0
       const executor = fakeExecutor(() => {
         calls += 1
-        return calls === 1 ? Stream.never : Stream.fromIterable(OK_EVENTS)
+        return calls === 1
+          ? Stream.unwrap(Effect.as(Deferred.succeed(firstStarted, undefined), Stream.never))
+          : Stream.fromIterable(OK_EVENTS)
       })
       return Effect.gen(function* () {
         const lead = yield* Lead
@@ -328,9 +334,8 @@ describe("Lead.runOnce", () => {
           specFor(bot, { repo: { url: "https://example.com/r.git", base: "main" } }),
         )
         const first = yield* Effect.forkChild(lead.runOnce(spec.id))
-        while (tank.prepared.length < 1) {
-          yield* Effect.sleep(Duration.millis(5))
-        }
+        yield* Deferred.await(firstStarted)
+        expect(tank.prepared).toHaveLength(1)
         // The first attempt dies mid-run (lost lock, shutdown): its worktree is kept for diagnosis.
         yield* Fiber.interrupt(first)
         expect(tank.released).toEqual([{ keepWorktree: true }])

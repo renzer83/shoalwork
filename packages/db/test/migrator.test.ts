@@ -41,6 +41,7 @@ describe("runMigrations", () => {
         "0021_factory_agents.sql",
         "0022_cycle.sql",
         "0023_rank.sql",
+        "0024_executor_quality.sql",
         "0025_executor_quota.sql",
         "0026_github_installations.sql",
         "0027_notion_sync.sql",
