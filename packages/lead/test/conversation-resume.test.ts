@@ -85,6 +85,7 @@ const harness = (records: ReadonlyArray<TaskRecord>) => {
         sent.push(text)
       }),
     languages,
+    channel: "telegram",
   })
   return { answer, sent, intakes, languages }
 }

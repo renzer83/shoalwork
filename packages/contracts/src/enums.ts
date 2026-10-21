@@ -37,7 +37,7 @@ export type TaskState = typeof TaskState.Type
 export const TaskKind = Schema.Literals(["chat", "system", "code", "research", "app_op", "routine"])
 export type TaskKind = typeof TaskKind.Type
 
-export const TaskOrigin = Schema.Literals(["telegram", "api", "cli", "tide", "bot"])
+export const TaskOrigin = Schema.Literals(["telegram", "app", "api", "cli", "tide", "bot"])
 export type TaskOrigin = typeof TaskOrigin.Type
 
 export const VerdictKind = Schema.Literals(["ok", "failed", "needs_approval", "budget_exceeded", "blocked"])

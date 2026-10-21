@@ -136,3 +136,16 @@ describe("Planner.plan only plans a task that waits for a plan", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 })
+
+describe("Planner messages follow the origin of the task", () => {
+  it.effect("hands the task's origin to notify, so an app task is answered in the app", () =>
+    Effect.gen(function* () {
+      const app = yield* setup([{ die: "boom" }], { origin: "app" })
+      expect((yield* app.planner.plan(app.task)).kind).toBe("blocked")
+      expect(app.script.origins).toEqual(["app"])
+      const telegram = yield* setup([{ die: "boom" }], { origin: "telegram" })
+      expect((yield* telegram.planner.plan(telegram.task)).kind).toBe("blocked")
+      expect(telegram.script.origins).toEqual(["telegram"])
+    }).pipe(Effect.provide(TestLayer)),
+  )
+})

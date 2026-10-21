@@ -232,6 +232,19 @@ export const inbound = (
     })
   })
 
+// A message.inbound as POST /messages records it (T-113): channel "app", the operator as user.
+export const inboundApp = (bot: Bot, text: string) =>
+  Effect.gen(function* () {
+    const beacon = yield* Beacon
+    return yield* beacon.append({
+      streamId: streamIds.bot(bot.id),
+      type: "message.inbound",
+      payload: { channel: "app", userId: "user:app", text, botId: bot.id },
+      actor: "user:app",
+      correlationId: crypto.randomUUID(),
+    })
+  })
+
 export const typesOf = (events: ReadonlyArray<Event>) => events.map((event) => event.type)
 
 // Lets forked fibers run: the narrator and the inbound loop consume pub/sub streams on their own fibers.

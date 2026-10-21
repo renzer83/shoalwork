@@ -39,8 +39,13 @@ export interface PlannerDeps {
   readonly ask: (botId: BotId, prompt: string) => Effect.Effect<string, ChatFailure>
   // Executors known to the registry (the chat executor is filtered out).
   readonly executors: ReadonlyArray<string>
-  // A message to the Bot's topic. A failure to send is logged, never fatal.
-  readonly notify: (botId: BotId, text: string) => Effect.Effect<void, unknown>
+  // A message about the task, in the chat it was asked in (its origin picks the channel). A failure to send is logged,
+  // never fatal.
+  readonly notify: (
+    botId: BotId,
+    text: string,
+    task: Pick<TaskSpec, "origin" | "correlationId">,
+  ) => Effect.Effect<void, unknown>
 }
 
 export type PlanOutcome =
@@ -55,8 +60,8 @@ const SUMMARY_MAX = 300
 export const makePlanner = (deps: PlannerDeps) => {
   const lifecycle = makeLifecycle({ beacon: deps.beacon, tasks: deps.tasks, bots: deps.bots })
 
-  const say = (botId: BotId, text: string) =>
-    deps.notify(botId, text).pipe(Effect.catch(() => Effect.logWarning("plan message not sent")))
+  const say = (task: TaskSpec, text: string) =>
+    deps.notify(task.botId, text, task).pipe(Effect.catch(() => Effect.logWarning("plan message not sent")))
 
   // One ask: the Plan checked against every rule, or the sentences that say what is wrong.
   const attempt = (
@@ -112,7 +117,7 @@ export const makePlanner = (deps: PlannerDeps) => {
       // The Reflex decisions of this task get their (unknown) outcome now: nothing will run to confirm them.
       yield* lifecycle.recordOutcomes(task, "failed")
       yield* say(
-        task.botId,
+        task,
         `Não consegui montar um plano válido para a task "${clip(task.title, 80)}". Ela foi bloqueada.`,
       )
       return { kind: "blocked", verdict } satisfies PlanOutcome
@@ -129,10 +134,7 @@ export const makePlanner = (deps: PlannerDeps) => {
       const { plan: valid, warnings } = built.success
       yield* store(task, valid)
       if (warnings.length > 0) {
-        yield* say(
-          task.botId,
-          "O orçamento dos passos passava o da task; reduzi cada passo na mesma proporção.",
-        )
+        yield* say(task, "O orçamento dos passos passava o da task; reduzi cada passo na mesma proporção.")
       }
       return { kind: "planned", plan: valid, warnings } as const
     })

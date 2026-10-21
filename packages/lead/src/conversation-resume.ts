@@ -2,6 +2,7 @@ import type { Bot, BotId, Event, TaskId, TaskSpec } from "@shoalwork/contracts"
 import { Effect } from "effect"
 import type { LeadShape } from "./lead.js"
 import { botBudgetPhrase, type Lang, oneLine } from "./narrator.js"
+import type { ReplyChannel } from "./reply-port.js"
 import { continuationOf, matchTasks, planResume, type ResumeRequest } from "./resume-request.js"
 import type { TaskStoreShape } from "./tasks.js"
 
@@ -55,6 +56,7 @@ export interface ResumeDeps {
   readonly lead: LeadShape
   readonly say: (botId: BotId, text: string, inReplyTo?: Event["id"]) => Effect.Effect<void>
   readonly languages: Map<TaskId, Lang>
+  readonly channel: ReplyChannel
 }
 
 // "continua a task <id|título>" in a Bot's topic. Only the tasks of that Bot can be continued, and only once they have
@@ -69,7 +71,7 @@ export const makeResumeAnswers =
     request: ResumeRequest,
     language: Lang,
   ) => {
-    const { tasks, lead, say, languages } = deps
+    const { tasks, lead, say, languages, channel } = deps
     const texts = TEXTS[language]
     const query = oneLine(queryOf(request), QUERY_MAX)
     const resume = (title: string, parentId: TaskId, spec: Parameters<LeadShape["intake"]>[0]) =>
@@ -117,7 +119,7 @@ export const makeResumeAnswers =
             acceptance: spec.acceptance,
             budget: spec.budget,
             tier: spec.tier,
-            origin: "telegram",
+            origin: channel,
           }
           return yield* resume(spec.title, spec.id, fields)
         }

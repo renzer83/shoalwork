@@ -3,6 +3,9 @@ import type { BotFactoryConfig } from "./bot-factory.js"
 import type { MemoryPort } from "./commands/memory.js"
 
 export interface ConversationOptions {
+  // Whether the Telegram connector runs (default true). Off: only the app channel answers, no topics are created
+  // and no approval card is sent to Telegram.
+  readonly telegram?: boolean
   // Long-lived chat processes per conversation. Absent: every turn runs the one-shot chat.
   readonly warm?: WarmChatPoolOptions
   // Shorter messages are never escalated to the decision tier (escalation.ts).

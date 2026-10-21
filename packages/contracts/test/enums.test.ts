@@ -68,7 +68,7 @@ describe("enums", () => {
   })
 
   it("TaskOrigin accepts its literals and rejects unknown values", () => {
-    expectLiterals(TaskOrigin, ["telegram", "api", "cli", "tide", "bot"])
+    expectLiterals(TaskOrigin, ["telegram", "app", "api", "cli", "tide", "bot"])
   })
 
   it("VerdictKind accepts its literals and rejects unknown values", () => {

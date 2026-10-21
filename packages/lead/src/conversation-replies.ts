@@ -16,6 +16,7 @@ import {
   reassignedPhrase,
   timeoutPhrase,
 } from "./narrator.js"
+import type { ReplyChannel } from "./reply-port.js"
 import { clip } from "./verdict.js"
 
 type Say = (botId: BotId, text: string, inReplyTo?: Event["id"]) => Effect.Effect<void>
@@ -65,6 +66,7 @@ export const makeHandOff =
     readonly lead: LeadShape
     readonly say: Say
     readonly languages: Map<TaskId, Lang>
+    readonly channel: ReplyChannel
   }) =>
   (
     event: Event,
@@ -76,7 +78,7 @@ export const makeHandOff =
     acked: Acked,
   ) =>
     Effect.gen(function* () {
-      const { bots, lead, say, languages } = deps
+      const { bots, lead, say, languages, channel } = deps
       const intent = decision.intent
       const owner = ownerFor(decision, facts)
       if (!isTaskIntent(intent) || owner === undefined) {
@@ -100,7 +102,7 @@ export const makeHandOff =
             kind: intent,
             acceptance: [],
             budget: budgetFor(intent, ownerBot),
-            origin: "telegram",
+            origin: channel,
             correlationId: event.correlationId,
           })
           languages.set(spec.id, language)

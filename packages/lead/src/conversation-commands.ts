@@ -13,6 +13,7 @@ import {
 import type { ControlShape } from "./control.js"
 import { statusRows } from "./conversation-context.js"
 import type { Lang } from "./narrator.js"
+import { actorFor, type ReplyChannel } from "./reply-port.js"
 import type { TaskStoreShape } from "./tasks.js"
 
 const isControlCommand = (command: string) =>
@@ -26,6 +27,7 @@ export interface CommandDeps {
   readonly tasks: TaskStoreShape
   readonly control: ControlShape
   readonly say: (botId: BotId, text: string, inReplyTo?: Event["id"]) => Effect.Effect<void>
+  readonly channel: ReplyChannel
   readonly controlReplies: (request: ControlRequest, by: string, language: Lang) => Effect.Effect<string>
   // Absent when there is no Reef: /remember and /forget are then unknown commands.
   readonly memoryReplies:
@@ -42,7 +44,7 @@ export interface CommandDeps {
 
 // The slash commands of the conversation (intent "system"): /status, the pause family, the memory commands, /help.
 export const makeCommandAnswers =
-  ({ bots, tasks, control, say, controlReplies, memoryReplies }: CommandDeps) =>
+  ({ bots, tasks, control, say, controlReplies, memoryReplies, channel }: CommandDeps) =>
   (event: Event, bot: Bot, text: string, userId: string, language: Lang) =>
     Effect.gen(function* () {
       const invocation = parseInvocation(text)
@@ -61,6 +63,6 @@ export const makeCommandAnswers =
       if (request === undefined) {
         return yield* say(bot.id, staticReply(invocation?.command, language), event.id)
       }
-      const reply = yield* controlReplies(request, `user:telegram:${userId}`, language)
+      const reply = yield* controlReplies(request, actorFor(channel, userId), language)
       yield* say(bot.id, reply, event.id)
     })

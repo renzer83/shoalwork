@@ -24,9 +24,11 @@ export type Reply = string | ChatFailure | { readonly die: string } | { readonly
 const scripted = (replies: ReadonlyArray<Reply>) => {
   const prompts: Array<string> = []
   const notes: Array<string> = []
+  const origins: Array<TaskSpec["origin"]> = []
   return {
     prompts,
     notes,
+    origins,
     ask: (_botId: BotId, prompt: string) => {
       const next = replies[prompts.length] ?? replies[replies.length - 1] ?? ""
       prompts.push(prompt)
@@ -35,7 +37,11 @@ const scripted = (replies: ReadonlyArray<Reply>) => {
       if ("hang" in next) return Effect.never
       return Effect.fail(next)
     },
-    notify: (_botId: BotId, text: string) => Effect.sync(() => void notes.push(text)),
+    notify: (_botId: BotId, text: string, task: Pick<TaskSpec, "origin">) =>
+      Effect.sync(() => {
+        notes.push(text)
+        origins.push(task.origin)
+      }),
   }
 }
 

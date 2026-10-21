@@ -22,6 +22,7 @@ import { makePlanFlow } from "./plan-flow.js"
 import { signalsOf } from "./plan-signals.js"
 import { forgetNotes, PodNotes } from "./pod-notes.js"
 import { makePods, type Pods, type PodTopicPort } from "./pods.js"
+import { appChannelOut, makeReplyPort, notifyForTask, telegramChannelOut } from "./reply-port.js"
 import type { RunResult } from "./runner.js"
 import { TaskStore } from "./tasks.js"
 import { isSettled } from "./verdict.js"
@@ -81,6 +82,7 @@ export const PlanningLive = (
       const executors = yield* ExecutorRegistry
       const sessions = yield* ChatSessions
       const telegram = yield* TelegramOut
+      const reply = makeReplyPort({ telegram: telegramChannelOut(telegram), app: appChannelOut(beacon) })
       const lead = yield* Lead
       const control = yield* Control
       const notes = yield* PodNotes
@@ -128,7 +130,8 @@ export const PlanningLive = (
         bots,
         ask: (botId, prompt) => chat.heavy(botId, prompt),
         executors: executors.list(),
-        notify: (botId, text) => telegram.send(botId, text),
+        // A plan message follows the task's origin: an app task is answered in the app, never on Telegram.
+        notify: notifyForTask(reply),
       })
       const dispatcher = makeDispatcher({
         sql,

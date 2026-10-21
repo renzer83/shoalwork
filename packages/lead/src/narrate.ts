@@ -8,6 +8,7 @@ import {
 } from "@shoalwork/contracts"
 import type { TelegramOutShape } from "@shoalwork/currents"
 import { Cause, Clock, Effect, Option, Schema, type Scope, Semaphore, Stream } from "effect"
+import { askedInChat, infoFrom, type TaskInfo } from "./narrate-info.js"
 import {
   botBudgetPhrase,
   budgetPhrase,
@@ -23,6 +24,7 @@ import {
   SUMMARY_LONG,
   startedPhrase,
 } from "./narrator.js"
+import { type ChannelOut, channelOfOrigin, makeReplyPort, telegramChannelOut } from "./reply-port.js"
 import type { TaskStoreShape } from "./tasks.js"
 import { clip } from "./verdict.js"
 
@@ -42,7 +44,10 @@ const decodeBudget = Schema.decodeUnknownOption(Budget)
 export interface NarrateDeps {
   readonly beacon: BeaconShape
   readonly tasks: TaskStoreShape
-  readonly telegram: TelegramOutShape
+  // Absent: Telegram is off, and what would go there is dropped.
+  readonly telegram?: TelegramOutShape
+  // Where the tasks asked in the app are narrated. Absent: those tasks are not narrated.
+  readonly app?: ChannelOut
   // Language the task was asked in (the conversation remembers it); Portuguese when unknown.
   readonly languageOf: (taskId: TaskId) => Lang
   readonly forget: (taskId: TaskId) => void
@@ -53,10 +58,7 @@ export interface NarrateDeps {
 interface TaskNarration {
   runs: number
   lastSentMs: number | undefined
-  // Whether the task was asked on Telegram (full narration) or came from elsewhere (start and end only).
-  fromTelegram: boolean | undefined
-  // Whether the task is a step of a plan (its lines go to the Pod's topic, pods.ts, never to the Bot's topic).
-  podStep: boolean | undefined
+  info: TaskInfo | undefined
 }
 
 // Summaries being shortened at the same time; the others wait without holding up the event loop.
@@ -64,10 +66,14 @@ const SUMMARIZE_CONCURRENCY = 2
 
 // Turns the task's events into short messages in the owning Bot's topic: one progress line per window,
 // never held back for the start of a retry, the end of the task or an exhausted budget. Tasks that did not come
-// from Telegram get only their start and their end.
+// from a chat (Telegram, the app) get only their start and their end.
 export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
+    const reply = makeReplyPort({
+      ...(deps.telegram === undefined ? {} : { telegram: telegramChannelOut(deps.telegram) }),
+      ...(deps.app === undefined ? {} : { app: deps.app }),
+    })
     const summaries = Semaphore.makeUnsafe(SUMMARIZE_CONCURRENCY)
     const states = new Map<TaskId, TaskNarration>()
     const stateOf = (taskId: TaskId): TaskNarration => {
@@ -78,31 +84,43 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
       const created: TaskNarration = {
         runs: 0,
         lastSentMs: undefined,
-        fromTelegram: undefined,
-        podStep: undefined,
+        info: undefined,
       }
       states.set(taskId, created)
       return created
     }
 
-    const inPod = (taskId: TaskId) =>
+    // Read once per task (a failed read is tried again, twice). Undefined when the task cannot be read: the narrator
+    // then says nothing, because it would not know which chat the task belongs to.
+    const infoOf = (taskId: TaskId) =>
       Effect.gen(function* () {
         const state = stateOf(taskId)
-        if (state.podStep === undefined) {
-          const found = yield* deps.tasks.get(taskId).pipe(Effect.option)
+        if (state.info === undefined) {
+          const found = yield* deps.tasks.get(taskId).pipe(Effect.retry({ times: 2 }), Effect.option)
           if (Option.isNone(found)) {
-            return false
+            return undefined
           }
-          const parent = found.value.spec.parent
-          state.podStep = parent !== undefined && "planId" in parent
+          state.info = infoFrom(found.value.spec)
         }
-        return state.podStep
+        return state.info
       })
 
     const say = (taskId: TaskId, botId: BotId, text: string, urgent: boolean) =>
       Effect.gen(function* () {
+        const info = yield* infoOf(taskId)
+        if (info === undefined) {
+          yield* Effect.logWarning("narration skipped: the task cannot be read", taskId)
+          return
+        }
+        const channel = channelOfOrigin(info.origin)
+        if (
+          (channel === "telegram" && deps.telegram === undefined) ||
+          (channel === "app" && deps.app === undefined)
+        ) {
+          return
+        }
         // A plan's step is narrated once, in its Pod's topic: the Bot's topic gets nothing for it.
-        if (yield* inPod(taskId)) {
+        if (info.podStep) {
           return
         }
         const state = stateOf(taskId)
@@ -111,23 +129,16 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
           return
         }
         state.lastSentMs = now
-        yield* deps.telegram
-          .send(botId, text)
+        // The reply carries the task's correlation id, so the message and its narration are one thread in the log.
+        yield* reply
+          .send(channel, botId, text, {
+            ...(info.correlationId === undefined ? {} : { correlationId: info.correlationId }),
+          })
           .pipe(Effect.catch((error) => Effect.logWarning("narration not sent", error.op)))
       })
 
     const narratesProgress = (taskId: TaskId) =>
-      Effect.gen(function* () {
-        const state = stateOf(taskId)
-        if (state.fromTelegram === undefined) {
-          const found = yield* deps.tasks.get(taskId).pipe(Effect.option)
-          if (Option.isNone(found)) {
-            return false
-          }
-          state.fromTelegram = found.value.spec.origin === "telegram"
-        }
-        return state.fromTelegram
-      })
+      Effect.map(infoOf(taskId), (info) => info !== undefined && askedInChat(info.origin))
 
     const onStarted = (payload: typeof Started.Type) =>
       Effect.gen(function* () {
@@ -171,6 +182,8 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
           return
         }
         const record = found.value
+        // Already read: the channel is known even if an earlier read failed.
+        stateOf(payload.taskId).info ??= infoFrom(record.spec)
         const summary = record.verdict?.summary ?? ""
         const botId = record.spec.botId
         if (payload.to === "cancelled") {
@@ -221,8 +234,9 @@ export const startNarrator = (deps: NarrateDeps): Effect.Effect<void, never, Sco
           : yield* deps.tasks.get(taskId.value).pipe(Effect.option)
         if (Option.isSome(found)) {
           const { spec, attempts } = found.value
-          // A Telegram task refused for its Bot's budget was answered in its topic (conversation-replies.ts).
-          if (payload.scope === "bot" && attempts === 0 && spec.origin === "telegram") {
+          stateOf(spec.id).info ??= infoFrom(spec)
+          // A chat task refused for its Bot's budget was answered in its topic (conversation-replies.ts).
+          if (payload.scope === "bot" && attempts === 0 && askedInChat(spec.origin)) {
             return
           }
           const language = deps.languageOf(spec.id)

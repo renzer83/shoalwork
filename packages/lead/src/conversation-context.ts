@@ -7,6 +7,7 @@ import { Cause, Effect, Option, Schema, Stream } from "effect"
 import type { Chat } from "./chat.js"
 import type { BotRow } from "./commands.js"
 import { type Lang, oneLine, redactSecrets } from "./narrator.js"
+import type { ReplyChannel } from "./reply-port.js"
 import type { TaskStoreShape } from "./tasks.js"
 import { clip } from "./verdict.js"
 
@@ -52,6 +53,7 @@ export const factsFor = (
   text: string,
   userId: string,
   hint: BotId | undefined,
+  channel: ReplyChannel = "telegram",
 ) =>
   Effect.gen(function* () {
     const all = yield* deps.bots.list()
@@ -63,7 +65,8 @@ export const factsFor = (
     )
     const facts: Facts = {
       text,
-      channel: "telegram",
+      // The Reflex knows no "app" channel; the app is an API client of the core.
+      channel: channel === "app" ? "api" : channel,
       userId,
       ...(hint === undefined ? {} : { botHint: hint }),
       bots: all.map((bot) => ({

@@ -3,21 +3,17 @@ import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { GhClientLive } from "@shoalwork/currents"
 import { makeDbLayer } from "@shoalwork/db"
 import {
-  CHAT_ID,
   ChatSessionsLive,
-  defaultChatMapTier,
   loadQuotaConfig,
   type QuotaConfig,
   QuotaStoreLive,
   type TierConfig,
-  tierMappingFrom,
 } from "@shoalwork/executors"
 import { FactoryScheduler, FactorySchedulerLive, KanbanLive } from "@shoalwork/factory"
 import {
   ApprovalFlowLive,
   type ConsolidateHookOptions,
   Conversation,
-  ConversationLive,
   executorConsolidationModel,
   type IndexHookOptions,
   Lead,
@@ -38,8 +34,9 @@ import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime, Option } from "effect"
 import { ApprovalDecisionsLive } from "./approvals.js"
-import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
-import { executorsFor, RegistryFromConfig } from "./executors-compose.js"
+import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot } from "./config.js"
+import { ConversationFromCore } from "./conversation-layer.js"
+import { RegistryFromConfig } from "./executors-compose.js"
 import { loadModelTiers } from "./model-tiers.js"
 import { startExecutorQualityTide, startRankTuneTide } from "./system-tides.js"
 import {
@@ -50,9 +47,6 @@ import {
   telegramSettings,
 } from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
-
-// What a Bot created by conversation may be given: the most it can spend, the one policy and the one Tank of the host.
-const BOT_FACTORY_CEILING = { tokens: 1_000_000, seconds: 3600, usd: 10 } as const
 
 // The Policy of the product (T-053): a Bot's rules are the file its definition names. A Bot that cannot be read gets a
 // name no file has, so every call of it is asked. The only workspace root is the run's own worktree, which the Lead
@@ -173,19 +167,9 @@ export const AppLayer = Layer.unwrap(
         }),
       ),
     ).pipe(Layer.provideMerge(withTelegram))
-    return ConversationLive(tiers, reflexConfig, {
-      botBudgetWindowMs,
-      warm: { mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) },
-      botFactory: {
-        botsDir: `${REPO_ROOT}bots`,
-        // The chat adapter only answers conversation turns: a Bot never runs on it.
-        // Only the ids are read here: the store is not needed, the registry above shares the real one.
-        executors: executorsFor({ config, tiers, quotaConfig, quota: undefined })
-          .map((executor) => executor.id)
-          .filter((id) => id !== CHAT_ID),
-        config: { ceiling: BOT_FACTORY_CEILING, policy: "default", tank: { mode: "local", host: "mac" } },
-      },
-    }).pipe(Layer.provideMerge(withPlanning))
+    return ConversationFromCore({ config, tiers, quotaConfig, reflexConfig, botBudgetWindowMs }).pipe(
+      Layer.provideMerge(withPlanning),
+    )
   }),
 )
 export type AppServices = Layer.Success<typeof AppLayer>
@@ -220,14 +204,11 @@ export const startWatchdogFiber = (config: WatchdogConfig) =>
     }).pipe(Effect.scoped),
   )
 
-// The conversation (inbound messages and task narration) runs in its own fiber. Resolves to undefined when Telegram is off.
+// The conversation (inbound messages and task narration) runs in its own fiber. It answers the app channel even when
+// Telegram is off (conversation-layer.ts).
 export const startConversationFiber = () =>
   appRuntime.runFork(
     Effect.gen(function* () {
-      const status = yield* TelegramStatus
-      if (!status.enabled) {
-        return
-      }
       const conversation = yield* Conversation
       yield* conversation.start
       return yield* Effect.never

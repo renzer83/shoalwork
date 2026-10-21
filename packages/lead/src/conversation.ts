@@ -1,6 +1,6 @@
 import { Beacon, readExecutorQualityRows } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import type { Bot, BotId, Event, ExecutorId, TaskId } from "@shoalwork/contracts"
+import type { Bot, Event, ExecutorId, TaskId } from "@shoalwork/contracts"
 import { TelegramOut } from "@shoalwork/currents"
 import { ChatSessions, ExecutorRegistry, makeWarmChatPool, type TierConfig } from "@shoalwork/executors"
 import { Approvals } from "@shoalwork/policy"
@@ -18,7 +18,6 @@ import { BOT_BUDGET_WINDOW_MS, botOverBudget } from "./budget.js"
 import { ChatFailure, makeChat } from "./chat.js"
 import { rankForBot } from "./choose.js"
 import { Control } from "./control.js"
-import { makeCommandAnswers } from "./conversation-commands.js"
 import {
   decodeInbound,
   factsFor,
@@ -27,16 +26,15 @@ import {
   reportFailure,
   summarize,
 } from "./conversation-context.js"
-import { makeControlReplies } from "./conversation-control.js"
 import { makeFactoryStep } from "./conversation-factory.js"
-import { makeMemoryReplies } from "./conversation-memory.js"
 import type { ConversationOptions } from "./conversation-options.js"
-import { type Acked, makeChatAnswer, makeHandOff } from "./conversation-replies.js"
-import { makeResumeAnswers } from "./conversation-resume.js"
+import type { Acked } from "./conversation-replies.js"
+import { makeTurn } from "./conversation-turn.js"
 import { escalate } from "./escalation.js"
 import { Lead } from "./lead.js"
 import { startNarrator } from "./narrate.js"
 import { ack, ackUnnamedPhrase, failedPhrase, type Lang, langOf } from "./narrator.js"
+import { appChannelOut, makeReplyPort, telegramChannelOut } from "./reply-port.js"
 import { parseResumeRequest } from "./resume-request.js"
 import { TaskStore } from "./tasks.js"
 
@@ -51,14 +49,6 @@ export class Conversation extends Context.Service<Conversation, ConversationShap
   "@shoalwork/Conversation",
 ) {}
 
-const _isControlCommand = (command: string) =>
-  command === "stop" || command === "pause" || command === "resume"
-
-const _isMemoryCommand = (command: string) =>
-  command === "remember" || command === "forget" || command === "memory"
-
-const _INSTRUCTIONS_MAX = 2000
-const _TITLE_MAX = 80
 // Bots whose topic is created at the same time at boot.
 const TOPIC_CONCURRENCY = 4
 
@@ -116,10 +106,11 @@ export const ConversationLive = (
       const factoryStep = botFactory === undefined ? undefined : makeFactoryStep(beacon, botFactory)
       // The Reef answers /remember and /forget; without one (tests, a core booted without it) they are unknown.
       const reef = options.memory ?? Option.getOrUndefined(yield* Effect.serviceOption(Reef))
-      const memoryReplies = reef === undefined ? undefined : makeMemoryReplies({ memory: reef, telegram })
+      const app = appChannelOut(beacon)
+      const telegramOn = options.telegram !== false
+      const reply = makeReplyPort({ ...(telegramOn ? { telegram: telegramChannelOut(telegram) } : {}), app })
       // Typing indicators outlive the message that asked for them.
       const layerScope = yield* Effect.scope
-      const languages = new Map<TaskId, Lang>()
       const context = { beacon, bots, executors }
       // The Reflex's executor question sees the ranking of the code tier's executors that this Bot may use (T-074).
       // A failed read is an empty ranking, never a failed message.
@@ -138,48 +129,50 @@ export const ConversationLive = (
           ),
         )
 
-      const say = (botId: BotId, text: string, inReplyTo?: Event["id"]) =>
-        telegram
-          .send(botId, text, inReplyTo === undefined ? {} : { inReplyTo })
-          .pipe(Effect.catch((error) => Effect.logWarning("reply not sent", error.op)))
-
-      const answerCommand = makeCommandAnswers({
+      const languages = new Map<TaskId, Lang>()
+      const turnFor = makeTurn({
+        beacon,
         bots,
         tasks,
         control,
-        say,
-        memoryReplies,
-        controlReplies: makeControlReplies({ bots, control }),
+        lead,
+        chat,
+        telegram,
+        reply,
+        languages,
+        memory: reef,
       })
-
-      const answerChat = makeChatAnswer({ beacon, chat, say })
-      const handOff = makeHandOff({ bots, lead, say, languages })
-      const answerResume = makeResumeAnswers({ tasks, lead, say, languages })
 
       const route = (event: Event) =>
         Effect.gen(function* () {
           const payload = decodeInbound(event.payload)
           if (
             Option.isNone(payload) ||
-            payload.value.channel !== "telegram" ||
+            (payload.value.channel !== "telegram" && payload.value.channel !== "app") ||
             payload.value.text.trim() === "" ||
             // Typed in a Pod's topic: the Pod answers it (pods.ts), not the conversation.
             payload.value.podId !== undefined
           ) {
             return
           }
-          const { text, userId, chatId, threadId } = payload.value
+          const { text, userId, chatId, threadId, channel } = payload.value
+          const { say, answerCommand, answerChat, handOff, answerResume } = turnFor(channel, event)
           const topicBotId = payload.value.botId ?? (yield* bots.getByName(reflexConfig.owner.leadName)).id
           const topicBot = yield* bots.get(topicBotId)
-          // Creating a Bot by conversation is decided before the Reflex: a confirmation is not a chat message.
-          if (factoryStep !== undefined && (yield* factoryStep(event, topicBot, text, userId))) {
+          // Creating a Bot by conversation is decided before the Reflex: a confirmation is not a chat message. Its
+          // proposal and buttons are Telegram's; the app creates Bots on its own screen.
+          if (
+            channel === "telegram" &&
+            factoryStep !== undefined &&
+            (yield* factoryStep(event, topicBot, text, userId))
+          ) {
             return
           }
           // A message in another Bot's topic is addressed to that Bot; in the Lead's topic the rules pick the owner.
           const hint = topicBot.name === reflexConfig.owner.leadName ? undefined : topicBot.id
           // Not typed as Facts on purpose: executorRanking travels to the Reflex (T-072 adds it to the Facts type).
           const facts = {
-            ...(yield* factsFor(context, event, text, userId, hint)),
+            ...(yield* factsFor(context, event, text, userId, hint, channel)),
             executorRanking: yield* executorRanking(topicBot),
           }
           const decided = yield* reflex.standard(facts)
@@ -190,7 +183,7 @@ export const ConversationLive = (
             return yield* answerResume(event, topicBot, resumeRequest, language)
           }
           if (decided.intent !== "system") {
-            yield* Effect.forkIn(telegram.typing(topicBot.id), layerScope)
+            yield* Effect.forkIn(reply.typing(channel, topicBot.id), layerScope)
           }
           // The rules saw a task: acknowledge now, before any (slow) escalation. The rule's owner is named only
           // when the rules are sure of it.
@@ -225,7 +218,7 @@ export const ConversationLive = (
               event,
               topicBot,
               text,
-              `tg:${chatId ?? "-"}:${threadId ?? "0"}`,
+              channel === "app" ? `app:${topicBot.id}` : `tg:${chatId ?? "-"}:${threadId ?? "0"}`,
               language,
             )
           }
@@ -248,13 +241,14 @@ export const ConversationLive = (
       // the first send to a Bot, so a slow or failing ensureTopic delays nothing).
       const start: ConversationShape["start"] = Effect.gen(function* () {
         const inbound = yield* beacon.subscribe(["message.inbound"])
-        if (approvals !== undefined) {
+        if (approvals !== undefined && telegramOn) {
           yield* startApprovalNotifier({ beacon, approvals, bots, telegram })
         }
         yield* startNarrator({
           beacon,
           tasks,
-          telegram,
+          ...(telegramOn ? { telegram } : {}),
+          app,
           languageOf: (taskId) => languages.get(taskId) ?? "pt",
           forget: (taskId) => {
             languages.delete(taskId)
@@ -265,6 +259,9 @@ export const ConversationLive = (
           Stream.runForEach((event) => Effect.forkScoped(onInbound(event))),
           Effect.forkScoped,
         )
+        if (!telegramOn) {
+          return
+        }
         const known = yield* bots.list().pipe(Effect.orElseSucceed((): ReadonlyArray<Bot> => []))
         yield* Effect.forEach(
           known,

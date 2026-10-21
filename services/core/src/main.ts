@@ -185,7 +185,8 @@ const serveUntilInterrupted = (
         Effect.andThen(Effect.logInfo("shutdown: executor-quality stopped")),
       ),
     )
-    // Without TELEGRAM_BOT_TOKEN this fiber ends at once (the Telegram layer is a no-op).
+    // Stays alive without TELEGRAM_BOT_TOKEN too: it answers the app channel; only the Telegram side (topics,
+    // cards) is off then.
     const conversation = startConversationFiber()
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(conversation).pipe(Effect.andThen(Effect.logInfo("shutdown: conversation stopped"))),
