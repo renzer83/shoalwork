@@ -3,11 +3,16 @@ name = "reflex"
 version = "0.1.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "datasets==5.1.0",
     "fastapi==0.147.0",
     "pydantic==2.14.1",
     "pyyaml==6.0.3",
+    "scikit-learn==1.9.1",
     "uvicorn==0.54.0",
 ]
+
+[project.scripts]
+reflex-data = "reflex.data.cli:main"
 
 [dependency-groups]
 dev = [
