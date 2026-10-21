@@ -8,6 +8,7 @@ import { botCommand } from "./commands/bot.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
 import { costsReport, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
+import { factoryCommand } from "./commands/factory.js"
 import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
 import { reflexExport } from "./commands/reflex.js"
@@ -38,6 +39,7 @@ const USAGE = [
   "       shoalwork memory forget <memory id>",
   "       shoalwork memory history <memory id>",
   "       shoalwork bot list | shoalwork bot from-template <role> --project <slug>",
+  "       shoalwork factory import <file> | shoalwork factory baseline [--project <slug>]",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -265,6 +267,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return tideCommand(rest)
     case "bot":
       return botCommand(rest)
+    case "factory":
+      return factoryCommand(rest)
     default:
       return Effect.fail(
         new UsageError({

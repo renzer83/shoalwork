@@ -35,6 +35,7 @@ describe("runMigrations", () => {
         "0015_pods.sql",
         "0016_approvals.sql",
         "0017_approval_mode.sql",
+        "0018_factory.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

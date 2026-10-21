@@ -13,6 +13,8 @@
   "dependencies": {
     "@shoalwork/bots": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "@shoalwork/factory": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

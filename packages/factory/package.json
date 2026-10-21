@@ -1,0 +1,26 @@
+{
+  "name": "@shoalwork/factory",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@shoalwork/contracts": "workspace:*",
+    "@shoalwork/db": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

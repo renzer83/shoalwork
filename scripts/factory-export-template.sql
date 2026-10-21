@@ -1,0 +1,12 @@
+-- T-058 — Template para gerar o factory-export.json a partir do store SQLite do bridge.
+-- As consultas abaixo são genéricas e comentadas: adapte os nomes reais de tabela/coluna do bridge antes de rodar.
+-- O resultado deve seguir o contrato FactoryExport em packages/factory/src/export-schema.ts
+-- (exportedAt, source="bridge-sqlite", projects, agents, tasks, events). Gere o JSON com um script/CLI; este
+-- arquivo é só a fonte das consultas.
+
+-- SELECT slug, name, repo_url, default_branch, status FROM projects;
+-- SELECT name, role, model, instructions_path FROM agents;
+-- SELECT id, project, title, issue_number, pr_number, state, created_at, started_at, merged_at, closed_at,
+--        retries, manual_interventions, tokens_in, tokens_out, usd
+--   FROM tasks;
+-- SELECT task_id, type, at, data FROM task_events;
