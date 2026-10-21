@@ -15,6 +15,7 @@ import { registerApprovalRoutes } from "./routes/approvals.js"
 import { registerBeaconRoutes } from "./routes/beacon.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerBotWriteRoutes } from "./routes/bots-write.js"
+import { registerConnectorRoutes } from "./routes/connectors.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerCostRoutes } from "./routes/costs.js"
 import { registerContextCostRoutes } from "./routes/costs-context.js"
@@ -31,6 +32,7 @@ import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
+import { registerTideRunRoutes } from "./routes/tide-runs.js"
 import { registerTideRoutes } from "./routes/tides.js"
 import { GENERIC_WEBHOOK_PATH, registerGenericWebhookRoutes } from "./routes/webhooks-generic.js"
 import { GITHUB_WEBHOOK_PATH, registerGithubWebhookRoutes } from "./routes/webhooks-github.js"
@@ -196,6 +198,8 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerLiveRoutes(app, deps.runEffect)
   registerMessageRoutes(app, deps.runEffect)
   registerPodRoutes(app, deps.runEffect)
+  registerTideRunRoutes(app, deps.runEffect)
+  registerConnectorRoutes(app, deps.runEffect, deps.botsDir)
   registerBeaconRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
   if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)

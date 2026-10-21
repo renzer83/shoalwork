@@ -91,6 +91,8 @@ describe("AppNavigation", () => {
       "/projects",
       "/pods",
       "/beacon",
+      "/currents",
+      "/tides",
     ])
     expect(
       NAV_ENTRIES.filter((entry) => entry.href === "/projects" || entry.href === "/pods").every(
