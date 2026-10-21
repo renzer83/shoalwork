@@ -17,6 +17,17 @@ export {
 } from "./claude-code/warm.js"
 export { CODEX_ID, type CodexOptions, makeCodexExecutor } from "./codex/index.js"
 export {
+  DoctorConfig,
+  DoctorConfigLive,
+  type DoctorConfigShape,
+  type DoctorReport,
+  type DoctorStatus,
+  doctor,
+  ExecutorVersions,
+  loadExecutorVersions,
+  parseSemver,
+} from "./doctor.js"
+export {
   type Effort,
   type Executor,
   type ExecutorContext,

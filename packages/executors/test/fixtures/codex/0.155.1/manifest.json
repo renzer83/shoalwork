@@ -1,0 +1,6 @@
+{
+  "version": "0.155.1",
+  "recordedAt": "2026-10-20",
+  "command": "codex exec --json --skip-git-repo-check -- <prompt>",
+  "note": "Recorded from codex-cli 0.155.1 (T-016). Model metadata warning in failed.ndjson is a real CLI message."
+}

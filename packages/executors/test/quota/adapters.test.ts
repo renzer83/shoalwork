@@ -31,8 +31,14 @@ const config = Schema.decodeUnknownSync(QuotaConfig)({
   },
 })
 
+// Fixture version each executor's recordings were captured with (test/fixtures/<executor>/<version>/).
+const FIXTURE_VERSION = { codex: "0.155.1", "claude-code": "2.1.304" } as const
+
 const fixtureLines = (executor: "codex" | "claude-code", name: string): ReadonlyArray<string> =>
-  readFileSync(fileURLToPath(new URL(`../fixtures/${executor}/${name}`, import.meta.url)), "utf8")
+  readFileSync(
+    fileURLToPath(new URL(`../fixtures/${executor}/${FIXTURE_VERSION[executor]}/${name}`, import.meta.url)),
+    "utf8",
+  )
     .split("\n")
     .filter((line) => line.trim() !== "")
 

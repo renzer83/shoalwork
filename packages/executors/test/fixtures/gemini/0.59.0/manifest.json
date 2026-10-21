@@ -1,0 +1,6 @@
+{
+  "version": "0.59.0",
+  "recordedAt": "2026-10-21",
+  "command": "gemini -p <prompt> --output-format stream-json",
+  "note": "SYNTHETIC: built from code-agent-clis.md section 2 and the gemini-cli 0.59.0 help text. Never recorded from a logged-in CLI."
+}

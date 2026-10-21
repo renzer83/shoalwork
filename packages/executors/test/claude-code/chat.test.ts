@@ -17,7 +17,10 @@ import { buildChatArgs, CHAT_MODEL } from "../../src/claude-code/args.js"
 import { CHAT_ID, makeClaudeCodeChat, runChatTurn } from "../../src/claude-code/chat.js"
 import { ChatSessions, ChatSessionsLive } from "../../src/claude-code/sessions.js"
 
-const chatFixture = readFileSync(new URL("../fixtures/claude-code/chat.json", import.meta.url), "utf8").trim()
+const chatFixture = readFileSync(
+  new URL("../fixtures/claude-code/2.1.304/chat.json", import.meta.url),
+  "utf8",
+).trim()
 const FIXTURE_SESSION = "40e66dbf-beaf-4fc5-839d-ea3f883591f6"
 const NEW_SESSION = "5b1f0c2e-0d4a-4e8c-9a51-2c7d6e9f1a20"
 const OLD_SESSION = "00000000-0000-4000-8000-000000000000"

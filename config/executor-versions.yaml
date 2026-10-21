@@ -1,0 +1,7 @@
+# CLI versions each executor is pinned to. `executors doctor` compares the installed `--version` with these.
+# Upgrade: record fixtures under packages/executors/test/fixtures/<executor>/<version>/, keep the contract tests
+# green, then bump the value here.
+"claude-code": "2.1.304"
+codex: "0.155.1"
+gemini: "0.59.0"
+opencode: "1.19.3"

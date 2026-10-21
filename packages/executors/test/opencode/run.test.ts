@@ -16,7 +16,7 @@ import type { Executor } from "../../src/executor.js"
 import { makeOpencode } from "../../src/opencode/index.js"
 
 const fixture = (name: string): ReadonlyArray<string> =>
-  readFileSync(fileURLToPath(new URL(`../fixtures/opencode/${name}`, import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL(`../fixtures/opencode/1.19.3/${name}`, import.meta.url)), "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
 

@@ -18,7 +18,7 @@ const BIG: Budget = { tokens: 1_000_000, seconds: 600, usd: 10 }
 const decode = (value: unknown): GeminiStreamLine => Schema.decodeUnknownSync(GeminiStreamLine)(value)
 
 const fixtureLines = (name: string): ReadonlyArray<unknown> =>
-  readFileSync(fileURLToPath(new URL(`../fixtures/gemini/${name}`, import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL(`../fixtures/gemini/0.59.0/${name}`, import.meta.url)), "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line): unknown => JSON.parse(line))

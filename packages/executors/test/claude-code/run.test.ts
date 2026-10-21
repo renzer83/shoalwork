@@ -18,7 +18,7 @@ import { defaultMapTier, makeClaudeCode } from "../../src/claude-code/index.js"
 import { ExecutorRegistry, makeRegistry } from "../../src/executor.js"
 
 const fixture = (name: string): ReadonlyArray<string> =>
-  readFileSync(new URL(`../fixtures/claude-code/${name}`, import.meta.url), "utf8")
+  readFileSync(new URL(`../fixtures/claude-code/2.1.304/${name}`, import.meta.url), "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
 

@@ -18,7 +18,7 @@ import { makeCodexExecutor } from "../../src/codex/index.js"
 import type { Executor } from "../../src/executor.js"
 
 const fixture = (name: string): ReadonlyArray<string> =>
-  readFileSync(fileURLToPath(new URL(`../fixtures/codex/${name}`, import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL(`../fixtures/codex/0.155.1/${name}`, import.meta.url)), "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
 

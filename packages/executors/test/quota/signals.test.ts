@@ -11,7 +11,7 @@ const claude = Schema.decodeUnknownSync(ExecutorId)("claude-code")
 const usage: Usage = { tokensIn: 3, tokensOut: 4, cacheRead: 0, cacheWrite: 0, usd: 0.01, seconds: 1 }
 
 // SYNTHETIC limit texts: no real limit text has been captured yet (UNVERIFIED, see 06-research/claude-code.md §10).
-// The not-logged-in text is real: it is the raw result of fixtures/claude-code/not-logged-in.ndjson.
+// The not-logged-in text is real: it is the raw result of fixtures/claude-code/2.1.304/not-logged-in.ndjson.
 describe("limitSignalOf", () => {
   it("classifies a text naming HTTP 429 as the 429 source", () => {
     expect(limitSignalOf("API Error: 429 Too Many Requests")).toBe("429")

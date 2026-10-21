@@ -1,0 +1,6 @@
+{
+  "version": "1.19.3",
+  "recordedAt": "2026-10-21",
+  "command": "opencode run --format json --auto",
+  "note": "Recorded from opencode 1.19.3 (T-078). recordedAt is the date the fixtures were committed."
+}

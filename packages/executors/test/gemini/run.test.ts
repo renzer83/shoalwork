@@ -20,7 +20,7 @@ import { makeGemini } from "../../src/gemini/index.js"
 // Fixtures under test/fixtures/gemini are synthetic (see events.test.ts): no logged-in Gemini CLI to record from.
 
 const fixture = (name: string): ReadonlyArray<string> =>
-  readFileSync(fileURLToPath(new URL(`../fixtures/gemini/${name}`, import.meta.url)), "utf8")
+  readFileSync(fileURLToPath(new URL(`../fixtures/gemini/0.59.0/${name}`, import.meta.url)), "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
 

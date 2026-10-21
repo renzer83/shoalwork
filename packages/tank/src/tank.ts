@@ -1,4 +1,13 @@
-import type { Bot, BotId, RepoRef, StepId, TankError, TankMode, WorktreeConflict } from "@shoalwork/contracts"
+import type {
+  Bot,
+  BotId,
+  ExecutorId,
+  RepoRef,
+  StepId,
+  TankError,
+  TankMode,
+  WorktreeConflict,
+} from "@shoalwork/contracts"
 import { Context, type Effect, type Scope, type Stream } from "effect"
 import type { PublishedArtifacts, PublishRun } from "./artifacts.js"
 
@@ -11,6 +20,8 @@ export type TankContext = {
   // The execution's own keys (SHOALWORK_*, e.g. its MCP token), already in env. They never reach argv (T-167).
   readonly stepEnv?: Readonly<Record<string, string>>
   readonly worktree?: { readonly path: string; readonly branch: string; readonly repoDir: string }
+  // Executor CLI versions this Bot is pinned to: the Bot's own, else config/executor-versions.yaml (T-081).
+  readonly pinned?: Readonly<Record<ExecutorId, string>>
 }
 
 export type ExecResult = {

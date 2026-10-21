@@ -1,0 +1,6 @@
+{
+  "version": "2.1.304",
+  "recordedAt": "2026-10-20",
+  "command": "claude -p --output-format stream-json --verbose (one-shot adapter); chat.json: --output-format json",
+  "note": "Recorded from a logged-in CLI. not-logged-in-error.ndjson is synthetic: the is_error:true shape was never observed."
+}
