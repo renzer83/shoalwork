@@ -47,6 +47,7 @@ const collect = async (
   prefix: string,
   paths: Array<string>,
   skipped: Array<SkippedFile>,
+  exclude: ReadonlySet<string>,
 ): Promise<void> => {
   let entries: Array<Dirent>
   try {
@@ -61,8 +62,8 @@ const collect = async (
   for (const entry of entries) {
     const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`
     if (entry.isDirectory()) {
-      if (!PRUNED_DIRS.has(entry.name)) {
-        await collect(root, rel, paths, skipped)
+      if (!PRUNED_DIRS.has(entry.name) && !exclude.has(entry.name)) {
+        await collect(root, rel, paths, skipped, exclude)
       }
     } else if (entry.name.endsWith(".md") && (entry.isFile() || entry.isSymbolicLink())) {
       paths.push(rel)
@@ -70,14 +71,17 @@ const collect = async (
   }
 }
 
-// Lists "*.md" files without following symlinked directories. An unreadable subdirectory is skipped; an unreadable
-// root fails with WalkError.
-export const listMarkdown = (root: string): Effect.Effect<Listing, WalkError> =>
+// Lists "*.md" files without following symlinked directories. Directories named in `exclude` are pruned at any depth,
+// like .git. An unreadable subdirectory is skipped; an unreadable root fails with WalkError.
+export const listMarkdown = (
+  root: string,
+  exclude: ReadonlySet<string> = new Set(),
+): Effect.Effect<Listing, WalkError> =>
   Effect.tryPromise({
     try: async () => {
       const paths: Array<string> = []
       const skipped: Array<SkippedFile> = []
-      await collect(root, "", paths, skipped)
+      await collect(root, "", paths, skipped, exclude)
       paths.sort()
       return { paths, skipped }
     },

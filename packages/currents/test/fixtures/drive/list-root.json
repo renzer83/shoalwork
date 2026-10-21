@@ -1,0 +1,43 @@
+{
+  "files": [
+    {
+      "id": "docRoot1",
+      "name": "Roadmap",
+      "mimeType": "application/vnd.google-apps.document",
+      "modifiedTime": "2026-10-01T10:00:00.000Z"
+    },
+    {
+      "id": "sheetRoot1",
+      "name": "Metas",
+      "mimeType": "application/vnd.google-apps.spreadsheet",
+      "modifiedTime": "2026-10-02T10:00:00.000Z"
+    },
+    {
+      "id": "mdRoot1",
+      "name": "nota.md",
+      "mimeType": "text/markdown",
+      "modifiedTime": "2026-10-03T10:00:00.000Z",
+      "md5Checksum": "5d41402abc4b2a76b9719d911017c592",
+      "size": "120"
+    },
+    {
+      "id": "pdfRoot1",
+      "name": "contrato.pdf",
+      "mimeType": "application/pdf",
+      "modifiedTime": "2026-10-03T11:00:00.000Z",
+      "size": "2048"
+    },
+    {
+      "id": "subFolder1",
+      "name": "Sub",
+      "mimeType": "application/vnd.google-apps.folder",
+      "modifiedTime": "2026-10-01T09:00:00.000Z"
+    },
+    {
+      "id": "shortcut1",
+      "name": "atalho",
+      "mimeType": "application/vnd.google-apps.shortcut",
+      "modifiedTime": "2026-10-01T09:30:00.000Z"
+    }
+  ]
+}

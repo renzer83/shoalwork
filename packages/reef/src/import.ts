@@ -28,6 +28,8 @@ export interface ImportOptions {
   // Label of this import; part of every source and the reconciliation namespace of (scope, owner). Letters, digits,
   // ".", "_" and "-" only.
   readonly source: string
+  // Directory names pruned at any depth, on top of node_modules, .git and .obsidian. Same character set as source.
+  readonly exclude?: ReadonlyArray<string>
 }
 
 export interface ImportReport {
@@ -100,6 +102,9 @@ const validate = (options: ImportOptions): Effect.Effect<void, SchemaViolation> 
   if (!LABEL.test(options.source)) {
     return invalid("source", "source must match [A-Za-z0-9._-]+")
   }
+  if (!(options.exclude ?? []).every((name) => LABEL.test(name))) {
+    return invalid("exclude", "exclude names must match [A-Za-z0-9._-]+")
+  }
   if (options.ownerId.trim() === "") {
     return invalid("ownerId", "ownerId must not be empty")
   }
@@ -138,7 +143,7 @@ export const importMarkdownDir = (
     const reef = yield* Reef
     const sql = yield* SqlClient
     const root = yield* resolveRoot(options.dir)
-    const listing = yield* listMarkdown(root)
+    const listing = yield* listMarkdown(root, new Set(options.exclude ?? []))
     const skipped: Array<SkippedFile> = [...listing.skipped]
 
     const accepted = new Map<string, ReadonlyArray<Chunk>>()

@@ -228,6 +228,33 @@ describe("importMarkdownDir", () => {
     ).pipe(Effect.provide(reefStack())),
   )
 
+  it.effect("prunes the excluded directory names at any depth", () =>
+    withMarkdownDir(
+      {
+        ...BASE_FILES,
+        "templates/daily.md": "# Template\n\nblank daily\n",
+        "projects/templates/card.md": "# Card\n\nblank card\n",
+        "projects/plan.md": "# Plan\n\nreal plan\n",
+      },
+      (md) =>
+        Effect.gen(function* () {
+          const report = yield* importMarkdownDir(optionsFor(md.dir, { exclude: ["templates"] }))
+          expect(report.files).toBe(4)
+          expect(yield* allRowsContaining("blank")).toBe(0)
+          expect(yield* allRowsContaining("real plan")).toBeGreaterThan(0)
+        }),
+    ).pipe(Effect.provide(reefStack())),
+  )
+
+  it.effect("rejects an exclude name with separators", () =>
+    withMarkdownDir(BASE_FILES, (md) =>
+      Effect.gen(function* () {
+        const error = yield* importMarkdownDir(optionsFor(md.dir, { exclude: ["a/b"] })).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(SchemaViolation)
+      }),
+    ).pipe(Effect.provide(reefStack())),
+  )
+
   it.effect("keeps the memories of another label untouched", () =>
     withMarkdownDir({ "soul.md": SOUL_MD }, (soul) =>
       withMarkdownDir({ "vault.md": "# Vault\n\nnota do cofre\n" }, (vault) =>

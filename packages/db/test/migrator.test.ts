@@ -50,6 +50,7 @@ describe("runMigrations", () => {
         "0030_summaries.sql",
         "0031_sprints.sql",
         "0032_replays.sql",
+        "0033_drive_sync.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

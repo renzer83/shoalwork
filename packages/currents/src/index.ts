@@ -1,3 +1,6 @@
+export * from "./drive/client.js"
+export * from "./drive/connector.js"
+export * from "./drive/sync.js"
 export * from "./github/index.js"
 export * from "./mcp/index.js"
 export {
@@ -39,4 +42,6 @@ export {
   splitBrief,
   type ToolGate,
 } from "./notion/tools.js"
+export * from "./obsidian/connector.js"
+export * from "./obsidian/sync.js"
 export * from "./telegram/index.js"
