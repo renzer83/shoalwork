@@ -1,4 +1,5 @@
 export * from "./github/index.js"
+export * from "./mcp/index.js"
 export {
   makeNotion,
   Notion,

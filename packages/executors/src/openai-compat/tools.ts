@@ -2,6 +2,7 @@ import type { PermissionMode, ToolCall } from "@shoalwork/contracts"
 import { Effect, Schema } from "effect"
 import type { ToolDef } from "./client.js"
 import { readFileTool, writeFileTool } from "./file-tools.js"
+import { isMcpToolName, type McpToolHost, mcpToolDefs, runMcpTool } from "./mcp-tools.js"
 import {
   COMMAND_OUTPUT_MAX_BYTES,
   COMMAND_TIMEOUT_MS,
@@ -80,8 +81,10 @@ const RUN_TOOL: ToolDef = {
 }
 
 // readonly runs can only read; the other modes get all three.
-export const toolDefs = (mode: PermissionMode): ReadonlyArray<ToolDef> =>
-  mode === "readonly" ? [READ_TOOL] : [READ_TOOL, WRITE_TOOL, RUN_TOOL]
+export const toolDefs = (mode: PermissionMode, mcp?: McpToolHost): ReadonlyArray<ToolDef> => [
+  ...(mode === "readonly" ? [READ_TOOL] : [READ_TOOL, WRITE_TOOL, RUN_TOOL]),
+  ...mcpToolDefs(mcp),
+]
 
 const RunArgs = Schema.Struct({ cmd: Schema.NonEmptyArray(Schema.String) })
 
@@ -137,7 +140,7 @@ const runCommandTool = (deps: ToolDeps, raw: string): Effect.Effect<ToolOutcome>
 
 // Names the model may call in this mode; anything else is a tool result error (never an exception).
 export const runTool = (deps: ToolDeps, name: string, rawArgs: string): Effect.Effect<ToolOutcome> => {
-  const offered = toolDefs(deps.mode).some((tool) => tool.function.name === name)
+  const offered = toolDefs(deps.mode, deps.mcp).some((tool) => tool.function.name === name)
   if (!offered) {
     return Effect.succeed(
       failed(
@@ -146,6 +149,8 @@ export const runTool = (deps: ToolDeps, name: string, rawArgs: string): Effect.E
       ),
     )
   }
+  if (deps.mcp !== undefined && isMcpToolName(deps.mcp, name))
+    return runMcpTool(deps.mcp, deps, name, rawArgs)
   switch (name) {
     case "read_file":
       return readFileTool(deps, rawArgs)

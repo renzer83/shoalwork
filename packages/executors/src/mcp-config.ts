@@ -4,6 +4,13 @@ import { isAbsolute, join } from "node:path"
 import { Data, Effect } from "effect"
 import { mergeMcpTable, reefTomlBlock } from "./codex/args.js"
 import type { ExecutorContext } from "./executor.js"
+import {
+  claudeServerEntries,
+  codexServerBlock,
+  type McpInject,
+  stripManagedServers,
+  withManagedServers,
+} from "./mcp-inject.js"
 
 // The reef MCP server (packages/reef, bin app-reef-mcp) reads its token from this env var. The config files only
 // hold the reference `${SHOALWORK_API_TOKEN}`, never the value.
@@ -20,6 +27,8 @@ export type McpAttachment = {
   readonly bot: string
   // Origin of the core API, http or https.
   readonly api: string
+  // The Bot's own MCP servers (T-083), next to the reef. Names only; the core adds the env values to the run.
+  readonly servers?: ReadonlyArray<McpInject>
   // Claude Code only (T-055): the permission bridge server joins the same config. Absent: no bridge.
   readonly permissionBridge?: {
     // Built entrypoint (packages/executors/dist/permission-bridge/index.js).
@@ -79,6 +88,7 @@ export const claudeMcpJson = (attachment: McpAttachment): string => {
   return `${JSON.stringify(
     {
       mcpServers: {
+        ...claudeServerEntries(attachment.servers ?? []),
         reef: { command: "node", args: serverArgs(attachment), env },
         ...(bridge === undefined
           ? {}
@@ -162,7 +172,12 @@ const writeCodexConfig = (
         throw cause
       })
       const block = reefTomlBlock(serverArgs(attachment), "node", MCP_TOKEN_ENV)
-      await writeSecureFile(codexHome, path, mergeMcpTable(existing, block))
+      const merged = mergeMcpTable(stripManagedServers(existing), block)
+      await writeSecureFile(
+        codexHome,
+        path,
+        withManagedServers(merged, codexServerBlock(attachment.servers ?? [])),
+      )
       return path
     },
     catch: (cause) =>

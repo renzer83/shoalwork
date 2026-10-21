@@ -11,9 +11,11 @@ import { Duration, Effect, type Redacted, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
 import type { FetchLike } from "./client.js"
 import { runLoop } from "./loop.js"
+import type { McpToolHost } from "./mcp-tools.js"
 import type { OpenAICompatPolicy } from "./tools.js"
 
 export type { FetchLike } from "./client.js"
+export type { McpToolHost } from "./mcp-tools.js"
 export type { OpenAICompatPolicy } from "./tools.js"
 
 export type OpenAICompatOptions = {
@@ -28,6 +30,9 @@ export type OpenAICompatOptions = {
   readonly supportsTools: boolean
   // Judges every tool call (Read / Write / Bash of the Bot). `Policy.evaluate` of @shoalwork/policy fits.
   readonly policy: OpenAICompatPolicy
+  // The MCP tools of the Bot of a run (T-083). Absent: the model gets only the three built-in tools. A host that fails to
+  // resolve is logged and the run goes on without MCP tools.
+  readonly mcp?: (botId: ExecutorTask["botId"]) => Effect.Effect<McpToolHost | undefined>
   readonly maxTokens?: number
   // Injected in tests; defaults to the global fetch.
   readonly fetch?: FetchLike
@@ -52,6 +57,7 @@ const runOpenAICompat = (
   Stream.unwrap(
     Effect.gen(function* () {
       const tank = yield* Tank
+      const mcp = opts.mcp === undefined ? undefined : yield* opts.mcp(task.botId)
       let secondsExpired = false
       // Wall-clock budget: when it fires the upstream is cut (aborting the request); `tail` reports it.
       const deadline = Effect.sleep(Duration.seconds(task.budget.seconds)).pipe(
@@ -84,7 +90,7 @@ const runOpenAICompat = (
           supportsTools: opts.supportsTools,
           maxTokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
           retryBase: opts.retryBase ?? DEFAULT_RETRY_BASE,
-          tools: { tank, ctx, botId: task.botId, policy: opts.policy, mode: task.permissionMode },
+          tools: { tank, ctx, botId: task.botId, policy: opts.policy, mode: task.permissionMode, mcp },
         },
         task,
       )

@@ -67,6 +67,8 @@ export const buildArgs = (
   mcp: McpMode = "none",
   mcpConfigFile?: string,
   permissionBridge = false,
+  // Tools the CLI must refuse whatever the settings say (MCP tools outside the Bot's list, T-083). Deny wins over allow.
+  disallowedTools: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
   const { model, effort } = effectiveMapping(task, mapTier)
   const bridged = usesBridge(task, mcpConfigFile, permissionBridge)
@@ -86,6 +88,7 @@ export const buildArgs = (
     model,
     ...(effort !== undefined ? ["--effort", effort] : []),
     ...allowedToolsArgs(task.allowedTools, mcpConfigFile),
+    ...(disallowedTools.length > 0 ? ["--disallowedTools", [...new Set(disallowedTools)].join(",")] : []),
     ...(task.resumeSessionId !== undefined ? ["--resume", task.resumeSessionId] : []),
     ...(task.systemAppend !== undefined ? ["--append-system-prompt", task.systemAppend] : []),
     ...mcpArgs(mcp, mcpConfigFile),

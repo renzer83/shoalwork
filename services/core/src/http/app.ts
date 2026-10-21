@@ -19,6 +19,7 @@ import { registerContextCostRoutes } from "./routes/costs-context.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerExecutorRoutes } from "./routes/executors.js"
 import { registerLiveRoutes } from "./routes/live.js"
+import { MCP_OAUTH_CALLBACK_PATH, type RunMcpServers, registerMcpServerRoutes } from "./routes/mcp-servers.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
 import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
 import { registerProjectRoutes } from "./routes/projects.js"
@@ -49,6 +50,8 @@ export interface AppDeps {
   // Policy and Approvals for the permission bridge (T-055): POST /policy/evaluate and GET /approvals/:id/wait.
   // Without it neither route exists and an execution token reaches nothing but the read routes.
   readonly runPolicy?: RunPolicy | undefined
+  // The MCP registry routes (T-083): /mcp-servers, /bots/:id/mcp and the OAuth callback. Without it none is mounted.
+  readonly runMcpServers?: RunMcpServers | undefined
   // GITHUB_WEBHOOK_SECRET (config.ts). Unset: the GitHub route answers 503 and processes nothing.
   readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
 }
@@ -127,7 +130,9 @@ export const makeApp = (deps: AppDeps): Hono => {
       c.req.path === "/" ||
       BOARD_PAGE_PATH.test(c.req.path) ||
       GENERIC_WEBHOOK_PATH.test(c.req.path) ||
-      c.req.path === GITHUB_WEBHOOK_PATH
+      c.req.path === GITHUB_WEBHOOK_PATH ||
+      // The browser lands here from the authorization server with no header; the one-time `state` is the credential.
+      (c.req.method === "GET" && c.req.path === MCP_OAUTH_CALLBACK_PATH)
     ) {
       return next()
     }
@@ -183,6 +188,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
+  if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)
   if (deps.runMemory !== undefined) {
     registerMemoryRoutes(app, deps.runMemory)
   }

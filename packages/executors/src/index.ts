@@ -31,9 +31,18 @@ export {
   McpConfigError,
   mcpConfigFor,
 } from "./mcp-config.js"
+export {
+  claudeServerEntries,
+  codexServerBlock,
+  isInjectable,
+  type McpInject,
+  mcpDeniedTools,
+  mcpEnvNames,
+} from "./mcp-inject.js"
 export { parseNdjsonLines } from "./ndjson.js"
 export {
   type FetchLike,
+  type McpToolHost,
   makeOpenAICompat,
   type OpenAICompatOptions,
   type OpenAICompatPolicy,

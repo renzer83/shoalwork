@@ -24,6 +24,7 @@ import {
   GithubPushPayload,
   GithubWorkflowRunPayload,
 } from "./github.js"
+import { McpCalledPayload, McpServerChangedPayload } from "./mcp.js"
 import { MemoryAddedPayload, MemoryForgottenPayload, MemorySupersededPayload } from "./memory.js"
 import { AgentMsgPayload, MessageInboundPayload, MessageOutboundPayload } from "./message.js"
 import { NotionPagePayload, NotionToolCalledPayload } from "./notion.js"
@@ -90,6 +91,8 @@ export const EventType = Schema.Literals([
   "notion.page_created",
   "notion.page_updated",
   "notion.tool_called",
+  "mcp.called",
+  "mcp.server_changed",
 ])
 export type EventType = typeof EventType.Type
 
@@ -141,6 +144,8 @@ export const EventPayloads = {
   "notion.page_created": NotionPagePayload,
   "notion.page_updated": NotionPagePayload,
   "notion.tool_called": NotionToolCalledPayload,
+  "mcp.called": McpCalledPayload,
+  "mcp.server_changed": McpServerChangedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.

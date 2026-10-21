@@ -45,6 +45,7 @@ describe("runMigrations", () => {
         "0025_executor_quota.sql",
         "0026_github_installations.sql",
         "0027_notion_sync.sql",
+        "0028_mcp_servers.sql",
         "0029_tokenizer.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),

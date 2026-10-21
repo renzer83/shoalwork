@@ -10,6 +10,7 @@ import { Tank } from "@shoalwork/tank"
 import { Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
 import { type McpAttachment, mcpConfigFor } from "../mcp-config.js"
+import { mcpDeniedTools } from "../mcp-inject.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { observeQuota } from "../quota/signals.js"
 import { type QuotaStoreShape, quotaStatusOf } from "../quota/store.js"
@@ -90,6 +91,7 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
               mcp,
               mcpConfigFile,
               bridge && ctx.mcp?.permissionBridge !== undefined,
+              mcpDeniedTools(ctx.mcp?.servers ?? []),
             ),
           ])
           .pipe(Effect.mapError(spawnFailed))

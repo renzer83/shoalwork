@@ -10,6 +10,7 @@ import type {
 } from "@shoalwork/contracts"
 import type { ExecResult, TankContext, TankShape } from "@shoalwork/tank"
 import { Effect, Schema } from "effect"
+import type { McpToolHost } from "./mcp-tools.js"
 
 // Shared by the three tools. The model's output is untrusted (R14): every call is decoded, judged by the Policy as the
 // matching Claude Code tool (Read / Write / Bash) and only then run through the Tank. Nothing here throws: a refusal
@@ -38,6 +39,8 @@ export type ToolDeps = {
   readonly botId: BotId
   readonly policy: OpenAICompatPolicy
   readonly mode: PermissionMode
+  // The Bot's MCP tools (T-083); absent: none are offered.
+  readonly mcp?: McpToolHost | undefined
 }
 
 export type ToolOutcome =

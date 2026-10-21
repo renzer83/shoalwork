@@ -50,7 +50,7 @@ const requestFailure = (error: ChatRequestError): ExecutorEvent => ({
 // assistant(tool_calls) → tool results → … until a message without tool calls, `maxTurns` model calls, or a pause for
 // approval. The history lives only in this run: a later run (resume after approval) starts a new conversation.
 export const runLoop = (deps: LoopDeps, task: ExecutorTask): Events => {
-  const tools = deps.supportsTools ? toolDefs(deps.tools.mode) : []
+  const tools = deps.supportsTools ? toolDefs(deps.tools.mode, deps.tools.mcp) : []
   const messages: Array<ChatMessage> = [
     ...(task.systemAppend === undefined ? [] : [{ role: "system" as const, content: task.systemAppend }]),
     { role: "user", content: task.prompt },
