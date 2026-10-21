@@ -21,6 +21,8 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.tsx"],
     environment: "jsdom",
+    // Screens rendered by react-native-web in jsdom take seconds on the CI runner; the default 5 s is too tight.
+    testTimeout: 20_000,
     server: { deps: { inline: [/react-native-paper/, /react-native-safe-area-context/] } },
   },
 })
