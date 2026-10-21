@@ -1,0 +1,37 @@
+# Executor instances (T-080). One entry per id; the same CLI can appear under several ids with its own env or provider.
+# A dollar-brace reference to a variable is expanded only for the names in EXPANDABLE_ENV
+# (packages/executors/src/registry-config.ts), read from the core env. A missing value makes the instance unavailable,
+# not a boot error (ADR-011).
+executors:
+  - { id: claude-code, kind: claude-code }
+  - id: claude-code@zai
+    kind: claude-code
+    env:
+      ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic"
+      ANTHROPIC_AUTH_TOKEN: "${ZAI_API_KEY}"
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-5.3-flash[1m]"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "glm-5.3[1m]"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "glm-5.3[1m]"
+  - id: claude-code@ollama
+    kind: claude-code
+    env:
+      ANTHROPIC_BASE_URL: "http://localhost:11434"
+      ANTHROPIC_AUTH_TOKEN: "ollama"
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "qwen3:4b"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen3:8b"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen3:8b"
+  - { id: codex, kind: codex }
+  - id: codex@ollama
+    kind: codex
+    model: "qwen3:8b"
+    codexProvider:
+      name: local_ollama
+      base_url: "http://localhost:11434/v1"
+      wire_api: responses
+  - id: ollama
+    kind: openai-compat
+    baseUrl: "http://localhost:11434/v1"
+    apiKey: "ollama"
+    defaultModel: "qwen3:4b"
+    supportsTools: true
+  - { id: forja, kind: forja, bin: "forja" }

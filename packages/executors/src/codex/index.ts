@@ -23,6 +23,7 @@ import {
   targetFor,
 } from "./args.js"
 import { CodexEvent, makeCodexMapper } from "./events.js"
+import { type CodexProvider, writeCodexProviderConfig } from "./provider.js"
 
 export const CODEX_ID = Schema.decodeUnknownSync(ExecutorId)("codex")
 
@@ -34,6 +35,10 @@ export type CodexOptions = {
   readonly quota?: QuotaStoreShape
   // Model per tier. A missing tier uses the codex default (no -m: the model of the Bot's config.toml).
   readonly models?: CodexModels
+  // Instance id (T-080): codex@ollama and the like. Default "codex".
+  readonly id?: ExecutorId
+  // Written into the Bot's config.toml before each run (T-080). Absent: the file keeps its own provider.
+  readonly provider?: CodexProvider
 }
 
 // Observer of the run's events for the in-memory counter: usage only.
@@ -42,22 +47,31 @@ const counterObserver =
   (event: ExecutorEvent): Effect.Effect<void> =>
     event.kind === "usage" ? Effect.sync(() => counter.record(event.usage)) : Effect.void
 
-const spawnFailure = (cause: unknown): ExecutorSpawnError =>
-  new ExecutorSpawnError({ executor: "codex", cause })
+const spawnFailureOf =
+  (executor: ExecutorId) =>
+  (cause: unknown): ExecutorSpawnError =>
+    new ExecutorSpawnError({ executor, cause })
 
 const isTerminal = (event: ExecutorEvent): boolean => event.kind === "done" || event.kind === "error"
 
 const one = (event: ExecutorEvent): Stream.Stream<ExecutorEvent> => Stream.make(event)
 
 const runCodex = (
+  id: ExecutorId,
   task: ExecutorTask,
   ctx: ExecutorContext,
   observe: (event: ExecutorEvent) => Effect.Effect<void>,
   target: (tier: ExecutorTask["tier"]) => CodexTarget,
+  provider: CodexProvider | undefined,
 ): Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope> =>
   Stream.unwrap(
     Effect.gen(function* () {
       const tank = yield* Tank
+      const spawnFailure = spawnFailureOf(id)
+      // The provider table (T-080) first: the MCP merge below keeps every table it does not own.
+      if (provider !== undefined) {
+        yield* writeCodexProviderConfig(ctx, provider).pipe(Effect.mapError(spawnFailure))
+      }
       // Merges the reef table into the Bot's CODEX_HOME/config.toml before codex starts (T-042).
       if (ctx.mcp !== undefined) {
         yield* mcpConfigFor("codex", ctx).pipe(Effect.mapError(spawnFailure))
@@ -118,17 +132,15 @@ const runCodex = (
   )
 
 export const makeCodexExecutor = (options: CodexOptions): Executor => {
-  const counter = makeQuotaCounter(CODEX_ID, options.quotaWindowSeconds, options.quotaSoftLimitTokens)
+  const id = options.id ?? CODEX_ID
+  const counter = makeQuotaCounter(id, options.quotaWindowSeconds, options.quotaSoftLimitTokens)
   const mapTier = makeMapTier(options.models)
-  const observe =
-    options.quota === undefined ? counterObserver(counter) : observeQuota(options.quota, CODEX_ID)
+  const observe = options.quota === undefined ? counterObserver(counter) : observeQuota(options.quota, id)
   return {
-    id: CODEX_ID,
+    id,
     mapTier,
     quota: () =>
-      options.quota === undefined
-        ? Effect.sync(() => counter.status())
-        : quotaStatusOf(options.quota, CODEX_ID),
-    run: (task, ctx) => runCodex(task, ctx, observe, mapTier),
+      options.quota === undefined ? Effect.sync(() => counter.status()) : quotaStatusOf(options.quota, id),
+    run: (task, ctx) => runCodex(id, task, ctx, observe, mapTier, options.provider),
   }
 }

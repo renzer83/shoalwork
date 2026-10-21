@@ -155,6 +155,10 @@ export const AppConfig = Config.all({
   quotaConfigPath: setting("QUOTAS_CONFIG_PATH", Config.String, "config/quotas.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
+  // Executor instances (T-080): one entry per id, e.g. claude-code@zai, codex@ollama, forja. Relative to the repo root.
+  executorsConfigPath: setting("EXECUTORS_CONFIG_PATH", Config.String, "config/executors.yaml").pipe(
+    Config.map((configured) => resolveRepoPath(configured)),
+  ),
 })
 
 export type AppConfigShape = Config.Success<typeof AppConfig>

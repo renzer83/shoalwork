@@ -109,7 +109,7 @@ export const claudeMcpJson = (attachment: McpAttachment): string => {
 const LINK_REFUSED = "link refused"
 
 // Refuses a symlink at `path` (the file or the directory holding it). A missing path is fine: it is created.
-const assertNoLink = async (path: string): Promise<void> => {
+export const assertNoLink = async (path: string): Promise<void> => {
   const info = await lstat(path).catch((cause: unknown) => {
     if (isNotFound(cause)) return undefined
     throw cause
@@ -119,7 +119,7 @@ const assertNoLink = async (path: string): Promise<void> => {
 
 // Writes `content` to `path` without ever following a link: the temporary file is created exclusively (`wx`) next to
 // the target and renamed over it, so a link planted at `path` is replaced, not written through. Mode is always 0600.
-const writeSecureFile = async (dir: string, path: string, content: string): Promise<void> => {
+export const writeSecureFile = async (dir: string, path: string, content: string): Promise<void> => {
   await mkdir(dir, { recursive: true })
   await assertNoLink(dir)
   await assertNoLink(path)

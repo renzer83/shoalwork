@@ -17,6 +17,12 @@ export {
 } from "./claude-code/warm.js"
 export { CODEX_ID, type CodexOptions, makeCodexExecutor } from "./codex/index.js"
 export {
+  CodexProvider,
+  codexProviderTable,
+  mergeCodexProvider,
+  writeCodexProviderConfig,
+} from "./codex/provider.js"
+export {
   DoctorConfig,
   DoctorConfigLive,
   type DoctorConfigShape,
@@ -34,6 +40,7 @@ export {
   ExecutorRegistry,
   makeRegistry,
 } from "./executor.js"
+export { FORJA_ID, type ForjaOptions, makeForja } from "./forja/index.js"
 export { type GeminiOptions, makeGemini } from "./gemini/index.js"
 export {
   MCP_NAME_PATTERN,
@@ -78,6 +85,13 @@ export {
   quotaStatusOf,
 } from "./quota/store.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
+export {
+  EXPANDABLE_ENV,
+  ExecutorSpec,
+  ExecutorsConfig,
+  type ExecutorsConfigDeps,
+  loadExecutorsConfig,
+} from "./registry-config.js"
 export {
   DEFAULT_ROUTE_WEIGHTS,
   type RankedExecutor,

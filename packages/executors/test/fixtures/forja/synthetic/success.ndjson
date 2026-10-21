@@ -1,0 +1,7 @@
+{"type":"started","sessionId":"forja-session-1"}
+{"type":"text","text":"reading the failing test"}
+{"type":"command","cmd":"pnpm test","exitCode":0,"output":"all green"}
+{"type":"file_edit","path":"src/clock.ts","diff":"+1 -1"}
+{"type":"usage","usage":{"tokensIn":120,"tokensOut":40,"usd":0.01}}
+{"type":"done","result":"fixed the clock","sessionId":"forja-session-1"}
+{"type":"future_event","detail":"ignored by the adapter"}
