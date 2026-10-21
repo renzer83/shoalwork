@@ -1,0 +1,28 @@
+{
+  "name": "@shoalwork/desktop",
+  "private": true,
+  "productName": "Shoalwork",
+  "version": "0.0.0",
+  "description": "Shoalwork desktop",
+  "author": "Shoalwork",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": ".vite/build/main.cjs",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "build": "vite build -c vite.main.config.ts && vite build -c vite.preload.config.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "catalog:",
+    "@electron-forge/plugin-vite": "catalog:",
+    "@shoalwork/web": "workspace:*",
+    "electron": "catalog:",
+    "typescript": "catalog:",
+    "vite": "8.3.4",
+    "vitest": "catalog:"
+  }
+}

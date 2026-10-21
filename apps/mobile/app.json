@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Shoalwork",
+    "slug": "shoalwork",
+    "scheme": "shoalwork",
+    "version": "0.0.0",
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": { "typedRoutes": true },
+    "web": { "bundler": "metro", "output": "static" },
+    "ios": { "bundleIdentifier": "dev.shoalwork.app" },
+    "android": { "package": "dev.shoalwork.app" }
+  }
+}

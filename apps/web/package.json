@@ -1,0 +1,10 @@
+{
+  "name": "@shoalwork/web",
+  "private": true,
+  "scripts": {
+    "build": "pnpm --filter @shoalwork/mobile exec expo export -p web --output-dir ../web/dist"
+  },
+  "devDependencies": {
+    "@shoalwork/mobile": "workspace:*"
+  }
+}

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process"
-import { join } from "node:path"
+import { createRequire } from "node:module"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 // Shared by the two live tests (LIVE=1 only): the real CLI of the current user, an allow-list env, a built dist/.
@@ -21,7 +22,11 @@ export const liveEnv = (extra: Readonly<Record<string, string>> = {}): Record<st
 export const buildPackage = (): void => {
   execFileSync(
     process.execPath,
-    [join(packageRoot, "node_modules", "typescript", "bin", "tsc"), "-p", packageRoot],
+    [
+      join(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), "bin", "tsc"),
+      "-p",
+      packageRoot,
+    ],
     {
       stdio: "pipe",
     },

@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process"
 import type { IncomingMessage, Server, ServerResponse } from "node:http"
 import { createServer } from "node:http"
-import { join } from "node:path"
+import { createRequire } from "node:module"
+import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Client } from "@modelcontextprotocol/client"
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio"
@@ -9,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 // Builds the package into dist/ and runs the real stdio entrypoint against a local fake core.
 const reefRoot = fileURLToPath(new URL("..", import.meta.url))
+// Resolved through Node, so it works with a hoisted or a nested node_modules.
+const tsc = join(dirname(createRequire(import.meta.url).resolve("typescript/package.json")), "bin", "tsc")
 const entry = join(reefRoot, "dist", "mcp.js")
 const TOKEN = "tok_stdio_secret"
 const CHUNK_ID = "chk_0b9c1d2e-3f40-4a5b-8c6d-7e8f9a0b1c2d"
@@ -46,13 +49,9 @@ let core: Server
 let baseUrl = ""
 
 beforeAll(async () => {
-  execFileSync(
-    process.execPath,
-    [join(reefRoot, "node_modules", "typescript", "bin", "tsc"), "-p", reefRoot],
-    {
-      stdio: "pipe",
-    },
-  )
+  execFileSync(process.execPath, [tsc, "-p", reefRoot], {
+    stdio: "pipe",
+  })
   core = createServer(handle)
   await new Promise<void>((resolve) => core.listen(0, "127.0.0.1", () => resolve()))
   const address = core.address()
