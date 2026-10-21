@@ -1,0 +1,118 @@
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and deploy (defaults to the current commit SHA)"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      tag: "${{ steps.resolve.outputs.tag }}"
+      tarball: "${{ steps.resolve.outputs.tarball }}"
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.17.0 }
+      - uses: actions/setup-node@v5
+        with: { node-version: 24, cache: pnpm }
+      - name: Resolve tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag }}"
+          if [ -z "$tag" ]; then
+            if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+              tag="${GITHUB_REF_NAME}"
+            else
+              tag="${GITHUB_SHA}"
+            fi
+          fi
+          case "$tag" in
+            *[!A-Za-z0-9._-]*) echo "invalid tag: $tag" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "tarball=shoalwork-$tag.tar.gz" >> "$GITHUB_OUTPUT"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Pack release
+        run: |
+          set -euo pipefail
+          tag="${{ steps.resolve.outputs.tag }}"
+          out="${{ steps.resolve.outputs.tarball }}"
+          work="$(mktemp -d)"
+          root="$work/release"
+          mkdir -p "$root"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$root/"
+          mkdir -p "$root/scripts/deploy"
+          cp scripts/deploy/remote-install.sh "$root/scripts/deploy/remote-install.sh"
+          chmod +x "$root/scripts/deploy/remote-install.sh"
+          while IFS= read -r dist; do
+            dest="$root/$(dirname "$dist")"
+            mkdir -p "$dest"
+            cp -R "$dist" "$dest/"
+            pkg="$(dirname "$dist")/package.json"
+            if [ -f "$pkg" ]; then cp "$pkg" "$dest/"; fi
+          done < <(find packages apps services -type d -name dist -not -path '*/node_modules/*')
+          printf '%s\n' "$tag" > "$root/RELEASE_TAG"
+          tar -czf "$out" -C "$work" release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: "${{ steps.resolve.outputs.tarball }}"
+          retention-days: 7
+          if-no-files-found: error
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release, path: . }
+      - name: Prepare SSH
+        env:
+          DEPLOY_HOST: "${{ secrets.DEPLOY_HOST }}"
+          DEPLOY_KEY: "${{ secrets.DEPLOY_KEY }}"
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HOST:-}" ] || [ -z "${DEPLOY_KEY:-}" ]; then
+            echo "DEPLOY_HOST and DEPLOY_KEY secrets are required" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          install -m 600 /dev/null ~/.ssh/known_hosts
+          host="${DEPLOY_HOST##*@}"
+          host="${host%%:*}"
+          ssh-keyscan -H "$host" >> ~/.ssh/known_hosts
+      - name: Upload release
+        env:
+          DEPLOY_HOST: "${{ secrets.DEPLOY_HOST }}"
+          TAG: "${{ needs.build.outputs.tag }}"
+          TARBALL: "${{ needs.build.outputs.tarball }}"
+        run: |
+          set -euo pipefail
+          scp -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$TARBALL" "$DEPLOY_HOST:/tmp/$TARBALL"
+      - name: Install and health-check
+        env:
+          DEPLOY_HOST: "${{ secrets.DEPLOY_HOST }}"
+          TAG: "${{ needs.build.outputs.tag }}"
+          TARBALL: "${{ needs.build.outputs.tarball }}"
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_ed25519 "$DEPLOY_HOST" \
+            "bash /opt/shoalwork/scripts/deploy/remote-install.sh '$TAG' '/tmp/$TARBALL'"

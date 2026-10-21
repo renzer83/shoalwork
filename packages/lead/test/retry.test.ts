@@ -19,6 +19,7 @@ import {
   MAX_ATTEMPTS,
   MIN_RETRY_BUDGET_MS,
   type RoundResult,
+  resumeAfterRestart,
   shouldRetry,
   tailOf,
 } from "../src/retry.js"
@@ -172,6 +173,38 @@ describe("decideRetry", () => {
   it("budget_exceeded settles", () => {
     const budget: Outcome = { _tag: "ExecutorError", code: "budget", message: "cost" }
     expect(decideRetry(roundWith(budget, 1), undefined, 60_000, 0)._tag).toBe("Settle")
+  })
+})
+
+describe("resumeAfterRestart", () => {
+  it("preserves the step, session, worktree and usage of the last known run and marks fallback", () => {
+    const worktree = { path: "/tmp/wt", branch: "task-x" } as const
+    const usage = { ...ZERO_USAGE, tokensIn: 12, tokensOut: 34, seconds: 5, usd: 7 }
+    const carry = resumeAfterRestart({ stepId, worktree, sessionId: SESSION, usage })
+    expect(carry).toMatchObject({
+      stepId,
+      worktree,
+      sessionId: SESSION,
+      usage,
+      fallback: true,
+      tail: "",
+    })
+    expect(carry.approval).toBeUndefined()
+  })
+
+  it("passes through working lines and operator notes when provided and keeps session undefined when unknown", () => {
+    const carry = resumeAfterRestart({
+      stepId,
+      worktree: undefined,
+      sessionId: undefined,
+      usage: ZERO_USAGE,
+      working: ["read schema", "write migration"],
+      notes: ["please also update the changelog"],
+    })
+    expect(carry.sessionId).toBeUndefined()
+    expect(carry.working).toEqual(["read schema", "write migration"])
+    expect(carry.notes).toEqual(["please also update the changelog"])
+    expect(carry.fallback).toBe(true)
   })
 })
 

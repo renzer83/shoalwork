@@ -1,9 +1,17 @@
 import type { BeaconShape } from "@shoalwork/beacon"
 import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
-import { streamIds, TaskId } from "@shoalwork/contracts"
+import { type SessionId, type StepId, streamIds, TaskId, ZERO_USAGE } from "@shoalwork/contracts"
 import { Jobs } from "@shoalwork/db"
-import { ApprovalFlow, Control, Lead, TASKS_QUEUE, taskTarget } from "@shoalwork/lead"
+import {
+  ApprovalFlow,
+  Control,
+  Lead,
+  resumeAfterRestart,
+  stepIdFor,
+  TASKS_QUEUE,
+  taskTarget,
+} from "@shoalwork/lead"
 import { trackedProcesses } from "@shoalwork/tank"
 import { Clock, DateTime, Duration, Effect, Option, Schedule, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -87,6 +95,56 @@ const recoverStaleTasks = (config: WatchdogConfig) =>
         }
         yield* recovered(beacon, "stale_task", task.id, "stopped")
       }
+      count++
+    }
+    return count
+  })
+
+// Tasks found in `running` with no job queued or active lost their worker to a restart (the orchestrator came back
+// before `staleMinutes` elapsed). Each one is put back on the queue right away so the next worker picks it up and
+// `recoveredCarry` continues the same step (same worktree, same session when the Tank still has them). Running the
+// query again is a no-op: a task that already has a queued or active job is skipped. `resumeAfterRestart` builds a
+// typed carry for the log so the resume is auditable alongside the recovered event.
+const RunningRow = Schema.Struct({
+  id: TaskId,
+  attempts: Schema.Int,
+  session_id: Schema.NullOr(Schema.String),
+})
+
+const reconcileRunningAfterRestart = () =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient
+    const beacon = yield* Beacon
+    const rows = yield* sql`
+      SELECT t.id AS id, t.attempts AS attempts, t.session_id AS session_id FROM tasks t
+      WHERE t.state = 'running'
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs j
+          WHERE j.queue = ${TASKS_QUEUE}
+            AND json_extract(j.payload, '$.taskId') = t.id
+            AND j.state IN ('queued', 'active')
+        )`
+    const pending = yield* decodeRows(RunningRow, rows)
+    let count = 0
+    for (const task of pending) {
+      const attempts = Math.max(1, task.attempts)
+      const stepId: StepId = stepIdFor(task.id, attempts)
+      const sessionId: SessionId | undefined =
+        task.session_id === null || task.session_id === "" ? undefined : (task.session_id as SessionId)
+      // Pure carry used for logging the planned resume; the worker builds its own on claim.
+      const carry = resumeAfterRestart({
+        stepId,
+        worktree: undefined,
+        sessionId,
+        usage: ZERO_USAGE,
+      })
+      yield* Effect.logInfo("watchdog: resuming task after restart", {
+        taskId: task.id,
+        stepId: carry.stepId,
+        sessionId: carry.sessionId ?? null,
+      })
+      yield* Jobs.enqueue(TASKS_QUEUE, { taskId: task.id })
+      yield* recovered(beacon, "stale_task", task.id, "restart_resume")
       count++
     }
     return count
@@ -201,6 +259,7 @@ const reconcile = (config: WatchdogConfig) =>
 export const runWatchdogCycle = (config: WatchdogConfig) =>
   Effect.gen(function* () {
     const results = [
+      yield* guarded("restart_resume", reconcileRunningAfterRestart()),
       yield* guarded("stale_tasks", recoverStaleTasks(config)),
       yield* guarded("reap_jobs", reapJobs()),
       yield* guarded("long_processes", killLongProcesses(config)),
@@ -211,12 +270,13 @@ export const runWatchdogCycle = (config: WatchdogConfig) =>
     const total = results.reduce((sum, n) => sum + n, 0)
     if (total > 0) {
       yield* Effect.logInfo("watchdog recovered", {
-        staleTasks: results[0],
-        reapedJobs: results[1],
-        longProcesses: results[2],
-        expiredApprovals: results[3],
-        reconciled: results[4],
-        orphanWorktrees: results[5],
+        restartResumed: results[0],
+        staleTasks: results[1],
+        reapedJobs: results[2],
+        longProcesses: results[3],
+        expiredApprovals: results[4],
+        reconciled: results[5],
+        orphanWorktrees: results[6],
       })
     }
   })

@@ -242,6 +242,7 @@ export {
   type StepOutcome,
   type StepResult,
 } from "./plan/dispatcher.js"
+export { executorsUsed, fullResult } from "./plan/executors-used.js"
 export { IntegrationFailed, makeIntegration, planBranchOf } from "./plan/integration.js"
 export {
   makePlanner,
@@ -263,6 +264,16 @@ export {
 export { Planning, PlanningLive, type PlanningOptions, type PlanningShape } from "./planning.js"
 export { makePodNotes, PodNotes, PodNotesLive, type PodNotesShape } from "./pod-notes.js"
 export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
+export {
+  type ApprovalResume,
+  type Carry,
+  MAX_ATTEMPTS,
+  type RetryDecision,
+  type RoundResult,
+  resumeAfterRestart,
+  resumeCarry,
+  type Worktree,
+} from "./retry.js"
 export { type McpGrant, type McpServerConfig, makeRunSetup } from "./run-setup.js"
 export { DEFAULT_LEAD_CONFIG, type LeadConfig, type RunResult } from "./runner.js"
 export { TaskStore, TaskStoreLive } from "./tasks.js"

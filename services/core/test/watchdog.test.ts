@@ -266,6 +266,36 @@ describe("watchdog", () => {
     }).pipe(Effect.provide(TestLayer)),
   )
 
+  it.live(
+    "a running task with no queued or active job is put back on the queue after a restart (resume), only once",
+    () =>
+      Effect.gen(function* () {
+        const bot = yield* makeBot
+        const spec = yield* intakeTask(bot)
+        const sql = yield* SqlClient
+        // Simulate the state left by a crashed worker: task is `running` but every job of it was consumed.
+        yield* sql`UPDATE tasks SET state = 'running', attempts = 1, session_id = 'sess-123' WHERE id = ${spec.id}`
+        yield* sql`DELETE FROM jobs WHERE queue = ${TASKS_QUEUE}
+          AND json_extract(payload, '$.taskId') = ${spec.id}`
+
+        yield* runWatchdogCycle(NORMAL)
+
+        expect(yield* jobState(spec.id)).toBe("queued")
+        expect(yield* recoveredEvents).toEqual([
+          { what: "stale_task", ref: spec.id, action: "restart_resume" },
+        ])
+
+        // A second pass is a no-op (the queued job keeps the task out of the reconcile query).
+        yield* runWatchdogCycle(NORMAL)
+        const jobs = yield* sql<{ readonly n: number }>`SELECT COUNT(*) AS n FROM jobs
+          WHERE queue = ${TASKS_QUEUE} AND json_extract(payload, '$.taskId') = ${spec.id}`
+        expect(jobs[0]?.n).toBe(1)
+        expect(yield* recoveredEvents).toEqual([
+          { what: "stale_task", ref: spec.id, action: "restart_resume" },
+        ])
+      }).pipe(Effect.provide(TestLayer)),
+  )
+
   it.effect("the loop runs on the five-minute cadence, starting with an immediate cycle", () =>
     Effect.gen(function* () {
       const bot = yield* makeBot

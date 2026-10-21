@@ -159,6 +159,27 @@ export const resumeCarry = (input: {
   approval: input.approval,
 })
 
+// The carry that picks up a task found in `running` after the core restarts (T-065): the session, the step, the
+// worktree and the usage of the last known run are preserved, and `fallback: true` keeps the attempt counter where
+// it was (the next worker continues the same attempt, it does not open a new one).
+export const resumeAfterRestart = (input: {
+  readonly stepId: StepId
+  readonly worktree: Worktree | undefined
+  readonly sessionId: SessionId | undefined
+  readonly usage: Usage
+  readonly working?: ReadonlyArray<string> | undefined
+  readonly notes?: ReadonlyArray<string> | undefined
+}): Carry => ({
+  stepId: input.stepId,
+  worktree: input.worktree,
+  sessionId: input.sessionId,
+  tail: "",
+  usage: input.usage,
+  fallback: true,
+  working: input.working,
+  notes: input.notes,
+})
+
 // Decides what follows a finished run. `budgetLeftMs` is the task's time budget still available; a retry needs at
 // least `minBudgetMs` of it. The attempt limit is checked before the budget: out of attempts is out of attempts.
 export const decideRetry = (
