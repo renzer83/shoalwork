@@ -46,15 +46,31 @@ describe("importFactoryExport", () => {
       const sql = yield* SqlClient
       const first = yield* importFactoryExport(EXPORT)
       const second = yield* importFactoryExport(EXPORT)
-      expect(first).toEqual({ projects: 1, tasks: 1, events: 1 })
-      expect(second).toEqual({ projects: 1, tasks: 1, events: 1 })
+      expect(first).toEqual({ projects: 1, agents: 1, tasks: 1, events: 1 })
+      expect(second).toEqual({ projects: 1, agents: 1, tasks: 1, events: 1 })
 
       const projects = yield* sql`SELECT slug FROM projects`
+      const agents = yield* sql`SELECT name, role FROM factory_agents`
       const tasks = yield* sql`SELECT id FROM project_tasks`
       const events = yield* sql`SELECT task_id FROM factory_events`
       expect(projects.length).toBe(1)
+      expect(agents).toEqual([{ name: "worker", role: "worker" }])
       expect(tasks.length).toBe(1)
       expect(events.length).toBe(1)
+    }).pipe(Effect.provide(withTempDb())),
+  )
+
+  it.effect("updates an agent that changed role between exports", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient
+      yield* importFactoryExport(EXPORT)
+      yield* importFactoryExport({
+        ...EXPORT,
+        agents: [{ name: "worker", role: "reviewer", model: "sonnet" }],
+      })
+
+      const rows = yield* sql`SELECT role, model FROM factory_agents WHERE name = 'worker'`
+      expect(rows).toEqual([{ role: "reviewer", model: "sonnet" }])
     }).pipe(Effect.provide(withTempDb())),
   )
 

@@ -18,7 +18,7 @@ import {
   type TierConfig,
   tierMappingFrom,
 } from "@shoalwork/executors"
-import { KanbanLive } from "@shoalwork/factory"
+import { FactoryScheduler, FactorySchedulerLive, KanbanLive } from "@shoalwork/factory"
 import {
   ApprovalFlowLive,
   type ConsolidateHookOptions,
@@ -187,7 +187,9 @@ export const AppLayer = Layer.unwrap(
     ).pipe(Layer.provideMerge(withIndexer), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
     // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
-    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withTides))
+    // The delivery cycle (T-061) sits above the Lead, the Policy and the Approvals it asks, and the GitHub client.
+    const withFactory = FactorySchedulerLive.pipe(Layer.provideMerge(withTides))
+    const withReflex = makeReflexLive(reflexConfig).pipe(Layer.provideMerge(withFactory))
     const withSessions = ChatSessionsLive.pipe(Layer.provideMerge(withReflex))
     const withConsolidation = executorConsolidationModel(tiers).pipe(Layer.provideMerge(withSessions))
     // The one door for a decision: web, CLI and the Telegram buttons all go through it.
@@ -290,6 +292,16 @@ export const startTidesFiber = (options: { readonly pollMs: number }) =>
     Effect.gen(function* () {
       const tides = yield* Tides
       yield* tides.startScheduler(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// The factory's loop (30 s plus the events that wake it) in its own fiber, like the Tides.
+export const startFactoryFiber = (options: { readonly pollMs: number }) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      const scheduler = yield* FactoryScheduler
+      yield* scheduler.start(options)
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )

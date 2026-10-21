@@ -282,12 +282,24 @@ importers:
       '@shoalwork/beacon':
         specifier: workspace:*
         version: link:../beacon
+      '@shoalwork/bots':
+        specifier: workspace:*
+        version: link:../bots
       '@shoalwork/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@shoalwork/currents':
+        specifier: workspace:*
+        version: link:../currents
       '@shoalwork/db':
         specifier: workspace:*
         version: link:../db
+      '@shoalwork/lead':
+        specifier: workspace:*
+        version: link:../lead
+      '@shoalwork/policy':
+        specifier: workspace:*
+        version: link:../policy
       effect:
         specifier: 'catalog:'
         version: 4.0.5

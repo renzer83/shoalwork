@@ -20,6 +20,14 @@ const ProjectBody = Schema.Struct({
   repoUrl: Schema.String.check(Schema.isMaxLength(500)),
   defaultBranch: Schema.String.check(Schema.isMaxLength(100)),
   maxInProgress: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+  // The checks of the delivery cycle (T-061): the worker's gates, the testpilot's commands, and the merge switch.
+  gates: Schema.optionalKey(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(500))).check(Schema.isMaxLength(20)),
+  ),
+  e2e: Schema.optionalKey(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(500))).check(Schema.isMaxLength(20)),
+  ),
+  autoMerge: Schema.optionalKey(Schema.Boolean),
 })
 
 // Body of POST /projects/:slug/tasks/:taskId/move: the target state and, optionally, why.

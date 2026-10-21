@@ -92,6 +92,23 @@ describe("POST /projects", () => {
     expect(body.project).toMatchObject({ slug: "faturium", maxInProgress: 3 })
   })
 
+  it("keeps the gates, the end-to-end commands and the auto-merge switch of the cycle", async () => {
+    const res = await post(
+      "/projects",
+      projectBody("cycle", { gates: ["pnpm test"], e2e: ["pnpm e2e"], autoMerge: true }),
+    )
+
+    expect(res.status).toBe(201)
+    const body = await json<{ readonly project: Record<string, unknown> }>(res)
+    expect(body.project).toMatchObject({ gates: ["pnpm test"], e2e: ["pnpm e2e"], autoMerge: true })
+  })
+
+  it("rejects gates that are not a list of strings with 400", async () => {
+    const res = await post("/projects", projectBody("badgates", { gates: "pnpm test" }))
+
+    expect(res.status).toBe(400)
+  })
+
   it("answers 409 for a slug that already exists", async () => {
     await post("/projects", projectBody("dup"))
     const res = await post("/projects", projectBody("dup"))

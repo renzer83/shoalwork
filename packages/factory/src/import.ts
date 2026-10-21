@@ -10,6 +10,7 @@ const iso = (at: DateTime.Utc | undefined): string | null =>
 export interface ImportReport {
   // Number of rows written for each kind. A re-import converges to the same rows (idempotent).
   readonly projects: number
+  readonly agents: number
   readonly tasks: number
   readonly events: number
 }
@@ -32,6 +33,19 @@ const upsertProjects = (sql: SqlClient, exported: FactoryExport): Effect.Effect<
           status = excluded.status`
     }
     return exported.projects.length
+  })
+
+const upsertAgents = (sql: SqlClient, exported: FactoryExport): Effect.Effect<number, SqlError> =>
+  Effect.gen(function* () {
+    for (const agent of exported.agents) {
+      yield* sql`INSERT INTO factory_agents (name, role, model, instructions_path, source)
+        VALUES (${agent.name}, ${agent.role}, ${agent.model ?? null}, ${agent.instructionsPath ?? null}, ${exported.source})
+        ON CONFLICT (source, name) DO UPDATE SET
+          role = excluded.role,
+          model = excluded.model,
+          instructions_path = excluded.instructions_path`
+    }
+    return exported.agents.length
   })
 
 const upsertTasks = (sql: SqlClient, exported: FactoryExport): Effect.Effect<number, SqlError> =>
@@ -76,8 +90,8 @@ const insertEvents = (sql: SqlClient, exported: FactoryExport): Effect.Effect<nu
     return exported.events.length
   })
 
-// Imports a bridge export, idempotently, in one transaction: every row lands or none does. `agents` is validated
-// but not stored (it feeds T-059 templates / T-038 memory instead).
+// Imports a bridge export, idempotently, in one transaction: every row lands or none does. `agents` is the
+// catalog of SOULs; T-059 templates and T-038 memory read it from here instead of re-parsing the export.
 export const importFactoryExport = (
   input: unknown,
 ): Effect.Effect<ImportReport, SchemaViolation | SqlError, SqlClient> =>
@@ -87,9 +101,10 @@ export const importFactoryExport = (
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const projects = yield* upsertProjects(sql, exported)
+        const agents = yield* upsertAgents(sql, exported)
         const tasks = yield* upsertTasks(sql, exported)
         const events = yield* insertEvents(sql, exported)
-        return { projects, tasks, events }
+        return { projects, agents, tasks, events }
       }),
     )
   })

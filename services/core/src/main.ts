@@ -17,6 +17,7 @@ import {
   runEffect,
   startConsolidateFiber,
   startConversationFiber,
+  startFactoryFiber,
   startIndexFiber,
   startLeadWorker,
   startTidesFiber,
@@ -69,6 +70,9 @@ const syncTides = Effect.gen(function* () {
 
 // Tide cadence (02-architecture §11): the cron windows are checked every 30 seconds.
 const TIDES_POLL_MS = 30_000
+
+// Factory cadence (02-architecture §15): the delivery cycle is walked every 30 seconds, and sooner on an event.
+const FACTORY_POLL_MS = 30_000
 
 const recoverOrphans = Effect.gen(function* () {
   const control = yield* Control
@@ -148,6 +152,10 @@ const serveUntilInterrupted = (
     const scheduling = startTidesFiber({ pollMs: TIDES_POLL_MS })
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(scheduling).pipe(Effect.andThen(Effect.logInfo("shutdown: tides stopped"))),
+    )
+    const factory = startFactoryFiber({ pollMs: FACTORY_POLL_MS })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(factory).pipe(Effect.andThen(Effect.logInfo("shutdown: factory stopped"))),
     )
     const worker = startLeadWorker({ concurrency: 2, pollMs: 1000 })
     yield* Effect.addFinalizer(() =>

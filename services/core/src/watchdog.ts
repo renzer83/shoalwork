@@ -3,6 +3,7 @@ import { Beacon } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { type SessionId, type StepId, streamIds, TaskId, ZERO_USAGE } from "@shoalwork/contracts"
 import { Jobs } from "@shoalwork/db"
+import { FactoryScheduler } from "@shoalwork/factory"
 import {
   ApprovalFlow,
   Control,
@@ -221,6 +222,15 @@ const expireApprovals = () =>
     return expired
   })
 
+// The delivery cycle's net (T-061): a pull request with no CI event for too long is polled, and a task in review
+// without a pull request goes back to the queue. A core booted without the factory has nothing to sweep.
+const sweepFactory = () =>
+  Effect.gen(function* () {
+    const scheduler = yield* Effect.serviceOption(FactoryScheduler)
+    if (Option.isNone(scheduler)) return 0
+    return yield* scheduler.value.sweep
+  })
+
 // Bots marked working with no running task go idle; jobs active on a task that already settled are completed.
 const reconcile = (config: WatchdogConfig) =>
   Effect.gen(function* () {
@@ -264,6 +274,7 @@ export const runWatchdogCycle = (config: WatchdogConfig) =>
       yield* guarded("reap_jobs", reapJobs()),
       yield* guarded("long_processes", killLongProcesses(config)),
       yield* guarded("expired_approvals", expireApprovals()),
+      yield* guarded("factory_cycle", sweepFactory()),
       yield* guarded("reconcile", reconcile(config)),
       yield* guarded("orphan_worktrees", sweepOrphanWorktrees()),
     ]
@@ -275,8 +286,9 @@ export const runWatchdogCycle = (config: WatchdogConfig) =>
         reapedJobs: results[2],
         longProcesses: results[3],
         expiredApprovals: results[4],
-        reconciled: results[5],
-        orphanWorktrees: results[6],
+        factoryCycle: results[5],
+        reconciled: results[6],
+        orphanWorktrees: results[7],
       })
     }
   })

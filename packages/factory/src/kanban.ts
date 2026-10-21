@@ -45,6 +45,9 @@ export interface NewProject {
   readonly repoUrl: string
   readonly defaultBranch: string
   readonly maxInProgress?: number | undefined
+  readonly gates?: ReadonlyArray<string> | undefined
+  readonly e2e?: ReadonlyArray<string> | undefined
+  readonly autoMerge?: boolean | undefined
 }
 
 export interface MoveInput {
@@ -91,7 +94,8 @@ export const decodeTasks = (rows: ReadonlyArray<unknown>) =>
 
 export const projectBySlug = (sql: SqlClient, slug: string) =>
   Effect.gen(function* () {
-    const rows = yield* sql`SELECT slug, name, repo_url, default_branch, status, max_in_progress
+    const rows =
+      yield* sql`SELECT slug, name, repo_url, default_branch, status, max_in_progress, gates, e2e, auto_merge
       FROM projects WHERE slug = ${slug} ORDER BY CASE source WHEN 'board' THEN 0 ELSE 1 END, source LIMIT 1`
     const [row] = yield* decodeProjects(rows)
     return row

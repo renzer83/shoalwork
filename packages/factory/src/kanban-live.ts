@@ -188,7 +188,8 @@ export const KanbanLive: Layer.Layer<Kanban, never, SqlClient | Beacon> = Layer.
 
     const listProjects = () =>
       Effect.gen(function* () {
-        const rows = yield* sql`SELECT slug, name, repo_url, default_branch, status, max_in_progress
+        const rows =
+          yield* sql`SELECT slug, name, repo_url, default_branch, status, max_in_progress, gates, e2e, auto_merge
           FROM projects ORDER BY CASE source WHEN 'board' THEN 0 ELSE 1 END, source, slug`
         const all = (yield* decodeProjects(rows)).map(projectView)
         const seen = new Set<string>()
@@ -209,8 +210,11 @@ export const KanbanLive: Layer.Layer<Kanban, never, SqlClient | Beacon> = Layer.
           return yield* Effect.fail(conflict(input.slug, 0, "the project already exists"))
         }
         const limit = input.maxInProgress ?? DEFAULT_MAX_IN_PROGRESS
-        yield* sql`INSERT INTO projects (slug, name, repo_url, default_branch, status, source, max_in_progress)
-          VALUES (${input.slug}, ${input.name}, ${input.repoUrl}, ${input.defaultBranch}, 'active', 'board', ${limit})`
+        const gates = JSON.stringify(input.gates ?? [])
+        const e2e = JSON.stringify(input.e2e ?? [])
+        const autoMerge = input.autoMerge === true ? 1 : 0
+        yield* sql`INSERT INTO projects (slug, name, repo_url, default_branch, status, source, max_in_progress, gates, e2e, auto_merge)
+          VALUES (${input.slug}, ${input.name}, ${input.repoUrl}, ${input.defaultBranch}, 'active', 'board', ${limit}, ${gates}, ${e2e}, ${autoMerge})`
         const created = yield* projectBySlug(sql, input.slug)
         if (created === undefined) {
           return yield* Effect.fail(new NotFound({ entity: "Project", id: input.slug }))

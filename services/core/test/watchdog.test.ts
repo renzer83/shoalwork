@@ -9,6 +9,7 @@ import { GhClientTest } from "@shoalwork/currents"
 import { Jobs } from "@shoalwork/db"
 import { withTempDb } from "@shoalwork/db/testing"
 import { makeRegistry } from "@shoalwork/executors"
+import { FactoryScheduler } from "@shoalwork/factory"
 import { Lead, LeadWithStore, stepIdFor, TASKS_QUEUE } from "@shoalwork/lead"
 import { makeTankLocal, spawnProcess, Tank, TankLocalLive } from "@shoalwork/tank"
 import { Duration, Effect, Layer, Schema, Stream } from "effect"
@@ -294,6 +295,33 @@ describe("watchdog", () => {
           { what: "stale_task", ref: spec.id, action: "restart_resume" },
         ])
       }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("sweeps the factory's delivery cycle on every cycle when the factory is on", () =>
+    Effect.gen(function* () {
+      let sweeps = 0
+      const scheduler = {
+        reconcile: () => Effect.void,
+        tick: Effect.succeed(0),
+        sweep: Effect.sync(() => {
+          sweeps++
+          return 1
+        }),
+        start: () => Effect.void,
+        onEvent: () => Effect.succeed(false),
+      }
+      yield* runWatchdogCycle(NORMAL).pipe(Effect.provideService(FactoryScheduler, scheduler))
+      expect(sweeps).toBe(1)
+    }).pipe(Effect.provide(TestLayer)),
+  )
+
+  it.effect("a core without the factory has nothing to sweep and records no error", () =>
+    Effect.gen(function* () {
+      yield* runWatchdogCycle(NORMAL)
+      const beacon = yield* Beacon
+      const errors = yield* Stream.runCollect(beacon.readAll(0, ["error.raised"]))
+      expect(Array.from(errors)).toEqual([])
+    }).pipe(Effect.provide(TestLayer)),
   )
 
   it.effect("the loop runs on the five-minute cadence, starting with an immediate cycle", () =>

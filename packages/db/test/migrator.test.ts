@@ -38,6 +38,8 @@ describe("runMigrations", () => {
         "0018_factory.sql",
         "0019_kanban.sql",
         "0020_secrets.sql",
+        "0021_factory_agents.sql",
+        "0022_cycle.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

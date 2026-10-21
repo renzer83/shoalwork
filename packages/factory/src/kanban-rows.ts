@@ -10,6 +10,9 @@ export const ProjectRow = Schema.Struct({
   default_branch: Schema.String,
   status: Schema.String,
   max_in_progress: Schema.Int,
+  gates: Schema.String,
+  e2e: Schema.String,
+  auto_merge: Schema.Int,
 })
 export type ProjectRow = typeof ProjectRow.Type
 
@@ -37,6 +40,10 @@ export interface ProjectView {
   readonly defaultBranch: string
   readonly status: string
   readonly maxInProgress: number
+  // Commands the worker must pass (acceptance of its task) and the ones the testpilot runs.
+  readonly gates: ReadonlyArray<string>
+  readonly e2e: ReadonlyArray<string>
+  readonly autoMerge: boolean
 }
 
 export interface ProjectTaskView {
@@ -53,6 +60,14 @@ export interface ProjectTaskView {
   readonly updatedAt: string | null
 }
 
+const decodeCommands = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)))
+
+// A column that does not hold a JSON array of strings reads as no commands.
+export const commandsOf = (raw: string): ReadonlyArray<string> => {
+  const decoded = decodeCommands(raw)
+  return decoded._tag === "Some" ? decoded.value : []
+}
+
 export const projectView = (row: ProjectRow): ProjectView => ({
   slug: row.slug,
   name: row.name,
@@ -60,6 +75,9 @@ export const projectView = (row: ProjectRow): ProjectView => ({
   defaultBranch: row.default_branch,
   status: row.status,
   maxInProgress: row.max_in_progress,
+  gates: commandsOf(row.gates),
+  e2e: commandsOf(row.e2e),
+  autoMerge: row.auto_merge === 1,
 })
 
 export const taskView = (row: TaskRow): ProjectTaskView => ({
