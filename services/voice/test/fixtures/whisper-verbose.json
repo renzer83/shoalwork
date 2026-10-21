@@ -1,0 +1,9 @@
+{
+  "task": "transcribe",
+  "language": "portuguese",
+  "duration": 2.1,
+  "text": " Olá, mundo.",
+  "segments": [{ "id": 0, "text": " Olá, mundo.", "start": 0.0, "end": 2.1 }],
+  "detected_language": "portuguese",
+  "detected_language_probability": 0.98
+}

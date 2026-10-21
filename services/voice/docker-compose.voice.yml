@@ -1,0 +1,21 @@
+# Voice sidecars for the Linux server (ADR-017). Set VOICE_STT_URL=http://127.0.0.1:28921 and
+# VOICE_TTS_URL=http://127.0.0.1:28922 for the voice service: it then probes these ports and never spawns them.
+# Loopback only. Model directories are required (no default) so model files never land in the repo.
+name: shoalwork-voice
+services:
+  whisper:
+    # The tag exists on ghcr.io (checked 2026-10-21). The binary path and entrypoint inside the image are UNVERIFIED.
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    command: ["whisper-server", "-m", "/models/ggml-large-v3-turbo.bin", "-l", "auto", "--host", "0.0.0.0", "--port", "28921"]
+    volumes:
+      - ${WHISPER_MODELS_DIR:?set WHISPER_MODELS_DIR to the folder holding ggml-large-v3-turbo.bin}:/models:ro
+    ports:
+      - "127.0.0.1:28921:28921"
+    restart: unless-stopped
+  kokoro:
+    build: ./python
+    volumes:
+      - ${KOKORO_MODELS_DIR:?set KOKORO_MODELS_DIR to the folder holding kokoro-v1.0.onnx and voices-v1.0.bin}:/models/kokoro:ro
+    ports:
+      - "127.0.0.1:28922:28922"
+    restart: unless-stopped
