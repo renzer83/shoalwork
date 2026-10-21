@@ -16,6 +16,7 @@ const FailingBeacon: Layer.Layer<Beacon> = Layer.succeed(Beacon, {
   appendMany: () => Effect.die(new Error("disk full")),
   readStream: () => Stream.empty,
   readAll: () => Stream.empty,
+  readRange: () => Stream.empty,
   subscribe: () => Effect.succeed(Stream.empty),
   lastVersion: () => Effect.succeed(0),
 })

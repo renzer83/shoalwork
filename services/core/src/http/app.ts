@@ -15,6 +15,7 @@ import { registerApprovalRoutes } from "./routes/approvals.js"
 import { registerBotRoutes } from "./routes/bots.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerCostRoutes } from "./routes/costs.js"
+import { registerContextCostRoutes } from "./routes/costs-context.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { registerExecutorRoutes } from "./routes/executors.js"
 import { registerLiveRoutes } from "./routes/live.js"
@@ -177,6 +178,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerGithubWebhookRoutes(app, deps.runEffect, deps.githubWebhookSecret)
   registerControlRoutes(app, deps.runEffect)
   registerCostRoutes(app, deps.runEffect)
+  registerContextCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)

@@ -1,6 +1,6 @@
 import { it } from "@effect/vitest"
 import { Conflict, type NewEvent, SchemaViolation, streamIds, TaskId } from "@shoalwork/contracts"
-import { Effect, Schema, Stream } from "effect"
+import { DateTime, Effect, Schema, Stream } from "effect"
 import { describe, expect } from "vitest"
 import { Beacon, BeaconTest } from "../src/index.js"
 
@@ -173,5 +173,37 @@ describe("BeaconTest (in memory)", () => {
       const delivered = yield* Stream.runCollect(live.pipe(Stream.take(2)))
       expect(delivered.map((e) => e.type)).toEqual(["usage.recorded", "usage.recorded"])
     }).pipe(Effect.scoped, Effect.provide(BeaconTest)),
+  )
+})
+
+describe("Beacon.readRange (memory)", () => {
+  it.effect("returns only the given types inside the window, in log order", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const first = yield* beacon.append(usageRecorded())
+      yield* beacon.append(stateChanged("running"))
+      const second = yield* beacon.append(usageRecorded())
+      const at = DateTime.toEpochMillis(first.occurredAt)
+      const wide = { since: at - 60_000, until: at + 60_000 }
+      const found = yield* Stream.runCollect(beacon.readRange(["usage.recorded"], wide))
+      expect(found.map((event) => event.id)).toEqual([first.id, second.id])
+      expect(yield* Stream.runCollect(beacon.readRange([], wide))).toEqual([])
+    }).pipe(Effect.provide(BeaconTest)),
+  )
+
+  it.effect("the window is half-open: since is included, until is left out", () =>
+    Effect.gen(function* () {
+      const beacon = yield* Beacon
+      const event = yield* beacon.append(usageRecorded())
+      const at = DateTime.toEpochMillis(event.occurredAt)
+      const included = yield* Stream.runCollect(
+        beacon.readRange(["usage.recorded"], { since: at, until: at + 1 }),
+      )
+      expect(included.map((e) => e.id)).toEqual([event.id])
+      const excluded = yield* Stream.runCollect(
+        beacon.readRange(["usage.recorded"], { since: at - 1000, until: at }),
+      )
+      expect(excluded).toEqual([])
+    }).pipe(Effect.provide(BeaconTest)),
   )
 })

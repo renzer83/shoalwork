@@ -6,7 +6,7 @@ import { ApiClient, Health, type HttpError } from "./client.js"
 import { approvalDecide } from "./commands/approve.js"
 import { botCommand } from "./commands/bot.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
-import { costsReport, renderCosts } from "./commands/costs.js"
+import { costsContext, costsReport, type GoalNotMet, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
 import { executorCommand } from "./commands/executor.js"
 import { factoryCommand } from "./commands/factory.js"
@@ -18,7 +18,7 @@ import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
 import { tideCommand } from "./commands/tide.js"
 
-type CliError = UsageError | HttpError | SchemaViolation
+type CliError = UsageError | HttpError | SchemaViolation | GoalNotMet
 
 const USAGE = [
   "usage: shoalwork health [--url <base-url>] [--token <token>]",
@@ -32,6 +32,7 @@ const USAGE = [
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork executor quota | shoalwork executor quota set <executor id> --exhausted-until <iso|clear>",
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
+  "       shoalwork costs context [--by task|bot|executor|level] [--since <iso|7d>] [--compare <iso|14d|baseline:<project>>] [--goal <0..1>] [--json]",
   "       shoalwork tide list [--bot <bot id or name>] | shoalwork tide add --bot <bot> --file <tide.json>",
   "       shoalwork tide enable|disable <tide id> | shoalwork tide run <tide id>",
   "       shoalwork tide add ... --webhook (prints the secret once) | shoalwork tide webhook <tide id> (new secret)",
@@ -140,8 +141,11 @@ const status = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
   })
 
 // --json is a switch, not a name-value pair, so it is taken out before the parser sees the arguments.
-const costs = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
-  Effect.gen(function* () {
+const costs = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => {
+  if (argv[0] === "context") {
+    return costsContext(argv.slice(1), (flags) => resolveSettings(flags, process.env))
+  }
+  return Effect.gen(function* () {
     const json = argv.includes("--json")
     const { flags } = yield* parseArgs(
       argv.filter((arg) => arg !== "--json"),
@@ -151,6 +155,7 @@ const costs = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
     const body = yield* costsReport(settings, flags)
     yield* Console.log(renderCosts(body, json))
   })
+}
 
 const events = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> =>
   Effect.gen(function* () {
@@ -299,6 +304,8 @@ const describe = (error: CliError): string => {
       return error.status === 0 ? error.body : `HTTP ${error.status}: ${error.body}`
     case "SchemaViolation":
       return `invalid response from ${error.where}: ${String(error.issue)}`
+    case "GoalNotMet":
+      return error.message
   }
 }
 

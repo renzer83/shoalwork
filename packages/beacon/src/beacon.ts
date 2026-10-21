@@ -30,6 +30,12 @@ export interface BeaconShape {
     afterPosition?: number,
     types?: ReadonlyArray<EventType>,
   ) => Stream.Stream<Event, SqlError>
+  // Events of the given types with occurredAt in [since, until) (epoch ms), in log order. Uses events_type_idx
+  // (type, occurred_at). Empty `types` yields nothing.
+  readonly readRange: (
+    types: ReadonlyArray<EventType>,
+    window: { readonly since: number; readonly until: number },
+  ) => Stream.Stream<Event, SqlError>
   // Attaches to the live feed before it resolves: events published after this effect returns are kept
   // for the returned stream, even if nothing pulls from it yet. The subscription ends with the Scope.
   readonly subscribe: (
@@ -242,11 +248,27 @@ const makeLive = (sql: SqlClient, pubsub: PubSub.PubSub<Event>): BeaconShape => 
       }),
     )
 
+  // occurredAt is written by nowIso() (ISO-8601 UTC, ms), so string order matches time order.
+  const readRange: BeaconShape["readRange"] = (types, window) =>
+    types.length === 0
+      ? Stream.empty
+      : Stream.fromIterableEffect(
+          Effect.gen(function* () {
+            const since = new Date(window.since).toISOString()
+            const until = new Date(window.until).toISOString()
+            const rows = yield* sql`SELECT * FROM events
+              WHERE ${sql.in("type", types)} AND occurred_at >= ${since} AND occurred_at < ${until}
+              ORDER BY position`
+            return yield* decodeEventRows(rows)
+          }),
+        )
+
   return {
     append,
     appendMany,
     readStream,
     readAll,
+    readRange,
     subscribe: (types) => subscribeTo(pubsub, types),
     lastVersion: (streamId) => lastVersionOf(sql, streamId),
   }

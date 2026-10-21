@@ -1,6 +1,6 @@
 import { Conflict, decodeNewEvent, Event, type NewEvent, newEventId } from "@shoalwork/contracts"
 import { nowIso } from "@shoalwork/db"
-import { Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
+import { DateTime, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 import { Beacon, type BeaconShape, checkExpectedVersion, publishAll, subscribeTo } from "./beacon.js"
 
 // In-memory twin of BeaconLive for tests of other packages. Same contract and the same conflict rules.
@@ -116,11 +116,29 @@ export const BeaconTest: Layer.Layer<Beacon> = Layer.effect(
         ),
       )
 
+    // Same half-open window as the SQL version: since <= occurredAt < until.
+    const readRange: BeaconShape["readRange"] = (types, window) =>
+      Stream.fromIterableEffect(
+        Ref.get(store).pipe(
+          Effect.map((events) => {
+            if (types.length === 0) {
+              return []
+            }
+            const wanted = new Set<string>(types)
+            return events.filter((event) => {
+              const at = DateTime.toEpochMillis(event.occurredAt)
+              return wanted.has(event.type) && at >= window.since && at < window.until
+            })
+          }),
+        ),
+      )
+
     return {
       append,
       appendMany,
       readStream,
       readAll,
+      readRange,
       subscribe: (types) => subscribeTo(pubsub, types),
       lastVersion: (streamId) => Ref.get(store).pipe(Effect.map((events) => lastVersionIn(events, streamId))),
     }

@@ -14,6 +14,8 @@ import { DateTime, Effect, Option, Schema, Stream } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import { Beacon } from "./beacon.js"
 
+export * from "./context-metrics.js"
+
 // Projections are derived from the log, never stored as truth (02-architecture §1). Payloads that do not
 // match their schema are skipped: the log was validated on write, so a skip here means a foreign row.
 const decodeTaskStateChanged = Schema.decodeUnknownOption(EventPayloads["task.state_changed"])
