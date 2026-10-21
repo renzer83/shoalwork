@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 import { View } from "react-native"
 import { ActivityIndicator, Text, useTheme } from "react-native-paper"
 import { useApi } from "../api-context.js"
+import { useLocale } from "../i18n/index.js"
 
 export type HomeRoute = "/chat" | "/health" | "/setup"
 
@@ -14,6 +15,7 @@ export interface HomeScreenProps {
 // or Health (which shows why the core is unreachable) when one was.
 export function HomeScreen({ onRoute }: HomeScreenProps) {
   const { client, configured, ready } = useApi()
+  const { t } = useLocale()
   const theme = useTheme()
   // Kept in a ref so a new callback identity from the parent does not re-run the probe.
   const routeRef = useRef(onRoute)
@@ -48,9 +50,9 @@ export function HomeScreen({ onRoute }: HomeScreenProps) {
         backgroundColor: theme.colors.background,
       }}
     >
-      <ActivityIndicator accessibilityLabel="Checking the core" />
+      <ActivityIndicator accessibilityLabel={t("common.checkingCore")} />
       <Text variant="bodySmall" style={{ marginTop: 12 }}>
-        Checking the core
+        {t("common.checkingCore")}
       </Text>
     </View>
   )

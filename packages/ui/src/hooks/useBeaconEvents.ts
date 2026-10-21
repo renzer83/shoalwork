@@ -9,6 +9,7 @@ import {
   liveMatches,
   type PeriodKey,
 } from "../components/beacon/beacon-model.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface EventsPage {
   readonly events: ReadonlyArray<Event>
@@ -34,6 +35,7 @@ const MAX_LIVE_EVENTS = 200
 // The event page of the Farol: newest first, paged by position, plus the live feed (prepended while live is on).
 export function useBeaconEvents(filters: EventFilters, period: PeriodKey): BeaconEvents {
   const { client, ready } = useApi()
+  const { t } = useLocale()
   const [load, setLoad] = useState<EventsLoad>({ kind: "loading" })
   const [live, setLive] = useState(true)
   const [generation, setGeneration] = useState(0)
@@ -54,14 +56,14 @@ export function useBeaconEvents(filters: EventFilters, period: PeriodKey): Beaco
                 page: { events: result.success.events, nextBefore: result.success.nextBefore },
                 loadingOlder: false,
               }
-            : { kind: "failed", message: "Não foi possível carregar os eventos" },
+            : { kind: "failed", message: t("beacon.eventsFailed") },
         )
       },
     )
     return () => {
       current = false
     }
-  }, [client, ready, filters, period, generation])
+  }, [client, ready, filters, period, generation, t])
 
   // Live events go on top only when they match the applied filters; the feed is dropped while paused.
   useEffect(() => {

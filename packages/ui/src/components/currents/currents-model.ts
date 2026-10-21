@@ -1,5 +1,6 @@
 import { Risk } from "@shoalwork/contracts"
 import { Schema } from "effect"
+import type { MessageKey } from "../../i18n/index.js"
 
 // The shapes the app reads from /connectors (services/core/src/connectors-catalog.ts): only the fields it shows.
 export const ConnectorBot = Schema.Struct({
@@ -34,15 +35,15 @@ export const UsageList = Schema.Struct({ usage: Schema.Array(UsageRow) })
 export const ServerAdded = Schema.Struct({ server: Schema.Unknown })
 
 export const KIND_ORDER: ReadonlyArray<ConnectorKind> = ["native", "mcp", "browser"]
-export const KIND_TITLE: Record<ConnectorKind, string> = {
-  native: "Native connectors",
-  mcp: "MCP servers",
-  browser: "Browser",
+export const KIND_TITLE: Record<ConnectorKind, MessageKey> = {
+  native: "currents.kind.native",
+  mcp: "currents.kind.mcp",
+  browser: "currents.kind.browser",
 }
-export const KIND_LABEL: Record<ConnectorKind, string> = {
-  native: "Native",
-  mcp: "MCP server",
-  browser: "Browser",
+export const KIND_LABEL: Record<ConnectorKind, MessageKey> = {
+  native: "currents.label.native",
+  mcp: "currents.label.mcp",
+  browser: "currents.label.browser",
 }
 
 // The MCP form's rules: the core checks the same ones (NewMcpServer). An env entry is the NAME of a Vault key (T-064),
@@ -72,21 +73,21 @@ const isSafeUrl = (raw: string): boolean => {
 }
 
 // Problems the form shows before it sends anything. Empty means the draft may be sent.
-export const mcpDraftIssues = (draft: McpDraft): ReadonlyArray<string> => {
-  const issues: string[] = []
+export const mcpDraftIssues = (draft: McpDraft): ReadonlyArray<MessageKey> => {
+  const issues: MessageKey[] = []
   const name = draft.name.trim()
   if (!SERVER_NAME.test(name) || RESERVED_NAMES.includes(name.toLowerCase())) {
-    issues.push("Name: letters, digits and dashes only, and not reef or permission-bridge")
+    issues.push("mcp.issue.name")
   }
   if (draft.transport === "stdio" && draft.command.trim() === "") {
-    issues.push("Command is required for a local server")
+    issues.push("mcp.issue.command")
   }
   if (draft.transport === "http" && !isSafeUrl(draft.url)) {
-    issues.push("URL must be https (http only for localhost)")
+    issues.push("mcp.issue.url")
   }
   for (const key of splitList(draft.envKeys)) {
     if (!VAULT_KEY.test(key)) {
-      issues.push("An env entry is not a Vault key name: type the name only, e.g. GITHUB_TOKEN")
+      issues.push("mcp.issue.envKey")
       break
     }
   }

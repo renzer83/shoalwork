@@ -2,6 +2,7 @@ import type { NewBot } from "@shoalwork/contracts"
 import { useState } from "react"
 import { View } from "react-native"
 import { Button, HelperText, Text, TextInput } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { type BotDraft, FIELDS, type FieldErrors, validateDraft } from "./bot-form-model.js"
 
 export interface BotFormProps {
@@ -12,6 +13,7 @@ export interface BotFormProps {
 
 // The Bot's ficha. Validation runs on submit with the NewBot schema; each error shows under its field.
 export function BotForm({ initial, onSubmit }: BotFormProps) {
+  const { t } = useLocale()
   const [draft, setDraft] = useState<BotDraft>(initial)
   const [errors, setErrors] = useState<FieldErrors>({})
 
@@ -34,7 +36,7 @@ export function BotForm({ initial, onSubmit }: BotFormProps) {
       {FIELDS.map((field) => (
         <View key={field.key}>
           <TextInput
-            label={field.label}
+            label={t(field.labelKey)}
             value={draft[field.key]}
             onChangeText={(value) => change(field.key, value)}
             multiline={"multiline" in field && field.multiline === true}
@@ -46,11 +48,9 @@ export function BotForm({ initial, onSubmit }: BotFormProps) {
         </View>
       ))}
       {errors.form === undefined ? null : <HelperText type="error">{errors.form}</HelperText>}
-      <Text variant="bodySmall">
-        Executors and connectors are free text until their lists exist (T-117, T-119).
-      </Text>
+      <Text variant="bodySmall">{t("botForm.freeText")}</Text>
       <Button mode="contained" onPress={submit}>
-        Save
+        {t("common.save")}
       </Button>
     </View>
   )

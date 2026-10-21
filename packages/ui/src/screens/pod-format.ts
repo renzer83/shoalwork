@@ -1,11 +1,12 @@
-// Display helpers of the Pod screens. Times are shown as "h min ago" relative to `now`; no locale data is needed.
+import type { Translate } from "../i18n/index.js"
+
+// Display helpers of the Pod screens. Times are shown relative to `now`, in the reader's language.
 export const money = (usd: number): string => `US$ ${usd.toFixed(2)}`
 
-export const startedAgo = (iso: string, now: number): string => {
+export const startedAgo = (iso: string, now: number, t: Translate): string => {
   const minutes = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000))
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.floor(minutes / 60)
-  return `${hours} h ago`
+  if (minutes < 60) return t("time.minAgo", { count: minutes })
+  return t("time.hoursAgo", { count: Math.floor(minutes / 60) })
 }
 
 export const clock = (iso: string): string => {

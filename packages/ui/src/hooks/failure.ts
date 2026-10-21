@@ -1,3 +1,5 @@
+import type { Translate } from "../i18n/index.js"
+
 // HttpError carries the HTTP status (0 when the core never answered); anything else counts as no answer.
 export const failedStatus = (error: unknown): number =>
   error instanceof Object && "status" in error ? Number(error.status) : 0
@@ -12,10 +14,10 @@ const bodyDetail = (body: unknown): string | undefined => {
 }
 
 // What the user reads when a call failed: the status, and the core's own reason when it gave one.
-export const failureText = (error: unknown): string => {
+export const failureText = (error: unknown, t: Translate): string => {
   const status = failedStatus(error)
   const body: unknown = error instanceof Object && "body" in error ? error.body : undefined
-  const head = status === 0 ? "The core did not answer" : `HTTP ${status}`
+  const head = status === 0 ? t("common.noAnswer") : t("common.httpStatus", { status })
   const detail = bodyDetail(body)
   return detail === undefined ? head : `${head}: ${detail}`
 }

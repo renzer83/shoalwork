@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { View } from "react-native"
 import { Button, Text } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { formatPct, formatUsd } from "../beacon/beacon-model.js"
 import {
   QUALITY_HEADERS,
@@ -16,11 +17,12 @@ export interface QualityTableProps {
 
 // The 30-day quality of one executor by task kind. Each header sorts; a second press on the same header reverses it.
 export function QualityTable({ rows }: QualityTableProps) {
+  const { t } = useLocale()
   const [key, setKey] = useState<QualityKey>("n")
   const [direction, setDirection] = useState<SortDirection>("desc")
 
   if (rows.length === 0) {
-    return <Text variant="bodySmall">Sem execuções nos últimos 30 dias</Text>
+    return <Text variant="bodySmall">{t("runs.empty")}</Text>
   }
 
   const press = (next: QualityKey) => {
@@ -37,13 +39,20 @@ export function QualityTable({ rows }: QualityTableProps) {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
         {QUALITY_HEADERS.map((header) => (
           <Button key={header.key} compact mode="text" onPress={() => press(header.key)}>
-            {header.key === key ? `${header.label} ${direction === "asc" ? "↑" : "↓"}` : header.label}
+            {header.key === key
+              ? `${t(header.labelKey)} ${direction === "asc" ? "↑" : "↓"}`
+              : t(header.labelKey)}
           </Button>
         ))}
       </View>
       {sortQuality(rows, key, direction).map((row) => (
         <Text key={row.kind} variant="bodySmall">
-          {`${row.kind} · sucesso ${formatPct(row.okRate * 100)} · ${row.n} execuções · ${formatUsd(row.avgUsd)} por execução`}
+          {t("executors.quality.row", {
+            kind: row.kind,
+            ok: formatPct(row.okRate * 100),
+            n: row.n,
+            cost: formatUsd(row.avgUsd),
+          })}
         </Text>
       ))}
     </View>

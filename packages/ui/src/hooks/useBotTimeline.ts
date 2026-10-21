@@ -3,6 +3,7 @@ import type { SchemaViolation, TimelineItem } from "@shoalwork/contracts"
 import { Effect } from "effect"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useApi } from "../api-context.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 import { LIVE_TYPES, lastPosition, mergeItems, reactTo, withApprovalStatus } from "./timeline-model.js"
 
 const PAGE_SIZE = 50
@@ -25,18 +26,19 @@ export interface BotTimeline {
   readonly markApproval: (approvalId: string, status: "approved" | "denied" | "expired", by?: string) => void
 }
 
-const describe = (error: HttpError | SchemaViolation, baseUrl: string): string => {
+const describe = (error: HttpError | SchemaViolation, baseUrl: string, t: Translate): string => {
   if (error._tag === "HttpError") {
     return error.status === 0
-      ? `Cannot reach the core at ${baseUrl}`
-      : `The core answered HTTP ${error.status}`
+      ? t("common.cannotReachAt", { url: baseUrl })
+      : t("common.httpAnswered", { status: error.status })
   }
-  return "The core answered with an unexpected body"
+  return t("common.unexpectedBody")
 }
 
 // The conversation with one Bot (id or name): the newest page, older pages on demand, and the live feed.
 export function useBotTimeline(bot: string): BotTimeline {
   const { client, config, ready } = useApi()
+  const { t } = useLocale()
   const [items, setItems] = useState<ReadonlyArray<TimelineItem>>([])
   const [status, setStatus] = useState<BotTimeline["status"]>("loading")
   const [error, setError] = useState<string | undefined>(undefined)
@@ -91,7 +93,7 @@ export function useBotTimeline(bot: string): BotTimeline {
           if (result._tag === "Success") {
             apply(mergeItems(itemsRef.current, result.success.items))
           } else {
-            setLiveError(describe(result.failure, baseUrl))
+            setLiveError(describe(result.failure, baseUrl, t))
           }
         } while (dirty)
       } finally {
@@ -114,7 +116,7 @@ export function useBotTimeline(bot: string): BotTimeline {
       if (abort.signal.aborted) return
       if (first._tag === "Failure") {
         setStatus("failed")
-        setError(describe(first.failure, baseUrl))
+        setError(describe(first.failure, baseUrl, t))
         return
       }
       botId = first.success.botId
@@ -126,7 +128,7 @@ export function useBotTimeline(bot: string): BotTimeline {
           types: LIVE_TYPES,
           lastEventId: first.success.head,
           signal: abort.signal,
-          onError: (failure) => setLiveError(describe(failure, baseUrl)),
+          onError: (failure) => setLiveError(describe(failure, baseUrl, t)),
         })) {
           setLiveError(undefined)
           const reaction = reactTo(event, botId)
@@ -139,7 +141,7 @@ export function useBotTimeline(bot: string): BotTimeline {
       } catch (failure) {
         // A 4xx other than 408/429 ends the feed for good (bad token): say so instead of retrying.
         if (!abort.signal.aborted) {
-          setLiveError(failure instanceof Error ? failure.message : "The live feed stopped")
+          setLiveError(failure instanceof Error ? failure.message : t("common.feedStopped"))
         }
       }
     }
@@ -150,7 +152,7 @@ export function useBotTimeline(bot: string): BotTimeline {
       if (timer !== undefined) clearTimeout(timer)
       refreshRef.current = () => undefined
     }
-  }, [client, bot, ready, baseUrl, generation, apply])
+  }, [client, bot, ready, baseUrl, generation, apply, t])
 
   const loadOlder = useCallback(() => {
     if (nextBefore === null || loadingOlder) return
@@ -166,10 +168,10 @@ export function useBotTimeline(bot: string): BotTimeline {
         apply(mergeItems(itemsRef.current, result.success.items))
         setNextBefore(result.success.nextBefore)
       } else {
-        setLiveError(describe(result.failure, baseUrl))
+        setLiveError(describe(result.failure, baseUrl, t))
       }
     })
-  }, [client, bot, nextBefore, loadingOlder, apply, baseUrl])
+  }, [client, bot, nextBefore, loadingOlder, apply, baseUrl, t])
 
   const markApproval = useCallback(
     (approvalId: string, next: "approved" | "denied" | "expired", by?: string) => {

@@ -3,6 +3,7 @@ import { useState } from "react"
 import { View } from "react-native"
 import { Button, HelperText, Text } from "react-native-paper"
 import type { MemoryHistoryLoad } from "../../hooks/useBotMemory.js"
+import { type MessageKey, useLocale } from "../../i18n/index.js"
 
 export interface MemoryHistoryProps {
   readonly memoryId: string
@@ -15,13 +16,14 @@ type HistoryView =
   | { readonly kind: "shown"; readonly items: ReadonlyArray<MemoryVersion> }
   | { readonly kind: "failed"; readonly status: number }
 
-const stateOf = (version: MemoryVersion): string => {
-  if (version.forgotten) return "forgotten"
-  return version.supersededBy === null ? "current" : "superseded"
+const stateOf = (version: MemoryVersion): MessageKey => {
+  if (version.forgotten) return "memory.state.forgotten"
+  return version.supersededBy === null ? "memory.state.current" : "memory.state.superseded"
 }
 
 // The versions of one memory item, oldest first. Each content is shown as plain text: it is data, never markup.
 export function MemoryHistory({ memoryId, load }: MemoryHistoryProps) {
+  const { t } = useLocale()
   const [view, setView] = useState<HistoryView>({ kind: "closed" })
 
   const toggle = () => {
@@ -40,16 +42,16 @@ export function MemoryHistory({ memoryId, load }: MemoryHistoryProps) {
   return (
     <View style={{ gap: 6 }}>
       <Button compact onPress={toggle}>
-        {view.kind === "closed" ? "History" : "Hide history"}
+        {view.kind === "closed" ? t("memory.history") : t("memory.hideHistory")}
       </Button>
-      {view.kind === "loading" ? <Text variant="bodySmall">Loading history…</Text> : null}
+      {view.kind === "loading" ? <Text variant="bodySmall">{t("memory.loadingHistory")}</Text> : null}
       {view.kind === "failed" ? (
-        <HelperText type="error">{`History failed (HTTP ${view.status})`}</HelperText>
+        <HelperText type="error">{t("memory.historyFailed", { status: view.status })}</HelperText>
       ) : null}
       {view.kind === "shown"
         ? view.items.map((version, index) => (
             <View key={version.id} style={{ gap: 2 }}>
-              <Text variant="labelSmall">{`${index + 1}. ${stateOf(version)} · ${version.createdAt}`}</Text>
+              <Text variant="labelSmall">{`${index + 1}. ${t(stateOf(version))} · ${version.createdAt}`}</Text>
               <Text variant="bodySmall">{version.content}</Text>
             </View>
           ))

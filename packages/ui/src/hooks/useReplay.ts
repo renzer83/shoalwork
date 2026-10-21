@@ -4,6 +4,7 @@ import type { ReplayOverrides } from "@shoalwork/contracts"
 import { Effect } from "effect"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useApi } from "../api-context.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 
 export type ReplayLoad =
   | { readonly kind: "idle" }
@@ -19,20 +20,20 @@ export interface UseReplay {
   readonly close: () => void
 }
 
-const describeFailure = (error: unknown): string => {
+const describeFailure = (error: unknown, t: Translate): string => {
   if (error instanceof HttpError) {
-    if (error.status === 400)
-      return "O replay foi recusado: a task ainda não terminou ou o override não é permitido"
-    if (error.status === 404) return "A task não foi encontrada"
-    if (error.status === 0) return "Não foi possível falar com o core"
-    return `O core respondeu HTTP ${error.status}`
+    if (error.status === 400) return t("beacon.replay.refused")
+    if (error.status === 404) return t("beacon.replay.taskNotFound")
+    if (error.status === 0) return t("common.cannotReach")
+    return t("common.httpAnswered", { status: error.status })
   }
-  return "O core respondeu com um corpo inesperado"
+  return t("common.unexpectedBody")
 }
 
 // The replay of one task from the Farol (T-122): start it, then show both runs side by side.
 export function useReplay(): UseReplay {
   const { client } = useApi()
+  const { t } = useLocale()
   const [load, setLoad] = useState<ReplayLoad>({ kind: "idle" })
   const replayId = useRef<string | null>(null)
   const generation = useRef(0)
@@ -44,11 +45,11 @@ export function useReplay(): UseReplay {
         setLoad(
           result._tag === "Success"
             ? { kind: "loaded", replayId: id, comparison: result.success }
-            : { kind: "failed", message: describeFailure(result.failure) },
+            : { kind: "failed", message: describeFailure(result.failure, t) },
         )
       })
     },
-    [client],
+    [client, t],
   )
 
   const start = useCallback<UseReplay["start"]>(
@@ -60,7 +61,7 @@ export function useReplay(): UseReplay {
       void Effect.runPromise(Effect.result(client.replay.start(taskId, overrides))).then((result) => {
         if (generation.current !== ticket) return
         if (result._tag === "Failure") {
-          setLoad({ kind: "failed", message: describeFailure(result.failure) })
+          setLoad({ kind: "failed", message: describeFailure(result.failure, t) })
           return
         }
         const started: ReplayStarted = result.success
@@ -68,7 +69,7 @@ export function useReplay(): UseReplay {
         read(started.replay.id, ticket)
       })
     },
-    [client, read],
+    [client, read, t],
   )
 
   const refresh = useCallback(() => {

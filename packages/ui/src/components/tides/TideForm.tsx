@@ -4,6 +4,7 @@ import { View } from "react-native"
 import { Button, HelperText, Text, TextInput } from "react-native-paper"
 import { useApi } from "../../api-context.js"
 import { failureText } from "../../hooks/failure.js"
+import { type MessageKey, useLocale } from "../../i18n/index.js"
 import {
   EMPTY_TIDE_DRAFT,
   TideCreated,
@@ -21,8 +22,9 @@ export interface TideFormProps {
 // one it refuses; that message is shown as it comes.
 export function TideForm({ onSaved }: TideFormProps) {
   const { client } = useApi()
+  const { t } = useLocale()
   const [draft, setDraft] = useState<TideDraft>(EMPTY_TIDE_DRAFT)
-  const [issues, setIssues] = useState<ReadonlyArray<string>>([])
+  const [issues, setIssues] = useState<ReadonlyArray<MessageKey>>([])
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -39,7 +41,7 @@ export function TideForm({ onSaved }: TideFormProps) {
     )
     setBusy(false)
     if (result._tag === "Failure") {
-      setFailure(failureText(result.failure))
+      setFailure(failureText(result.failure, t))
       return
     }
     setDraft(EMPTY_TIDE_DRAFT)
@@ -48,65 +50,70 @@ export function TideForm({ onSaved }: TideFormProps) {
 
   return (
     <View style={{ gap: 8 }}>
-      <Text variant="titleSmall">New Tide</Text>
+      <Text variant="titleSmall">{t("tides.form.title")}</Text>
       <TextInput
         testID="tide-bot"
-        label="Bot (name)"
+        label={t("tides.form.bot")}
         value={draft.bot}
         onChangeText={(bot) => set({ bot })}
       />
-      <TextInput testID="tide-name" label="Name" value={draft.name} onChangeText={(name) => set({ name })} />
+      <TextInput
+        testID="tide-name"
+        label={t("common.name")}
+        value={draft.name}
+        onChangeText={(name) => set({ name })}
+      />
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Button mode={draft.mode === "cron" ? "contained" : "outlined"} onPress={() => set({ mode: "cron" })}>
-          On a schedule
+          {t("tides.form.onSchedule")}
         </Button>
         <Button
           mode={draft.mode === "event" ? "contained" : "outlined"}
           onPress={() => set({ mode: "event" })}
         >
-          On an event
+          {t("tides.form.onEvent")}
         </Button>
       </View>
       {draft.mode === "cron" ? (
         <TextInput
           testID="tide-cron"
-          label="Cron expression (UTC), e.g. 0 9 * * 1-5"
+          label={t("tides.form.cron")}
           value={draft.cronExpr}
           onChangeText={(cronExpr) => set({ cronExpr })}
         />
       ) : (
         <TextInput
           testID="tide-event"
-          label="Event type, e.g. github.issues"
+          label={t("tides.form.eventType")}
           value={draft.eventType}
           onChangeText={(eventType) => set({ eventType })}
         />
       )}
       <TextInput
         testID="tide-title"
-        label="Task title"
+        label={t("tides.form.taskTitle")}
         value={draft.title}
         onChangeText={(title) => set({ title })}
       />
       <TextInput
         testID="tide-prompt"
-        label="Task prompt"
+        label={t("tides.form.taskPrompt")}
         multiline
         value={draft.prompt}
         onChangeText={(prompt) => set({ prompt })}
       />
       {issues.map((issue) => (
         <HelperText key={issue} type="error" visible>
-          {issue}
+          {t(issue)}
         </HelperText>
       ))}
       {failure === null ? null : (
         <HelperText type="error" visible>
-          {`Could not save the Tide (${failure})`}
+          {t("tides.form.failed", { failure })}
         </HelperText>
       )}
       <Button mode="contained" onPress={() => void submit()} disabled={busy}>
-        Save Tide
+        {t("tides.form.save")}
       </Button>
     </View>
   )

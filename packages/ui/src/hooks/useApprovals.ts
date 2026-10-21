@@ -2,6 +2,7 @@ import { HttpError } from "@shoalwork/api-client"
 import { Effect } from "effect"
 import { useCallback, useState } from "react"
 import { useApi } from "../api-context.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 
 export type Decision = "approved" | "denied"
 
@@ -21,11 +22,11 @@ export interface ApprovalDecider {
   readonly resolve: (decision: Decision) => Promise<void>
 }
 
-const describe = (error: unknown): string => {
+const describe = (error: unknown, t: Translate): string => {
   if (error instanceof HttpError) {
-    return error.status === 0 ? "Cannot reach the core" : `The core answered HTTP ${error.status}`
+    return error.status === 0 ? t("common.cannotReach") : t("common.httpAnswered", { status: error.status })
   }
-  return "The core answered with an unexpected body"
+  return t("common.unexpectedBody")
 }
 
 // Decides one approval through POST /approvals/:id. One click, one request: while it is in flight or after it
@@ -35,6 +36,7 @@ export function useApprovals(
   onDecided?: (status: "approved" | "denied" | "expired", by: string | undefined) => void,
 ): ApprovalDecider {
   const { client } = useApi()
+  const { t } = useLocale()
   const [action, setAction] = useState<ApprovalAction>({ kind: "idle" })
 
   const resolve = useCallback(
@@ -43,7 +45,7 @@ export function useApprovals(
       setAction({ kind: "sending", decision })
       const result = await Effect.runPromise(Effect.result(client.approvals.resolve(approvalId, decision)))
       if (result._tag === "Failure") {
-        setAction({ kind: "failed", message: describe(result.failure) })
+        setAction({ kind: "failed", message: describe(result.failure, t) })
         return
       }
       const { approval } = result.success
@@ -52,7 +54,7 @@ export function useApprovals(
         onDecided?.(approval.status, approval.resolvedBy)
       }
     },
-    [action.kind, client, approvalId, onDecided],
+    [action.kind, client, approvalId, onDecided, t],
   )
 
   return { action, resolve }

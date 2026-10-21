@@ -2,7 +2,7 @@ import { ApiClient } from "@shoalwork/api-client"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { PaperProvider } from "react-native-paper"
 import { afterEach, describe, expect, it } from "vitest"
-import { BeaconScreen, StaticApiProvider, themeFor } from "../src/index.js"
+import { BeaconScreen, LocaleProvider, StaticApiProvider, themeFor } from "../src/index.js"
 
 const SAVINGS = {
   decisions: { total: 4, rule: 2, cache: 1, model: 1, localPct: 75 },
@@ -87,9 +87,11 @@ const core = (seen: Array<string>): typeof fetch => {
 const show = (seen: Array<string>) =>
   render(
     <PaperProvider theme={themeFor("light")}>
-      <StaticApiProvider client={new ApiClient("http://core.test", async () => null, core(seen))}>
-        <BeaconScreen />
-      </StaticApiProvider>
+      <LocaleProvider locale="pt-BR">
+        <StaticApiProvider client={new ApiClient("http://core.test", async () => null, core(seen))}>
+          <BeaconScreen />
+        </StaticApiProvider>
+      </LocaleProvider>
     </PaperProvider>,
   )
 

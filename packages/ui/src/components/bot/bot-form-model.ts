@@ -21,20 +21,20 @@ export interface BotDraft {
 
 // Each field: the draft key, the label, and the schema path its errors come back under ("executors.preferred").
 export const FIELDS = [
-  { key: "name", path: "name", label: "Name" },
-  { key: "role", path: "role", label: "Role" },
-  { key: "instructions", path: "instructions", label: "Instructions", multiline: true },
-  { key: "kind", path: "kind", label: "Kind (fixed | auxiliary)" },
-  { key: "preferred", path: "executors.preferred", label: "Preferred executor" },
-  { key: "allowed", path: "executors.allowed", label: "Allowed executors (comma separated)" },
-  { key: "connectors", path: "connectors", label: "Connectors (comma separated)" },
-  { key: "tokens", path: "budget.tokens", label: "Budget tokens" },
-  { key: "seconds", path: "budget.seconds", label: "Budget seconds" },
-  { key: "usd", path: "budget.usd", label: "Budget USD" },
-  { key: "policy", path: "policy", label: "Policy" },
-  { key: "tankMode", path: "tank.mode", label: "Tank mode (local | server)" },
-  { key: "tankHost", path: "tank.host", label: "Tank host" },
-  { key: "memoryScope", path: "memory.scope", label: "Memory scope (bot | pod | global)" },
+  { key: "name", path: "name", labelKey: "botForm.name" },
+  { key: "role", path: "role", labelKey: "botForm.role" },
+  { key: "instructions", path: "instructions", labelKey: "botForm.instructions", multiline: true },
+  { key: "kind", path: "kind", labelKey: "botForm.kind" },
+  { key: "preferred", path: "executors.preferred", labelKey: "botForm.preferred" },
+  { key: "allowed", path: "executors.allowed", labelKey: "botForm.allowed" },
+  { key: "connectors", path: "connectors", labelKey: "botForm.connectors" },
+  { key: "tokens", path: "budget.tokens", labelKey: "botForm.tokens" },
+  { key: "seconds", path: "budget.seconds", labelKey: "botForm.seconds" },
+  { key: "usd", path: "budget.usd", labelKey: "botForm.usd" },
+  { key: "policy", path: "policy", labelKey: "botForm.policy" },
+  { key: "tankMode", path: "tank.mode", labelKey: "botForm.tankMode" },
+  { key: "tankHost", path: "tank.host", labelKey: "botForm.tankHost" },
+  { key: "memoryScope", path: "memory.scope", labelKey: "botForm.memoryScope" },
 ] as const
 
 export type FieldKey = (typeof FIELDS)[number]["key"]

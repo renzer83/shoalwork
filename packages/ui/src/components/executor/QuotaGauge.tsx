@@ -1,5 +1,6 @@
 import { View } from "react-native"
 import { Text, useTheme } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { gaugeTone, percentText } from "./executor-model.js"
 
 export interface QuotaGaugeProps {
@@ -13,12 +14,18 @@ export interface QuotaGaugeProps {
 // The window's usage as a bar; from 80% it turns red and says so in words too.
 export function QuotaGauge({ usedRatio, available, windowEndsAt }: QuotaGaugeProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const tone = gaugeTone(usedRatio)
   const color = tone === "alert" ? theme.colors.error : theme.colors.primary
   const width = `${Math.min(100, Math.max(0, usedRatio * 100))}%` as const
   return (
     <View style={{ gap: 4 }}>
-      <Text variant="bodySmall">{`Cota usada: ${percentText(usedRatio)}${available ? "" : " · indisponível"}`}</Text>
+      <Text variant="bodySmall">
+        {t("executors.quota.used", {
+          percent: percentText(usedRatio),
+          unavailable: available ? "" : t("executors.quota.unavailable"),
+        })}
+      </Text>
       <View
         testID="quota-track"
         style={{
@@ -32,10 +39,12 @@ export function QuotaGauge({ usedRatio, available, windowEndsAt }: QuotaGaugePro
       </View>
       {tone === "alert" ? (
         <Text variant="bodySmall" style={{ color: theme.colors.error }}>
-          {`Atenção: ${percentText(usedRatio)} da janela já usados`}
+          {t("executors.quota.alert", { percent: percentText(usedRatio) })}
         </Text>
       ) : null}
-      {windowEndsAt === undefined ? null : <Text variant="bodySmall">{`Janela até ${windowEndsAt}`}</Text>}
+      {windowEndsAt === undefined ? null : (
+        <Text variant="bodySmall">{t("executors.quota.windowUntil", { at: windowEndsAt })}</Text>
+      )}
     </View>
   )
 }

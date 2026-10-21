@@ -1,6 +1,7 @@
 import type { Event } from "@shoalwork/contracts"
 import { Pressable, View } from "react-native"
 import { Text, useTheme } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { formatInstant } from "./beacon-model.js"
 
 export interface EventTableProps {
@@ -12,8 +13,9 @@ export interface EventTableProps {
 // One row per event, newest first. The payload is not shown here: EventDetail prints it for the selected row.
 export function EventTable({ events, selectedId, onSelect }: EventTableProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   if (events.length === 0) {
-    return <Text variant="bodySmall">Nenhum evento neste filtro.</Text>
+    return <Text variant="bodySmall">{t("beacon.events.none")}</Text>
   }
   return (
     <View style={{ gap: 4 }}>

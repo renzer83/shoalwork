@@ -1,5 +1,6 @@
 import { Pressable } from "react-native"
 import { Text, useTheme } from "react-native-paper"
+import { useLocale } from "../i18n/index.js"
 import type { NavEntry } from "./nav-entries.js"
 
 export interface NavItemProps {
@@ -15,10 +16,11 @@ const ACTIVATION_KEYS: ReadonlyArray<string> = ["Enter", " "]
 // keyup path does not call onPress for them.
 export function NavItem({ entry, active, onPress }: NavItemProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={entry.label}
+      accessibilityLabel={t(entry.labelKey)}
       aria-current={active ? "page" : undefined}
       onPress={() => onPress(entry.href)}
       onKeyDown={(event) => {
@@ -43,7 +45,7 @@ export function NavItem({ entry, active, onPress }: NavItemProps) {
         variant="titleSmall"
         style={{ color: active ? theme.colors.onSecondaryContainer : theme.colors.onSurface }}
       >
-        {entry.label}
+        {t(entry.labelKey)}
       </Text>
     </Pressable>
   )

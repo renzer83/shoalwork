@@ -2,7 +2,7 @@ import { ApiClient } from "@shoalwork/api-client"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { PaperProvider } from "react-native-paper"
 import { afterEach, describe, expect, it } from "vitest"
-import { ExecutorsScreen, StaticApiProvider, themeFor } from "../src/index.js"
+import { ExecutorsScreen, LocaleProvider, StaticApiProvider, themeFor } from "../src/index.js"
 
 const BOT = "bot_3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b7a41"
 
@@ -56,11 +56,13 @@ const core = (seen: Array<string>, failOverview = false): typeof fetch => {
 const show = (seen: Array<string>, failOverview = false) =>
   render(
     <PaperProvider theme={themeFor("light")}>
-      <StaticApiProvider
-        client={new ApiClient("http://core.test", async () => null, core(seen, failOverview))}
-      >
-        <ExecutorsScreen />
-      </StaticApiProvider>
+      <LocaleProvider locale="pt-BR">
+        <StaticApiProvider
+          client={new ApiClient("http://core.test", async () => null, core(seen, failOverview))}
+        >
+          <ExecutorsScreen />
+        </StaticApiProvider>
+      </LocaleProvider>
     </PaperProvider>,
   )
 
@@ -94,6 +96,6 @@ describe("ExecutorsScreen", () => {
   it("shows the core's HTTP failure as an alert with a retry", async () => {
     show([], true)
     expect(await screen.findByText("O core respondeu HTTP 500")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Tentar de novo" })).toBeTruthy()
   })
 })

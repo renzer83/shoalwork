@@ -1,6 +1,7 @@
 import { decodeApprovalResolved, decodeExecutorEventPayload } from "@shoalwork/api-client"
 import type { Event, TimelineItem } from "@shoalwork/contracts"
 import { DateTime, Option } from "effect"
+import type { Translate } from "../i18n/index.js"
 
 // Pure parts of the conversation timeline (T-113): merging pages, the 20 s chip rule and the reaction to live events.
 
@@ -111,14 +112,18 @@ export const toRows = (items: ReadonlyArray<TimelineItem>): ReadonlyArray<Timeli
   return rows
 }
 
-export const chipLabel = (chip: ChipRow): string => {
+export const chipLabel = (chip: ChipRow, t: Translate): string => {
   const parts: Array<string> = []
   if (chip.commands > 0) {
-    const failed = chip.failedCommands > 0 ? ` (${chip.failedCommands} failed)` : ""
-    parts.push(`${chip.commands} ${chip.commands === 1 ? "command" : "commands"}${failed}`)
+    const label = t(chip.commands === 1 ? "chat.commands.one" : "chat.commands.other", {
+      count: chip.commands,
+    })
+    const failed =
+      chip.failedCommands > 0 ? ` (${t("chat.commands.failed", { count: chip.failedCommands })})` : ""
+    parts.push(`${label}${failed}`)
   }
   if (chip.files > 0) {
-    parts.push(`${chip.files} ${chip.files === 1 ? "file edited" : "files edited"}`)
+    parts.push(t(chip.files === 1 ? "chat.files.one" : "chat.files.other", { count: chip.files }))
   }
   return parts.join(", ")
 }

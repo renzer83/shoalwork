@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { Text } from "react-native"
 import { PaperProvider } from "react-native-paper"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { AppNavigation, NAV_ENTRIES, themeFor, visibleNavEntries } from "../src/index.js"
+import { AppNavigation, LocaleProvider, NAV_ENTRIES, themeFor, visibleNavEntries } from "../src/index.js"
 
 const viewport = vi.hoisted(() => ({ width: 1280 }))
 
@@ -18,9 +18,11 @@ vi.mock("react-native", async (importOriginal) => {
 const show = (pathname: string, onNavigate = vi.fn()) =>
   render(
     <PaperProvider theme={themeFor("light")}>
-      <AppNavigation pathname={pathname} onNavigate={onNavigate}>
-        <Text>screen body</Text>
-      </AppNavigation>
+      <LocaleProvider locale="pt-BR">
+        <AppNavigation pathname={pathname} onNavigate={onNavigate}>
+          <Text>screen body</Text>
+        </AppNavigation>
+      </LocaleProvider>
     </PaperProvider>,
   )
 
@@ -68,7 +70,7 @@ describe("AppNavigation", () => {
 
   it("shows a labelled sidebar with the app title on wide windows", () => {
     show("/")
-    const menu = screen.getByRole("navigation", { name: "Main menu" })
+    const menu = screen.getByRole("navigation", { name: "Menu principal" })
     expect(menu.textContent).toContain("Conversa")
     expect(screen.getByText("Shoalwork")).toBeTruthy()
   })
@@ -76,7 +78,7 @@ describe("AppNavigation", () => {
   it("keeps the same entries in a bottom bar, without the title, on narrow windows", () => {
     viewport.width = 390
     show("/chat/lead")
-    expect(screen.getAllByRole("navigation", { name: "Main menu" })).toHaveLength(1)
+    expect(screen.getAllByRole("navigation", { name: "Menu principal" })).toHaveLength(1)
     expect(screen.queryByText("Shoalwork")).toBeNull()
     expect(screen.getByRole("button", { name: "Conversa" }).getAttribute("aria-current")).toBe("page")
     expect(screen.getByText("screen body")).toBeTruthy()

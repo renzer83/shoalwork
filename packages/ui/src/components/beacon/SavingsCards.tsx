@@ -1,6 +1,7 @@
 import type { SavingsReport } from "@shoalwork/api-client"
 import { View } from "react-native"
 import { Card, Text } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { formatPct, formatUsd } from "./beacon-model.js"
 
 interface MetricProps {
@@ -23,28 +24,35 @@ function Metric({ label, value, detail }: MetricProps) {
 
 // What the local decisions and the compacted context saved in the period, from the log.
 export function SavingsCards({ report }: { readonly report: SavingsReport }) {
+  const { t } = useLocale()
   const local = report.decisions.rule + report.decisions.cache
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
       <Metric
-        label="Decisões locais"
+        label={t("beacon.savings.local")}
         value={formatPct(report.decisions.localPct)}
-        detail={`${local} de ${report.decisions.total} sem chamar modelo`}
+        detail={t("beacon.savings.localDetail", { local, total: report.decisions.total })}
       />
       <Metric
-        label="USD evitado (decisões)"
+        label={t("beacon.savings.usdDecisions")}
         value={formatUsd(report.avoidedUsd)}
-        detail={`${report.haikuRuns} execuções Haiku · ${formatUsd(report.decisionUsd)} por decisão`}
+        detail={t("beacon.savings.haikuDetail", {
+          runs: report.haikuRuns,
+          usd: formatUsd(report.decisionUsd),
+        })}
       />
       <Metric
-        label="Contexto cortado"
+        label={t("beacon.savings.cut")}
         value={formatPct(report.context.cutPct)}
-        detail={`${report.context.tokensCut} tokens em ${report.context.assembled} montagens`}
+        detail={t("beacon.savings.cutDetail", {
+          tokens: report.context.tokensCut,
+          assembled: report.context.assembled,
+        })}
       />
       <Metric
-        label="USD evitado (contexto)"
+        label={t("beacon.savings.usdContext")}
         value={formatUsd(report.context.avoidedUsd)}
-        detail={`${report.context.droppedItems} itens descartados pelo orçamento`}
+        detail={t("beacon.savings.droppedDetail", { count: report.context.droppedItems })}
       />
     </View>
   )

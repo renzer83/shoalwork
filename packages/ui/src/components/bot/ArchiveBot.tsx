@@ -2,6 +2,7 @@ import { useState } from "react"
 import { View } from "react-native"
 import { Button, HelperText, Text } from "react-native-paper"
 import type { BotArchive } from "../../hooks/useBotArchive.js"
+import { useLocale } from "../../i18n/index.js"
 
 export interface ArchiveBotProps {
   readonly archived: boolean
@@ -11,20 +12,17 @@ export interface ArchiveBotProps {
 // Archiving asks for a second press: the first one opens the confirmation. An archived Bot shows only that it is.
 export function ArchiveBot({ archived, archive }: ArchiveBotProps) {
   const [confirming, setConfirming] = useState(false)
+  const { t } = useLocale()
 
   if (archived) {
-    return (
-      <Text variant="bodySmall">Archived: this Bot takes no new tasks. Its memory and history stay.</Text>
-    )
+    return <Text variant="bodySmall">{t("bot.archive.archived")}</Text>
   }
 
   return (
     <View style={{ gap: 6 }}>
       {confirming ? (
         <>
-          <Text variant="bodySmall">
-            Archive this Bot? It takes no new tasks. Its memory and history stay.
-          </Text>
+          <Text variant="bodySmall">{t("bot.archive.confirmQuestion")}</Text>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Button
               mode="contained"
@@ -34,20 +32,20 @@ export function ArchiveBot({ archived, archive }: ArchiveBotProps) {
                 archive.run()
               }}
             >
-              Confirm archive
+              {t("bot.archive.confirm")}
             </Button>
             <Button disabled={archive.pending} onPress={() => setConfirming(false)}>
-              Keep
+              {t("bot.archive.keep")}
             </Button>
           </View>
         </>
       ) : (
         <Button mode="outlined" disabled={archive.pending} onPress={() => setConfirming(true)}>
-          Archive
+          {t("bot.archive.archive")}
         </Button>
       )}
       {archive.failure === null ? null : (
-        <HelperText type="error">{`archive failed (HTTP ${archive.failure.status})`}</HelperText>
+        <HelperText type="error">{t("bot.archive.failed", { status: archive.failure.status })}</HelperText>
       )}
     </View>
   )

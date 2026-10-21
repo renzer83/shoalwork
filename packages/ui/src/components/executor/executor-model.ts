@@ -1,19 +1,20 @@
+import type { MessageKey, Translate } from "../../i18n/index.js"
 // The pure rules of the Executores screen (T-117): what a gauge reads as, how a quality table sorts, how a status reads.
 
 export type DoctorStatus = "ok" | "drift" | "missing" | "auth_missing"
 export type LoginState = "logged_in" | "logged_out" | "unknown"
 
-export const DOCTOR_LABEL: Readonly<Record<DoctorStatus, string>> = {
-  ok: "OK",
-  drift: "versão diferente do pin",
-  missing: "CLI ausente",
-  auth_missing: "sem login",
+export const DOCTOR_LABEL: Readonly<Record<DoctorStatus, MessageKey>> = {
+  ok: "executors.doctorStatus.ok",
+  drift: "executors.doctorStatus.drift",
+  missing: "executors.doctorStatus.missing",
+  auth_missing: "executors.doctorStatus.auth_missing",
 }
 
-export const LOGIN_LABEL: Readonly<Record<LoginState, string>> = {
-  logged_in: "logado",
-  logged_out: "sem login",
-  unknown: "não verificado",
+export const LOGIN_LABEL: Readonly<Record<LoginState, MessageKey>> = {
+  logged_in: "executors.login.logged_in",
+  logged_out: "executors.login.logged_out",
+  unknown: "executors.login.unknown",
 }
 
 // From this share of the window used, the gauge is an alert (red).
@@ -33,11 +34,11 @@ export interface QualityRow {
 export type QualityKey = "kind" | "okRate" | "n" | "avgUsd"
 export type SortDirection = "asc" | "desc"
 
-export const QUALITY_HEADERS: ReadonlyArray<{ readonly key: QualityKey; readonly label: string }> = [
-  { key: "kind", label: "Tipo" },
-  { key: "okRate", label: "Sucesso" },
-  { key: "n", label: "Execuções" },
-  { key: "avgUsd", label: "Custo médio" },
+export const QUALITY_HEADERS: ReadonlyArray<{ readonly key: QualityKey; readonly labelKey: MessageKey }> = [
+  { key: "kind", labelKey: "executors.quality.kind" },
+  { key: "okRate", labelKey: "executors.quality.okRate" },
+  { key: "n", labelKey: "executors.quality.n" },
+  { key: "avgUsd", labelKey: "executors.quality.avgUsd" },
 ]
 
 // A stable sort by one column. Text compares by locale, numbers by value.
@@ -53,7 +54,7 @@ export const sortQuality = (
   })
 }
 
-export const versionText = (installed: string | null, pinned: string | null): string =>
-  `instalado ${installed ?? "—"} · pin ${pinned ?? "—"}`
+export const versionText = (installed: string | null, pinned: string | null, t: Translate): string =>
+  t("executors.version", { installed: installed ?? "—", pinned: pinned ?? "—" })
 
 export const percentText = (ratio: number): string => `${Math.round(ratio * 100)}%`

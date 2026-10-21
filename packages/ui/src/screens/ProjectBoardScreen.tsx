@@ -9,6 +9,7 @@ import { COLUMNS, inSprint, type SprintFilter } from "../components/project/proj
 import { SprintPicker } from "../components/project/SprintPicker.js"
 import { useBoard } from "../hooks/useBoard.js"
 import { useProjectMetrics } from "../hooks/useProjects.js"
+import { useLocale } from "../i18n/index.js"
 
 // From this width every column is visible at once; below it the columns scroll sideways.
 const WIDE_MIN_WIDTH = 900
@@ -20,6 +21,7 @@ export interface ProjectBoardScreenProps {
 // The kanban of one project: metrics against the baseline, sprints, and one column per state of T-060.
 export function ProjectBoardScreen({ slug }: ProjectBoardScreenProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const { width } = useWindowDimensions()
   const board = useBoard(slug)
   const metrics = useProjectMetrics(slug)
@@ -77,10 +79,12 @@ export function ProjectBoardScreen({ slug }: ProjectBoardScreenProps) {
         }}
       />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {board.load.kind === "loading" ? <ActivityIndicator accessibilityLabel="Loading" /> : null}
+        {board.load.kind === "loading" ? (
+          <ActivityIndicator accessibilityLabel={t("common.loading")} />
+        ) : null}
         {board.load.kind === "failed" ? (
           <ErrorBanner
-            message={`Could not load the board (HTTP ${board.load.status})`}
+            message={t("board.loadFailed", { status: board.load.status })}
             onRetry={board.reload}
           />
         ) : null}

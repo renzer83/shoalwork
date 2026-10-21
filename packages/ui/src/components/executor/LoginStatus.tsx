@@ -1,5 +1,6 @@
 import { View } from "react-native"
 import { Text } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { LOGIN_LABEL, type LoginState } from "./executor-model.js"
 
 export interface LoginEntry {
@@ -11,14 +12,20 @@ export interface LoginEntry {
 
 // The login of each Bot that runs this executor: state and method, nothing that could be a secret.
 export function LoginStatus({ logins }: { readonly logins: ReadonlyArray<LoginEntry> }) {
+  const { t } = useLocale()
   if (logins.length === 0) {
-    return <Text variant="bodySmall">Sem login a verificar para este executor</Text>
+    return <Text variant="bodySmall">{t("executors.login.none")}</Text>
   }
   return (
     <View style={{ gap: 4 }}>
       {logins.map((login) => (
         <Text key={login.botId} variant="bodySmall">
-          {`${login.botId} · ${LOGIN_LABEL[login.state]}${login.authMethod === null ? "" : ` · método ${login.authMethod}`}`}
+          {t("executors.login.line", {
+            bot: login.botId,
+            state: t(LOGIN_LABEL[login.state]),
+            method:
+              login.authMethod === null ? "" : t("executors.login.method", { method: login.authMethod }),
+          })}
         </Text>
       ))}
     </View>

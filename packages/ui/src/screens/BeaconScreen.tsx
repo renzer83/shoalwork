@@ -23,6 +23,7 @@ import { ErrorBanner } from "../components/ErrorBanner.js"
 import { useBeaconEvents } from "../hooks/useBeaconEvents.js"
 import { useBeaconSummary } from "../hooks/useBeaconSummary.js"
 import { useReplay } from "../hooks/useReplay.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface BeaconScreenProps {
   // Opens the Bot of a bot stream from the event detail.
@@ -43,6 +44,7 @@ function Panel({ title, children }: { readonly title: string; readonly children:
 // The Farol: savings, cost by day and by dimension, and the event log with filters and live feed (T-121).
 export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const [period, setPeriod] = useState<PeriodKey>("7d")
   const [by, setBy] = useState<CostDimension>("tier")
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS)
@@ -56,7 +58,7 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AppBar
-        title="Farol"
+        title={t("beacon.title")}
         onRefresh={() => {
           summary.reload()
           feed.reload()
@@ -65,9 +67,9 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <PeriodPicker value={period} onChange={setPeriod} />
 
-        <Panel title="Economia do período">
+        <Panel title={t("beacon.savings.title")}>
           {summary.savings.kind === "loading" ? (
-            <ActivityIndicator accessibilityLabel="Loading savings" />
+            <ActivityIndicator accessibilityLabel={t("beacon.loadingSavings")} />
           ) : null}
           {summary.savings.kind === "failed" ? (
             <ErrorBanner message={summary.savings.message} onRetry={summary.reload} />
@@ -75,13 +77,13 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
           {summary.savings.kind === "loaded" ? <SavingsCards report={summary.savings.value} /> : null}
         </Panel>
 
-        <Panel title="Custo">
+        <Panel title={t("beacon.cost.title")}>
           {summary.daily.kind === "failed" ? (
             <ErrorBanner message={summary.daily.message} onRetry={summary.reload} />
           ) : null}
           {summary.daily.kind === "loaded" ? (
             <CostChart
-              title="Custo por dia (USD)"
+              title={t("beacon.cost.perDay")}
               bars={summary.daily.value.days.map((day) => ({ label: day.day, value: day.usd }))}
             />
           ) : null}
@@ -92,7 +94,7 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
                 mode={dimension.key === by ? "contained" : "outlined"}
                 onPress={() => setBy(dimension.key)}
               >
-                {dimension.label}
+                {t(dimension.labelKey)}
               </Button>
             ))}
           </View>
@@ -102,20 +104,25 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
           {summary.costs.kind === "loaded" ? (
             <>
               <CostChart
-                title={`Custo por ${by}`}
+                title={t("beacon.cost.by", { by })}
                 bars={summary.costs.value.rows.map((row) => ({ label: row.key, value: row.usd }))}
                 height={80}
               />
               {summary.costs.value.rows.map((row) => (
                 <Text key={row.key} variant="bodySmall">
-                  {`${row.key} · ${row.n} execuções · ${row.tokensIn} tokens in · ${formatUsd(row.usd)}`}
+                  {t("beacon.cost.row", {
+                    key: row.key,
+                    count: row.n,
+                    tokens: row.tokensIn,
+                    usd: formatUsd(row.usd),
+                  })}
                 </Text>
               ))}
             </>
           ) : null}
         </Panel>
 
-        <Panel title="Eventos">
+        <Panel title={t("beacon.events.title")}>
           <EventFilters
             draft={draft}
             onChange={setDraft}
@@ -125,17 +132,19 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
             }}
           />
           {unknownTypes.length > 0 ? (
-            <Text variant="bodySmall">{`Tipos desconhecidos: ${unknownTypes.join(", ")}`}</Text>
+            <Text variant="bodySmall">{t("beacon.unknownTypes", { types: unknownTypes.join(", ") })}</Text>
           ) : null}
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             <Button mode="outlined" onPress={() => feed.setLive(!feed.live)}>
-              {feed.live ? "Pausar ao vivo" : "Retomar ao vivo"}
+              {feed.live ? t("beacon.pauseLive") : t("beacon.resumeLive")}
             </Button>
             <Button mode="outlined" onPress={feed.reload}>
-              Recarregar
+              {t("beacon.reload")}
             </Button>
           </View>
-          {feed.load.kind === "loading" ? <ActivityIndicator accessibilityLabel="Loading events" /> : null}
+          {feed.load.kind === "loading" ? (
+            <ActivityIndicator accessibilityLabel={t("beacon.loadingEvents")} />
+          ) : null}
           {feed.load.kind === "failed" ? (
             <ErrorBanner message={feed.load.message} onRetry={feed.reload} />
           ) : null}
@@ -148,14 +157,14 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
               />
               {feed.load.page.nextBefore === null ? null : (
                 <Button onPress={feed.loadMore} disabled={feed.load.loadingOlder}>
-                  Carregar mais
+                  {t("beacon.loadMore")}
                 </Button>
               )}
             </>
           ) : null}
           <EventDetail event={selected} onOpenBot={onOpenBot} onReplay={(taskId) => replay.start(taskId)} />
           {replay.load.kind === "starting" ? (
-            <ActivityIndicator accessibilityLabel="Starting replay" />
+            <ActivityIndicator accessibilityLabel={t("beacon.startingReplay")} />
           ) : null}
           {replay.load.kind === "failed" ? <ErrorBanner message={replay.load.message} /> : null}
           {replay.load.kind === "loaded" ? (

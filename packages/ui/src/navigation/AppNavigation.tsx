@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { useWindowDimensions, View } from "react-native"
 import { Text, useTheme } from "react-native-paper"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { useLocale } from "../i18n/index.js"
 import { NavItem } from "./NavItem.js"
 import { isActiveEntry, NAV_ENTRIES, type NavEntry, visibleNavEntries } from "./nav-entries.js"
 
@@ -18,6 +19,7 @@ export interface AppNavigationProps {
 
 export function AppNavigation({ pathname, onNavigate, entries = NAV_ENTRIES, children }: AppNavigationProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const items = visibleNavEntries(entries)
@@ -32,7 +34,7 @@ export function AppNavigation({ pathname, onNavigate, entries = NAV_ENTRIES, chi
       <View style={{ flex: 1, flexDirection: "row", backgroundColor: theme.colors.background }}>
         <View
           role="navigation"
-          accessibilityLabel="Main menu"
+          accessibilityLabel={t("nav.menu")}
           style={{
             width: SIDEBAR_WIDTH,
             padding: 8,
@@ -43,7 +45,7 @@ export function AppNavigation({ pathname, onNavigate, entries = NAV_ENTRIES, chi
           }}
         >
           <Text variant="titleMedium" style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
-            Shoalwork
+            {t("app.title")}
           </Text>
           {list}
         </View>
@@ -57,7 +59,7 @@ export function AppNavigation({ pathname, onNavigate, entries = NAV_ENTRIES, chi
       <View style={{ flex: 1 }}>{children}</View>
       <View
         role="navigation"
-        accessibilityLabel="Main menu"
+        accessibilityLabel={t("nav.menu")}
         style={{
           flexDirection: "row",
           gap: 4,

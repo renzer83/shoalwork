@@ -3,6 +3,7 @@ import type { ProjectTaskState } from "@shoalwork/contracts"
 import { useState } from "react"
 import { Linking, View } from "react-native"
 import { Button, Card, Text } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 import { ageText, COLUMNS, githubLinkOf } from "./project-model.js"
 
 export interface TaskCardProps {
@@ -18,6 +19,7 @@ export interface TaskCardProps {
 
 // One task on the board. Text from the task (title, branch) is rendered as text only.
 export function TaskCard({ task, sprints, repoUrl, now, onMove, onRetry, onPause, onSprint }: TaskCardProps) {
+  const { t } = useLocale()
   const [open, setOpen] = useState<"move" | "sprint" | null>(null)
   const sprint = sprints.find((s) => s.id === task.sprintId)
   const link = githubLinkOf(repoUrl, task)
@@ -30,25 +32,29 @@ export function TaskCard({ task, sprints, repoUrl, now, onMove, onRetry, onPause
     <Card>
       <Card.Content style={{ gap: 4 }}>
         <Text variant="titleSmall">{task.title}</Text>
-        <Text variant="bodySmall">{refs.length === 0 ? "no issue" : refs.join(" · ")}</Text>
-        <Text variant="labelSmall">{`in state ${ageText(task.updatedAt, now)} · retries ${task.retries}`}</Text>
-        <Text variant="labelSmall">{`sprint: ${sprint?.name ?? "none"}`}</Text>
+        <Text variant="bodySmall">{refs.length === 0 ? t("board.noIssue") : refs.join(" · ")}</Text>
+        <Text variant="labelSmall">
+          {t("board.inState", { age: ageText(task.updatedAt, now), retries: task.retries })}
+        </Text>
+        <Text variant="labelSmall">
+          {t("board.sprintLine", { sprint: sprint?.name ?? t("common.none") })}
+        </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
           <Button compact onPress={() => setOpen(open === "move" ? null : "move")}>
-            Move
+            {t("board.move")}
           </Button>
           <Button compact onPress={onRetry}>
-            Retry
+            {t("board.retry")}
           </Button>
           <Button compact onPress={onPause}>
-            Pause
+            {t("board.pause")}
           </Button>
           <Button compact onPress={() => setOpen(open === "sprint" ? null : "sprint")}>
-            Sprint
+            {t("board.sprint")}
           </Button>
           {link === undefined ? null : (
             <Button compact onPress={() => void Linking.openURL(link)}>
-              GitHub
+              {t("board.github")}
             </Button>
           )}
         </View>
@@ -79,7 +85,7 @@ export function TaskCard({ task, sprints, repoUrl, now, onMove, onRetry, onPause
                 onSprint(null)
               }}
             >
-              No sprint
+              {t("board.noSprint")}
             </Button>
             {sprints.map((s) => (
               <Button

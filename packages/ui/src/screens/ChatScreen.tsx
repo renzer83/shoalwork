@@ -13,6 +13,7 @@ import { ErrorBanner } from "../components/ErrorBanner.js"
 import { chipLabel, type TimelineRow, toRows } from "../hooks/timeline-model.js"
 import { useBotTimeline } from "../hooks/useBotTimeline.js"
 import { useSendMessage } from "../hooks/useSendMessage.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface ChatScreenProps {
   // A Bot id or name; the chat of the Lead is "lead".
@@ -32,9 +33,14 @@ function Row({
   readonly row: TimelineRow
   readonly timeline: ReturnType<typeof useBotTimeline>
 }) {
+  const { t } = useLocale()
   if (row.kind === "chip") {
     return (
-      <EventChip label={chipLabel(row)} detail={row.last} tone={row.failedCommands > 0 ? "bad" : "neutral"} />
+      <EventChip
+        label={chipLabel(row, t)}
+        detail={row.last}
+        tone={row.failedCommands > 0 ? "bad" : "neutral"}
+      />
     )
   }
   const { item } = row
@@ -53,8 +59,8 @@ function Row({
         <EventChip
           label={
             item.name === "finished"
-              ? `Run finished (${item.verdict ?? "unknown"})`
-              : `Task ${item.state ?? ""}`.trim()
+              ? t("chat.runFinished", { verdict: item.verdict ?? t("common.unknown") })
+              : t("chat.taskState", { state: item.state ?? "" }).trim()
           }
           detail={item.text}
           tone={item.name === "finished" ? (item.verdict === "ok" ? "good" : "bad") : "neutral"}
@@ -75,6 +81,7 @@ function Row({
 // The conversation with one Bot: messages, task progress, approval cards and artifacts in one timeline.
 export function ChatScreen({ bot, onBack }: ChatScreenProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const timeline = useBotTimeline(bot)
   const sender = useSendMessage(bot)
   const scroller = useRef<ScrollViewInstance>(null)
@@ -94,31 +101,33 @@ export function ChatScreen({ bot, onBack }: ChatScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title={`Chat · ${bot}`} onRefresh={timeline.reload} />
-      {onBack === undefined ? null : <Button onPress={onBack}>Back</Button>}
+      <AppBar title={t("chat.title", { bot })} onRefresh={timeline.reload} />
+      {onBack === undefined ? null : <Button onPress={onBack}>{t("common.back")}</Button>}
       <ScrollView ref={scroller} contentContainerStyle={{ padding: 12, gap: 10 }}>
-        {timeline.status === "loading" ? <ActivityIndicator accessibilityLabel="Loading" /> : null}
+        {timeline.status === "loading" ? (
+          <ActivityIndicator accessibilityLabel={t("common.loading")} />
+        ) : null}
         {timeline.status === "failed" && timeline.error !== undefined ? (
           <ErrorBanner message={timeline.error} onRetry={timeline.reload} />
         ) : null}
         {timeline.hasOlder ? (
           <Button
-            accessibilityLabel="Load older messages"
+            accessibilityLabel={t("chat.loadOlderLabel")}
             loading={timeline.loadingOlder}
             onPress={timeline.loadOlder}
           >
-            Load older
+            {t("chat.loadOlder")}
           </Button>
         ) : null}
         {timeline.status === "ready" && rows.length === 0 ? (
-          <EmptyState title="No messages yet" hint="Say hello below." />
+          <EmptyState title={t("chat.empty")} hint={t("chat.emptyHint")} />
         ) : null}
         {rows.map((row) => (
           <Row key={row.key} row={row} timeline={timeline} />
         ))}
       </ScrollView>
       {timeline.liveError === undefined ? null : (
-        <ErrorBanner message={`Live updates paused: ${timeline.liveError}`} />
+        <ErrorBanner message={t("chat.liveError", { error: timeline.liveError })} />
       )}
       <Composer sending={sender.sending} error={sender.error} onSend={send} />
     </View>

@@ -4,6 +4,7 @@ import { Effect } from "effect"
 import { useCallback, useEffect, useState } from "react"
 import { useApi } from "../api-context.js"
 import type { PeriodKey } from "../components/beacon/beacon-model.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 
 export type SummaryLoad<T> =
   | { readonly kind: "loading" }
@@ -17,18 +18,19 @@ export interface BeaconSummary {
   readonly reload: () => void
 }
 
-const describeFailure = (error: unknown, baseUrl: string): string => {
+const describeFailure = (error: unknown, baseUrl: string, t: Translate): string => {
   if (error instanceof HttpError) {
     return error.status === 0
-      ? `Não foi possível falar com o core em ${baseUrl}`
-      : `O core respondeu HTTP ${error.status}`
+      ? t("common.cannotReachAt", { url: baseUrl })
+      : t("common.httpAnswered", { status: error.status })
   }
-  return "O core respondeu com um corpo inesperado"
+  return t("common.unexpectedBody")
 }
 
 // Savings, the daily cost and the cost by one dimension, for the period. One reload refreshes all three.
 export function useBeaconSummary(period: PeriodKey, by: BeaconCostsQuery["by"]): BeaconSummary {
   const { client, config, ready } = useApi()
+  const { t } = useLocale()
   const [savings, setSavings] = useState<SummaryLoad<SavingsReport>>({ kind: "loading" })
   const [daily, setDaily] = useState<SummaryLoad<DailyCostList>>({ kind: "loading" })
   const [costs, setCosts] = useState<SummaryLoad<CostReport>>({ kind: "loading" })
@@ -49,7 +51,7 @@ export function useBeaconSummary(period: PeriodKey, by: BeaconCostsQuery["by"]):
         apply(
           result._tag === "Success"
             ? { kind: "loaded", value: result.success }
-            : { kind: "failed", message: describeFailure(result.failure, config.baseUrl) },
+            : { kind: "failed", message: describeFailure(result.failure, config.baseUrl, t) },
         )
       })
     }
@@ -59,7 +61,7 @@ export function useBeaconSummary(period: PeriodKey, by: BeaconCostsQuery["by"]):
     return () => {
       current = false
     }
-  }, [client, config.baseUrl, ready, period, by, generation])
+  }, [client, config.baseUrl, ready, period, by, generation, t])
 
   return { savings, daily, costs, reload }
 }

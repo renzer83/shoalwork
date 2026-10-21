@@ -3,10 +3,12 @@ import { ScrollView, View } from "react-native"
 import { Button, TextInput, useTheme } from "react-native-paper"
 import { useApi } from "../api-context.js"
 import { AppBar } from "../components/AppBar.js"
+import { useLocale } from "../i18n/index.js"
 
 export function SetupScreen({ onDone }: { readonly onDone?: () => void }) {
   const { config, ready, save } = useApi()
   const theme = useTheme()
+  const { t } = useLocale()
   const [baseUrl, setBaseUrl] = useState(config.baseUrl)
   const [token, setToken] = useState(config.token ?? "")
 
@@ -23,17 +25,17 @@ export function SetupScreen({ onDone }: { readonly onDone?: () => void }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title="Connection" />
+      <AppBar title={t("setup.title")} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <TextInput
-          label="Core URL"
+          label={t("setup.coreUrl")}
           value={baseUrl}
           onChangeText={setBaseUrl}
           autoCapitalize="none"
           autoCorrect={false}
         />
         <TextInput
-          label="API token"
+          label={t("setup.token")}
           value={token}
           onChangeText={setToken}
           autoCapitalize="none"
@@ -41,7 +43,7 @@ export function SetupScreen({ onDone }: { readonly onDone?: () => void }) {
           secureTextEntry
         />
         <Button mode="contained" onPress={submit}>
-          Save
+          {t("common.save")}
         </Button>
       </ScrollView>
     </View>

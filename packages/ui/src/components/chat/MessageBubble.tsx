@@ -1,5 +1,6 @@
 import { View } from "react-native"
 import { Text, useTheme } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 
 export interface MessageBubbleProps {
   readonly direction: "in" | "out"
@@ -11,10 +12,11 @@ export interface MessageBubbleProps {
 // "in" is what the user wrote (right side), "out" is the Bot's answer. The text is plain data: no markup is parsed.
 export function MessageBubble({ direction, text, time, channel }: MessageBubbleProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const mine = direction === "in"
   return (
     <View
-      accessibilityLabel={`${mine ? "You" : "Bot"} at ${time}`}
+      accessibilityLabel={mine ? t("chat.bubble.you", { time }) : t("chat.bubble.bot", { time })}
       style={{
         alignSelf: mine ? "flex-end" : "flex-start",
         maxWidth: "85%",

@@ -4,6 +4,7 @@ import { View } from "react-native"
 import { Button, HelperText, Text, TextInput } from "react-native-paper"
 import { useApi } from "../../api-context.js"
 import { failureText } from "../../hooks/failure.js"
+import { type MessageKey, useLocale } from "../../i18n/index.js"
 import { type McpDraft, mcpDraftBody, mcpDraftIssues, ServerAdded } from "./currents-model.js"
 
 export interface McpFormProps {
@@ -17,8 +18,9 @@ const EMPTY: McpDraft = { name: "", transport: "stdio", command: "", args: "", u
 // anything else before it sends, and the core checks again.
 export function McpForm({ onSaved }: McpFormProps) {
   const { client } = useApi()
+  const { t } = useLocale()
   const [draft, setDraft] = useState<McpDraft>(EMPTY)
-  const [issues, setIssues] = useState<ReadonlyArray<string>>([])
+  const [issues, setIssues] = useState<ReadonlyArray<MessageKey>>([])
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -35,7 +37,7 @@ export function McpForm({ onSaved }: McpFormProps) {
     )
     setBusy(false)
     if (result._tag === "Failure") {
-      setFailure(failureText(result.failure))
+      setFailure(failureText(result.failure, t))
       return
     }
     setDraft(EMPTY)
@@ -44,58 +46,68 @@ export function McpForm({ onSaved }: McpFormProps) {
 
   return (
     <View style={{ gap: 8 }}>
-      <Text variant="titleSmall">Add an MCP server</Text>
+      <Text variant="titleSmall">{t("mcp.title")}</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Button
           mode={draft.transport === "stdio" ? "contained" : "outlined"}
           onPress={() => set({ transport: "stdio" })}
         >
-          Local (stdio)
+          {t("mcp.local")}
         </Button>
         <Button
           mode={draft.transport === "http" ? "contained" : "outlined"}
           onPress={() => set({ transport: "http" })}
         >
-          Remote (https)
+          {t("mcp.remote")}
         </Button>
       </View>
-      <TextInput testID="mcp-name" label="Name" value={draft.name} onChangeText={(name) => set({ name })} />
+      <TextInput
+        testID="mcp-name"
+        label={t("common.name")}
+        value={draft.name}
+        onChangeText={(name) => set({ name })}
+      />
       {draft.transport === "stdio" ? (
         <>
           <TextInput
             testID="mcp-command"
-            label="Command"
+            label={t("mcp.command")}
             value={draft.command}
             onChangeText={(command) => set({ command })}
           />
           <TextInput
             testID="mcp-args"
-            label="Arguments"
+            label={t("mcp.args")}
             value={draft.args}
             onChangeText={(args) => set({ args })}
           />
           <TextInput
             testID="mcp-env-keys"
-            label="Vault key names (env), e.g. GITHUB_TOKEN"
+            label={t("mcp.envKeys")}
             value={draft.envKeys}
             onChangeText={(envKeys) => set({ envKeys })}
           />
         </>
       ) : (
-        <TextInput testID="mcp-url" label="URL" value={draft.url} onChangeText={(url) => set({ url })} />
+        <TextInput
+          testID="mcp-url"
+          label={t("mcp.url")}
+          value={draft.url}
+          onChangeText={(url) => set({ url })}
+        />
       )}
       {issues.map((issue) => (
         <HelperText key={issue} type="error" visible>
-          {issue}
+          {t(issue)}
         </HelperText>
       ))}
       {failure === null ? null : (
         <HelperText type="error" visible>
-          {`Could not add the server (${failure})`}
+          {t("mcp.failed", { failure })}
         </HelperText>
       )}
       <Button mode="contained" onPress={() => void submit()} disabled={busy}>
-        Add server
+        {t("mcp.add")}
       </Button>
     </View>
   )

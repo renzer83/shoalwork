@@ -6,10 +6,14 @@ import { gaugeTone, sortQuality } from "../src/components/executor/executor-mode
 import { LoginStatus } from "../src/components/executor/LoginStatus.js"
 import { QualityTable } from "../src/components/executor/QualityTable.js"
 import { QuotaGauge } from "../src/components/executor/QuotaGauge.js"
-import { themeFor } from "../src/index.js"
+import { LocaleProvider, themeFor } from "../src/index.js"
 
 const theme = themeFor("light")
-const wrap = (node: ReactNode) => <PaperProvider theme={theme}>{node}</PaperProvider>
+const wrap = (node: ReactNode) => (
+  <PaperProvider theme={theme}>
+    <LocaleProvider locale="pt-BR">{node}</LocaleProvider>
+  </PaperProvider>
+)
 
 afterEach(cleanup)
 

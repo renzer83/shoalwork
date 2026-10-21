@@ -13,10 +13,12 @@ import { TideAck, TideRan } from "../components/tides/tide-model.js"
 import { failureText } from "../hooks/failure.js"
 import { useBotNames } from "../hooks/useBotNames.js"
 import { useTides } from "../hooks/useTides.js"
+import { useLocale } from "../i18n/index.js"
 
 // Every Tide with its Bot, on/off, a run-now, the runs of the one open, and the form that creates one.
 export function TidesScreen() {
   const theme = useTheme()
+  const { t } = useLocale()
   const { client } = useApi()
   const { load, reload } = useTides()
   const bots = useBotNames()
@@ -30,7 +32,8 @@ export function TidesScreen() {
     const result = await Effect.runPromise(
       Effect.result(client.post(`/tides/${encodeURIComponent(id)}/enable`, { enabled: !enabled }, TideAck)),
     )
-    if (result._tag === "Failure") setNotice(`Could not change the Tide (${failureText(result.failure)})`)
+    if (result._tag === "Failure")
+      setNotice(t("tides.changeFailed", { failure: failureText(result.failure, t) }))
     reload()
   }
 
@@ -40,17 +43,21 @@ export function TidesScreen() {
     const result = await Effect.runPromise(
       Effect.result(client.post(`/tides/${encodeURIComponent(id)}/run`, {}, TideRan)),
     )
-    setNotice(result._tag === "Success" ? "Run started" : `Not run (${failureText(result.failure)})`)
+    setNotice(
+      result._tag === "Success"
+        ? t("tides.runStarted")
+        : t("tides.runNotRun", { failure: failureText(result.failure, t) }),
+    )
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title="Marés" onRefresh={reload} />
+      <AppBar title={t("tides.title")} onRefresh={reload} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         {load.kind === "failed" ? (
-          <ErrorBanner message={`Could not load the Tides (HTTP ${load.status})`} onRetry={reload} />
+          <ErrorBanner message={t("tides.loadFailed", { status: load.status })} onRetry={reload} />
         ) : null}
-        {load.kind === "loaded" && load.rows.length === 0 ? <EmptyState title="No Tides yet" /> : null}
+        {load.kind === "loaded" && load.rows.length === 0 ? <EmptyState title={t("tides.empty")} /> : null}
         {notice === null ? null : <Text variant="bodySmall">{notice}</Text>}
         {load.kind === "loaded"
           ? load.rows.map((tide) => (

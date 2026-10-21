@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { MessageKey, Translate } from "../../i18n/index.js"
 
 // The run list of one Tide (GET /tides/:id/runs): the firings of the last 30 days, newest first.
 export const TideRun = Schema.Struct({
@@ -35,16 +36,14 @@ export const EMPTY_TIDE_DRAFT: TideDraft = {
 }
 
 // What the form refuses before it sends. The core checks the cron expression itself (400 with the expression named).
-export const tideDraftIssues = (draft: TideDraft): ReadonlyArray<string> => {
-  const issues: string[] = []
-  if (draft.bot.trim() === "") issues.push("Bot: the name of a Bot")
-  if (draft.name.trim() === "") issues.push("Name: the Tide's name")
-  if (draft.mode === "cron" && draft.cronExpr.trim() === "")
-    issues.push("Cron: an expression, e.g. 0 9 * * 1-5")
-  if (draft.mode === "event" && draft.eventType.trim() === "")
-    issues.push("Event: the event type, e.g. github.issues")
-  if (draft.title.trim() === "") issues.push("Title of the task the Tide creates")
-  if (draft.prompt.trim() === "") issues.push("Prompt of the task the Tide creates")
+export const tideDraftIssues = (draft: TideDraft): ReadonlyArray<MessageKey> => {
+  const issues: MessageKey[] = []
+  if (draft.bot.trim() === "") issues.push("tides.issue.bot")
+  if (draft.name.trim() === "") issues.push("tides.issue.name")
+  if (draft.mode === "cron" && draft.cronExpr.trim() === "") issues.push("tides.issue.cron")
+  if (draft.mode === "event" && draft.eventType.trim() === "") issues.push("tides.issue.event")
+  if (draft.title.trim() === "") issues.push("tides.issue.title")
+  if (draft.prompt.trim() === "") issues.push("tides.issue.prompt")
   return issues
 }
 
@@ -66,8 +65,14 @@ export const tideDraftBody = (draft: TideDraft): Record<string, unknown> => ({
 })
 
 // The schedule of a stored Tide, as a line of text.
-export const scheduleText = (tide: {
-  readonly kind: "cron" | "event"
-  readonly cronExpr?: string | undefined
-  readonly eventType?: string | undefined
-}): string => (tide.kind === "cron" ? `cron ${tide.cronExpr ?? ""}` : `on ${tide.eventType ?? ""}`)
+export const scheduleText = (
+  tide: {
+    readonly kind: "cron" | "event"
+    readonly cronExpr?: string | undefined
+    readonly eventType?: string | undefined
+  },
+  t: Translate,
+): string =>
+  tide.kind === "cron"
+    ? t("tides.schedule.cron", { expr: tide.cronExpr ?? "" })
+    : t("tides.schedule.event", { type: tide.eventType ?? "" })

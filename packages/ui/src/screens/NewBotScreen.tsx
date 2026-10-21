@@ -8,6 +8,7 @@ import { AppBar } from "../components/AppBar.js"
 import { BotForm } from "../components/bot/BotForm.js"
 import { EMPTY_DRAFT } from "../components/bot/bot-form-model.js"
 import { ErrorBanner } from "../components/ErrorBanner.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface NewBotScreenProps {
   // Receives the new Bot's name: the route opens it by name.
@@ -18,6 +19,7 @@ export interface NewBotScreenProps {
 export function NewBotScreen({ onCreated }: NewBotScreenProps) {
   const { client } = useApi()
   const theme = useTheme()
+  const { t } = useLocale()
   const [notice, setNotice] = useState<string | null>(null)
 
   const create = (bot: NewBot) => {
@@ -29,13 +31,13 @@ export function NewBotScreen({ onCreated }: NewBotScreenProps) {
       }
       const error: unknown = result.failure
       const status = error instanceof Object && "status" in error ? Number(error.status) : 0
-      setNotice(`Could not create the Bot (HTTP ${status})`)
+      setNotice(t("newBot.failed", { status }))
     })
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title="New Bot" />
+      <AppBar title={t("newBot.title")} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <BotForm initial={EMPTY_DRAFT} onSubmit={create} />
         {notice === null ? null : <ErrorBanner message={notice} />}

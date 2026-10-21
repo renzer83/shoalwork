@@ -2,6 +2,7 @@ import { HttpError, sendMessage } from "@shoalwork/api-client"
 import { Effect } from "effect"
 import { useCallback, useState } from "react"
 import { useApi } from "../api-context.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 
 export interface SendMessage {
   readonly sending: boolean
@@ -10,17 +11,18 @@ export interface SendMessage {
   readonly send: (text: string) => Promise<boolean>
 }
 
-const describe = (error: unknown): string => {
+const describe = (error: unknown, t: Translate): string => {
   if (error instanceof HttpError) {
-    if (error.status === 0) return "Cannot reach the core"
-    if (error.status === 404) return "That Bot does not exist"
-    return `The core answered HTTP ${error.status}`
+    if (error.status === 0) return t("common.cannotReach")
+    if (error.status === 404) return t("chat.noBot")
+    return t("common.httpAnswered", { status: error.status })
   }
-  return "The core answered with an unexpected body"
+  return t("common.unexpectedBody")
 }
 
 export function useSendMessage(bot: string): SendMessage {
   const { client } = useApi()
+  const { t } = useLocale()
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
 
@@ -32,12 +34,12 @@ export function useSendMessage(bot: string): SendMessage {
       const result = await Effect.runPromise(Effect.result(sendMessage(client, bot, text)))
       setSending(false)
       if (result._tag === "Failure") {
-        setError(describe(result.failure))
+        setError(describe(result.failure, t))
         return false
       }
       return true
     },
-    [client, bot],
+    [client, bot, t],
   )
 
   return { sending, error, send }

@@ -1,26 +1,28 @@
 import type { BeaconCostsQuery, BeaconEventsQuery } from "@shoalwork/api-client"
 import { type Event, type EventType, EventType as EventTypeSchema } from "@shoalwork/contracts"
 import { DateTime, Schema } from "effect"
+import type { MessageKey } from "../../i18n/index.js"
 
 // Pure helpers of the Farol (T-121): periods, filter text to query, live matching, number formatting.
 
 export type PeriodKey = "24h" | "7d" | "30d"
-export const PERIODS: ReadonlyArray<{ readonly key: PeriodKey; readonly label: string }> = [
-  { key: "24h", label: "24 h" },
-  { key: "7d", label: "7 dias" },
-  { key: "30d", label: "30 dias" },
+export const PERIODS: ReadonlyArray<{ readonly key: PeriodKey; readonly labelKey: MessageKey }> = [
+  { key: "24h", labelKey: "beacon.period.24h" },
+  { key: "7d", labelKey: "beacon.period.7d" },
+  { key: "30d", labelKey: "beacon.period.30d" },
 ]
 
 // The core caps an events window at 7 days, so a 30-day period shows the last 7 days of events.
 export const eventsSince = (period: PeriodKey): "24h" | "7d" => (period === "24h" ? "24h" : "7d")
 
 export type CostDimension = NonNullable<BeaconCostsQuery["by"]>
-export const COST_DIMENSIONS: ReadonlyArray<{ readonly key: CostDimension; readonly label: string }> = [
-  { key: "tier", label: "Tier" },
-  { key: "bot", label: "Bot" },
-  { key: "task", label: "Task" },
-  { key: "executor", label: "Executor" },
-]
+export const COST_DIMENSIONS: ReadonlyArray<{ readonly key: CostDimension; readonly labelKey: MessageKey }> =
+  [
+    { key: "tier", labelKey: "beacon.dim.tier" },
+    { key: "bot", labelKey: "beacon.dim.bot" },
+    { key: "task", labelKey: "beacon.dim.task" },
+    { key: "executor", labelKey: "beacon.dim.executor" },
+  ]
 
 export const PAGE_SIZE = 50
 

@@ -2,6 +2,7 @@ import type { TimelineItem } from "@shoalwork/contracts"
 import { useState } from "react"
 import { Linking, View } from "react-native"
 import { Button, Card, Text } from "react-native-paper"
+import { type MessageKey, useLocale } from "../../i18n/index.js"
 
 type ArtifactItem = Extract<TimelineItem, { readonly kind: "artifact" }>
 
@@ -15,11 +16,11 @@ export const isWebLink = (ref: string): boolean => {
   }
 }
 
-const TITLES: Record<ArtifactItem["artifactKind"], string> = {
-  pr: "Pull request",
-  url: "Link",
-  file: "File",
-  text: "Note",
+const TITLES: Record<ArtifactItem["artifactKind"], MessageKey> = {
+  pr: "artifact.pr",
+  url: "artifact.url",
+  file: "artifact.file",
+  text: "artifact.text",
 }
 
 export interface ArtifactCardProps {
@@ -30,11 +31,12 @@ export interface ArtifactCardProps {
 
 export function ArtifactCard({ item, open = (url) => Linking.openURL(url) }: ArtifactCardProps) {
   const [confirming, setConfirming] = useState(false)
+  const { t } = useLocale()
   const linkable = (item.artifactKind === "pr" || item.artifactKind === "url") && isWebLink(item.ref)
   return (
-    <Card mode="outlined" accessibilityLabel={TITLES[item.artifactKind]}>
+    <Card mode="outlined" accessibilityLabel={t(TITLES[item.artifactKind])}>
       <Card.Content style={{ gap: 6 }}>
-        <Text variant="titleSmall">{TITLES[item.artifactKind]}</Text>
+        <Text variant="titleSmall">{t(TITLES[item.artifactKind])}</Text>
         {item.summary === undefined ? null : <Text>{item.summary}</Text>}
         <Text
           selectable
@@ -47,21 +49,21 @@ export function ArtifactCard({ item, open = (url) => Linking.openURL(url) }: Art
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Button
                 mode="contained"
-                accessibilityLabel="Confirm open link"
+                accessibilityLabel={t("artifact.confirmOpen")}
                 onPress={() => {
                   setConfirming(false)
                   void open(item.ref)
                 }}
               >
-                Open in browser
+                {t("artifact.openBrowser")}
               </Button>
-              <Button accessibilityLabel="Cancel" onPress={() => setConfirming(false)}>
-                Cancel
+              <Button accessibilityLabel={t("common.cancel")} onPress={() => setConfirming(false)}>
+                {t("common.cancel")}
               </Button>
             </View>
           ) : (
-            <Button accessibilityLabel="Open link" onPress={() => setConfirming(true)}>
-              Open link
+            <Button accessibilityLabel={t("artifact.open")} onPress={() => setConfirming(true)}>
+              {t("artifact.open")}
             </Button>
           )
         ) : null}

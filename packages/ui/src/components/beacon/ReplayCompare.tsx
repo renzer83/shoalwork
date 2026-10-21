@@ -1,6 +1,7 @@
 import type { ReplayComparison, RunSummary } from "@shoalwork/api-client"
 import { View } from "react-native"
 import { Button, Text, useTheme } from "react-native-paper"
+import { type Translate, useLocale } from "../../i18n/index.js"
 import { formatDuration, formatUsd, formatUsdDelta } from "./beacon-model.js"
 
 export interface ReplayCompareProps {
@@ -9,7 +10,8 @@ export interface ReplayCompareProps {
   readonly onClose?: (() => void) | undefined
 }
 
-const verdictOf = (run: RunSummary): string => run.verdict?.kind ?? `sem veredito (${run.state})`
+const verdictOf = (run: RunSummary, t: Translate): string =>
+  run.verdict?.kind ?? t("beacon.replay.noVerdict", { state: run.state })
 
 function Row({
   label,
@@ -49,53 +51,67 @@ function Names({ title, items }: { readonly title: string; readonly items: Reado
   )
 }
 
-const overridesText = (comparison: ReplayComparison): string => {
+const overridesText = (comparison: ReplayComparison, t: Translate): string => {
   const parts = Object.entries(comparison.overrides).map(([key, value]) => `${key}=${String(value)}`)
-  return parts.length === 0 ? "nenhum" : parts.join(" · ")
+  return parts.length === 0 ? t("common.none") : parts.join(" · ")
 }
 
 // A replay next to its source (T-122): verdict, cost, time, executor and model, and what only one of the runs did.
 // Everything shown comes from the log, so it is printed as plain text and never interpreted.
 export function ReplayCompare({ comparison, onRefresh, onClose }: ReplayCompareProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const { source, replay, diff } = comparison
   const finished = replay.verdict !== null
   return (
     <View
-      accessibilityLabel="Comparação do replay"
+      accessibilityLabel={t("beacon.replay.a11y")}
       style={{ gap: 8, borderColor: theme.colors.outline, borderWidth: 1, borderRadius: 8, padding: 12 }}
     >
-      <Text variant="titleSmall">Replay</Text>
+      <Text variant="titleSmall">{t("beacon.replay.title")}</Text>
       <Text variant="bodySmall" selectable>{`${comparison.sourceTaskId} → ${comparison.newTaskId}`}</Text>
-      <Text variant="bodySmall">{`Overrides: ${overridesText(comparison)}`}</Text>
       <Text variant="bodySmall">
-        {`Base: ${comparison.baseSha === null ? "ponta do branch" : comparison.baseSha.slice(0, 12)} · Contexto: ${
-          comparison.contextFrozen ? "congelado" : "remontado"
-        }`}
+        {t("beacon.replay.overrides", { overrides: overridesText(comparison, t) })}
       </Text>
-      <Row label="" source="Original" replay="Replay" />
-      <Row label="Veredito" source={verdictOf(source)} replay={verdictOf(replay)} />
-      <Row label="Custo" source={formatUsd(source.usage.usd)} replay={formatUsd(replay.usage.usd)} />
+      <Text variant="bodySmall">
+        {t("beacon.replay.base", {
+          base: comparison.baseSha === null ? t("beacon.replay.branchTip") : comparison.baseSha.slice(0, 12),
+          context: comparison.contextFrozen ? t("beacon.replay.frozen") : t("beacon.replay.rebuilt"),
+        })}
+      </Text>
+      <Row label="" source={t("beacon.replay.original")} replay={t("beacon.replay.title")} />
+      <Row label={t("beacon.replay.verdict")} source={verdictOf(source, t)} replay={verdictOf(replay, t)} />
       <Row
-        label="Duração"
+        label={t("beacon.replay.cost")}
+        source={formatUsd(source.usage.usd)}
+        replay={formatUsd(replay.usage.usd)}
+      />
+      <Row
+        label={t("beacon.replay.duration")}
         source={formatDuration(source.durationMs)}
         replay={formatDuration(replay.durationMs)}
       />
-      <Row label="Executor" source={source.executor ?? "—"} replay={replay.executor ?? "—"} />
-      <Row label="Modelo" source={source.model ?? "—"} replay={replay.model ?? "—"} />
+      <Row
+        label={t("beacon.replay.executor")}
+        source={source.executor ?? "—"}
+        replay={replay.executor ?? "—"}
+      />
+      <Row label={t("beacon.replay.model")} source={source.model ?? "—"} replay={replay.model ?? "—"} />
       {finished ? (
         <Text variant="bodyMedium">
-          {`${diff.verdictChanged ? "O veredito mudou" : "Mesmo veredito"} · custo ${formatUsdDelta(
-            diff.usdDelta,
-          )} · tempo ${formatDuration(diff.durationDeltaMs)}`}
+          {t("beacon.replay.delta", {
+            verdict: diff.verdictChanged ? t("beacon.replay.changed") : t("beacon.replay.same"),
+            cost: formatUsdDelta(diff.usdDelta),
+            time: formatDuration(diff.durationDeltaMs),
+          })}
         </Text>
       ) : (
-        <Text variant="bodyMedium">O replay ainda não terminou.</Text>
+        <Text variant="bodyMedium">{t("beacon.replay.notFinished")}</Text>
       )}
-      <Names title="Arquivos só no original" items={diff.filesOnlyInSource} />
-      <Names title="Arquivos só no replay" items={diff.filesOnlyInReplay} />
-      <Names title="Evidências só no original" items={diff.evidenceOnlyInSource} />
-      <Names title="Evidências só no replay" items={diff.evidenceOnlyInReplay} />
+      <Names title={t("beacon.replay.filesOnlySource")} items={diff.filesOnlyInSource} />
+      <Names title={t("beacon.replay.filesOnlyReplay")} items={diff.filesOnlyInReplay} />
+      <Names title={t("beacon.replay.evidenceOnlySource")} items={diff.evidenceOnlyInSource} />
+      <Names title={t("beacon.replay.evidenceOnlyReplay")} items={diff.evidenceOnlyInReplay} />
       {comparison.notes.map((note) => (
         <Text key={note} variant="bodySmall">
           {note}
@@ -104,10 +120,10 @@ export function ReplayCompare({ comparison, onRefresh, onClose }: ReplayCompareP
       <View style={{ flexDirection: "row", gap: 8 }}>
         {onRefresh === undefined ? null : (
           <Button mode="outlined" onPress={onRefresh}>
-            Atualizar comparação
+            {t("beacon.replay.refresh")}
           </Button>
         )}
-        {onClose === undefined ? null : <Button onPress={onClose}>Fechar</Button>}
+        {onClose === undefined ? null : <Button onPress={onClose}>{t("beacon.replay.close")}</Button>}
       </View>
     </View>
   )

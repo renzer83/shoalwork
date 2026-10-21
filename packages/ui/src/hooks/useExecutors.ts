@@ -2,6 +2,7 @@ import { HttpError } from "@shoalwork/api-client"
 import { Effect, Schema } from "effect"
 import { useCallback, useEffect, useState } from "react"
 import { useApi } from "../api-context.js"
+import { type Translate, useLocale } from "../i18n/index.js"
 import type { SummaryLoad } from "./useBeaconSummary.js"
 
 // Mirrors GET /executors and POST /executors/:id/doctor of the core (services/core/src/http/routes/executors.ts).
@@ -44,18 +45,19 @@ export interface ExecutorsState {
   readonly reprobe: (id: string) => void
 }
 
-const describeFailure = (error: unknown, baseUrl: string): string => {
+const describeFailure = (error: unknown, baseUrl: string, t: Translate): string => {
   if (error instanceof HttpError) {
     return error.status === 0
-      ? `Não foi possível falar com o core em ${baseUrl}`
-      : `O core respondeu HTTP ${error.status}`
+      ? t("common.cannotReachAt", { url: baseUrl })
+      : t("common.httpAnswered", { status: error.status })
   }
-  return "O core respondeu com um corpo inesperado"
+  return t("common.unexpectedBody")
 }
 
 // The overview of every executor, and the re-probe of one CLI. A re-probe reloads the overview when it lands.
 export function useExecutors(): ExecutorsState {
   const { client, config, ready } = useApi()
+  const { t } = useLocale()
   const [load, setLoad] = useState<SummaryLoad<ReadonlyArray<ExecutorView>>>({ kind: "loading" })
   const [generation, setGeneration] = useState(0)
   const [probing, setProbing] = useState<string | null>(null)
@@ -72,13 +74,13 @@ export function useExecutors(): ExecutorsState {
       setLoad(
         result._tag === "Success"
           ? { kind: "loaded", value: result.success }
-          : { kind: "failed", message: describeFailure(result.failure, config.baseUrl) },
+          : { kind: "failed", message: describeFailure(result.failure, config.baseUrl, t) },
       )
     })
     return () => {
       current = false
     }
-  }, [client, config.baseUrl, ready, generation])
+  }, [client, config.baseUrl, ready, generation, t])
 
   const reprobe = useCallback(
     (id: string) => {
@@ -91,10 +93,10 @@ export function useExecutors(): ExecutorsState {
           reload()
           return
         }
-        setProbeFailure(describeFailure(result.failure, config.baseUrl))
+        setProbeFailure(describeFailure(result.failure, config.baseUrl, t))
       })
     },
-    [client, config.baseUrl, reload],
+    [client, config.baseUrl, reload, t],
   )
 
   return { load, reload, probing, probeFailure, reprobe }

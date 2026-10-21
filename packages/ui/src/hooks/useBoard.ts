@@ -10,6 +10,7 @@ import { Effect, Option, Schema } from "effect"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useApi } from "../api-context.js"
 import { failureText, statusOf } from "../components/project/project-model.js"
+import { useLocale } from "../i18n/index.js"
 
 // Payloads of the board's events as the core writes them (contracts keep them in the core's factory module).
 const StateChanged = Schema.Struct({ project: Schema.String, taskId: Schema.String, to: ProjectTaskState })
@@ -47,6 +48,7 @@ interface Snapshot {
 // The board of one project: tasks and sprints, actions through the core, and the live feed of its events.
 export function useBoard(slug: string): Board {
   const { client } = useApi()
+  const { t } = useLocale()
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
   const [failure, setFailure] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -136,15 +138,17 @@ export function useBoard(slug: string): Board {
           if (result._tag === "Success") {
             const task = result.success.task
             setSnapshot((prev) =>
-              prev === null ? prev : { ...prev, tasks: prev.tasks.map((t) => (t.id === task.id ? task : t)) },
+              prev === null
+                ? prev
+                : { ...prev, tasks: prev.tasks.map((row) => (row.id === task.id ? task : row)) },
             )
           } else {
-            setNotice(failureText(result.failure))
+            setNotice(failureText(result.failure, t))
           }
         },
       )
     },
-    [client, slug],
+    [client, slug, t],
   )
 
   const createSprint = useCallback(
@@ -152,10 +156,10 @@ export function useBoard(slug: string): Board {
       setNotice(null)
       void Effect.runPromise(Effect.result(client.projects.createSprint(slug, sprint))).then((result) => {
         if (result._tag === "Success") reload()
-        else setNotice(failureText(result.failure))
+        else setNotice(failureText(result.failure, t))
       })
     },
-    [client, slug, reload],
+    [client, slug, reload, t],
   )
 
   const load = useMemo<BoardLoad>(() => {

@@ -1,11 +1,11 @@
 import { ApiClient, type ReplayComparison } from "@shoalwork/api-client"
 import { ExecutorId } from "@shoalwork/contracts"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Schema } from "effect"
 import { PaperProvider } from "react-native-paper"
 import { afterEach, describe, expect, it } from "vitest"
 import { ReplayCompare } from "../src/components/beacon/ReplayCompare.js"
-import { BeaconScreen, StaticApiProvider, themeFor } from "../src/index.js"
+import { BeaconScreen, LocaleProvider, StaticApiProvider, themeFor } from "../src/index.js"
 
 const TASK = "task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 const NEW_TASK = "task_1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e"
@@ -68,16 +68,21 @@ const comparison = (over: Partial<ReplayComparison> = {}): ReplayComparison => (
 })
 
 const inTheme = (children: React.ReactNode) => (
-  <PaperProvider theme={themeFor("light")}>{children}</PaperProvider>
+  <PaperProvider theme={themeFor("light")}>
+    <LocaleProvider locale="pt-BR">{children}</LocaleProvider>
+  </PaperProvider>
 )
 
 afterEach(cleanup)
+
+// Each wait is bounded on its own: findBy's default 1 s is shorter than a render on a slow runner.
+const WAIT = { timeout: 4_000 }
 
 describe("ReplayCompare", () => {
   it("shows both runs side by side with what changed", async () => {
     render(inTheme(<ReplayCompare comparison={comparison()} />))
 
-    expect(await screen.findByText("ok")).toBeTruthy()
+    expect(await screen.findByText("ok", {}, WAIT)).toBeTruthy()
     expect(screen.getByText("failed")).toBeTruthy()
     expect(screen.getByText("US$ 0.1000")).toBeTruthy()
     expect(screen.getByText("US$ 0.3500")).toBeTruthy()
@@ -96,7 +101,7 @@ describe("ReplayCompare", () => {
     })
     render(inTheme(<ReplayCompare comparison={running} />))
 
-    expect(await screen.findByText("O replay ainda não terminou.")).toBeTruthy()
+    expect(await screen.findByText("O replay ainda não terminou.", {}, WAIT)).toBeTruthy()
     expect(screen.getByText("sem veredito (running)")).toBeTruthy()
   })
 
@@ -107,7 +112,7 @@ describe("ReplayCompare", () => {
     })
     const { container } = render(inTheme(<ReplayCompare comparison={hostile} />))
 
-    expect(await screen.findByText("<script>alert(1)</script>")).toBeTruthy()
+    expect(await screen.findByText("<script>alert(1)</script>", {}, WAIT)).toBeTruthy()
     expect(container.querySelector("script")).toBeNull()
     expect(container.querySelector("img")).toBeNull()
   })
@@ -124,7 +129,7 @@ describe("ReplayCompare", () => {
       ),
     )
 
-    fireEvent.click(await screen.findByRole("button", { name: "Atualizar comparação" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Atualizar comparação" }, WAIT))
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }))
 
     expect(calls).toEqual(["refresh", "close"])
@@ -214,33 +219,33 @@ describe("Replay from the Farol", () => {
   it("offers Replay only on an event of a task stream", async () => {
     showFarol([])
 
-    fireEvent.click(await screen.findByRole("button", { name: /bot\.updated/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /bot\.updated/ }, WAIT))
     expect(screen.queryByRole("button", { name: "Replay" })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: /executor\.finished/ }))
-    expect(await screen.findByRole("button", { name: "Replay" })).toBeTruthy()
+    fireEvent.click(await screen.findByRole("button", { name: /executor\.finished/ }, WAIT))
+    expect(await screen.findByRole("button", { name: "Replay" }, WAIT)).toBeTruthy()
   })
 
   it("starts the replay of the selected task and shows the comparison", async () => {
     const seen: Array<string> = []
     showFarol(seen)
 
-    fireEvent.click(await screen.findByRole("button", { name: /executor\.finished/ }))
-    fireEvent.click(await screen.findByRole("button", { name: "Replay" }))
+    fireEvent.click(await screen.findByRole("button", { name: /executor\.finished/ }, WAIT))
+    fireEvent.click(await screen.findByRole("button", { name: "Replay" }, WAIT))
 
-    expect(await screen.findByLabelText("Comparação do replay")).toBeTruthy()
-    expect(await screen.findByText("failed")).toBeTruthy()
+    expect(await screen.findByLabelText("Comparação do replay", {}, WAIT)).toBeTruthy()
+    expect(await screen.findByText("failed", {}, WAIT)).toBeTruthy()
     expect(seen).toContain(`POST /tasks/${TASK}/replay`)
     expect(seen).toContain("GET /replays/rpl_1")
-    fireEvent.click(await screen.findByRole("button", { name: "Fechar" }))
-    expect(screen.queryByLabelText("Comparação do replay")).toBeNull()
+    fireEvent.click(await screen.findByRole("button", { name: "Fechar" }, WAIT))
+    await waitFor(() => expect(screen.queryByLabelText("Comparação do replay")).toBeNull(), WAIT)
   })
 
   it("shows why the core refused the replay", async () => {
     showFarol([], true)
 
-    fireEvent.click(await screen.findByRole("button", { name: /executor\.finished/ }))
-    fireEvent.click(await screen.findByRole("button", { name: "Replay" }))
+    fireEvent.click(await screen.findByRole("button", { name: /executor\.finished/ }, WAIT))
+    fireEvent.click(await screen.findByRole("button", { name: "Replay" }, WAIT))
 
-    expect(await screen.findByText(/O replay foi recusado/)).toBeTruthy()
+    expect(await screen.findByText(/O replay foi recusado/, {}, WAIT)).toBeTruthy()
   })
 })

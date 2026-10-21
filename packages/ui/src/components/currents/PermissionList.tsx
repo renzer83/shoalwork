@@ -1,6 +1,7 @@
 import type { Risk } from "@shoalwork/contracts"
 import { View } from "react-native"
 import { type MD3Theme, Text, useTheme } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 
 export interface PermissionListProps {
   readonly permissions: ReadonlyArray<{ readonly tool: string; readonly risk: Risk }>
@@ -23,8 +24,9 @@ export const riskColor = (theme: MD3Theme, risk: Risk): string => {
 // The declared permissions of a connector as chips: the tool, then its risk.
 export function PermissionList({ permissions }: PermissionListProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   if (permissions.length === 0) {
-    return <Text variant="bodySmall">No permissions declared</Text>
+    return <Text variant="bodySmall">{t("currents.noPermissions")}</Text>
   }
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>

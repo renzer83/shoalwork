@@ -2,6 +2,7 @@ import { type Event, Event as EventSchema, TimelineItem } from "@shoalwork/contr
 import { Schema } from "effect"
 import { describe, expect, it } from "vitest"
 import { chipLabel, mergeItems, reactTo, toRows, withApprovalStatus } from "../src/hooks/timeline-model.js"
+import { translate } from "../src/i18n/index.js"
 import {
   APPROVAL,
   approvalItem,
@@ -51,7 +52,9 @@ describe("toRows", () => {
 
   it("labels counts, with failures", () => {
     const [row] = toRows(items([commandEvent(1, 0, "a", 2), fileEvent(2, 1, "f.ts")]))
-    expect(row?.kind === "chip" ? chipLabel(row) : "").toBe("1 command (1 failed), 1 file edited")
+    expect(row?.kind === "chip" ? chipLabel(row, (key, params) => translate("en", key, params)) : "").toBe(
+      "1 command (1 failed), 1 file edited",
+    )
   })
 })
 

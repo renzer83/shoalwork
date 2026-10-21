@@ -17,6 +17,7 @@ import { useBot } from "../hooks/useBot.js"
 import { useBotArchive } from "../hooks/useBotArchive.js"
 import { useBotControl } from "../hooks/useBotControl.js"
 import { useBotMemory } from "../hooks/useBotMemory.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface BotScreenProps {
   readonly idOrName: string
@@ -25,14 +26,15 @@ export interface BotScreenProps {
 // The ficha of one Bot: state, role, instructions (as text), executors, connectors, budget, Tank and memory.
 export function BotScreen({ idOrName }: BotScreenProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const { load, reload } = useBot(idOrName)
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title={load.kind === "loaded" ? load.bot.name : "Bot"} onRefresh={reload} />
+      <AppBar title={load.kind === "loaded" ? load.bot.name : t("bot.fallbackTitle")} onRefresh={reload} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {load.kind === "loading" ? <ActivityIndicator accessibilityLabel="Loading" /> : null}
+        {load.kind === "loading" ? <ActivityIndicator accessibilityLabel={t("common.loading")} /> : null}
         {load.kind === "failed" ? (
-          <ErrorBanner message={`Could not load this Bot (HTTP ${load.status})`} onRetry={reload} />
+          <ErrorBanner message={t("bot.loadFailed", { status: load.status })} onRetry={reload} />
         ) : null}
         {load.kind === "loaded" ? (
           <BotBody bot={load.bot} costUsd24h={load.costUsd24h} onChanged={reload} />
@@ -54,6 +56,7 @@ const statusOf = (error: unknown): number =>
 
 function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
   const { client } = useApi()
+  const { t } = useLocale()
   const memory = useBotMemory(bot.id)
   const control = useBotControl(bot.id, onChanged)
   const archive = useBotArchive(bot.id, onChanged)
@@ -65,10 +68,10 @@ function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
     void Effect.runPromise(Effect.result(client.bots.patch(bot.id, Struct.omit(next, ["name"])))).then(
       (result) => {
         if (result._tag === "Success") {
-          setNotice("Saved.")
+          setNotice(t("bot.saved"))
           onChanged()
         } else {
-          setNotice(`Save failed (HTTP ${statusOf(result.failure)})`)
+          setNotice(t("bot.saveFailed", { status: statusOf(result.failure) }))
         }
       },
     )
@@ -79,32 +82,41 @@ function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
       <Card>
         <Card.Content style={{ gap: 6 }}>
           <Text variant="titleLarge">{bot.name}</Text>
-          <Text variant="labelLarge">{`state: ${bot.state}`}</Text>
+          <Text variant="labelLarge">{t("bot.stateLine", { state: bot.state })}</Text>
           <Text variant="bodyMedium">{bot.role}</Text>
-          <Text variant="labelMedium">Instructions</Text>
+          <Text variant="labelMedium">{t("bot.instructions")}</Text>
           <Text variant="bodyMedium">{bot.instructions}</Text>
-          <Text variant="labelMedium">{`Executors: ${bot.executors.preferred} (allowed: ${bot.executors.allowed.join(", ")})`}</Text>
-          <Text variant="labelMedium">{`Connectors: ${bot.connectors.length === 0 ? "none" : bot.connectors.join(", ")}`}</Text>
+          <Text variant="labelMedium">
+            {t("bot.executorsLine", {
+              preferred: bot.executors.preferred,
+              allowed: bot.executors.allowed.join(", "),
+            })}
+          </Text>
+          <Text variant="labelMedium">
+            {t("bot.connectorsLine", {
+              connectors: bot.connectors.length === 0 ? t("common.none") : bot.connectors.join(", "),
+            })}
+          </Text>
           <TankBadge mode={bot.tank.mode} host={bot.tank.host} />
           <BotControls state={bot.state} control={control} />
           <ArchiveBot archived={bot.state === "archived"} archive={archive} />
           {costUsd24h === undefined ? (
-            <Text variant="labelLarge">Cost 24 h: unavailable (budget USD {bot.budget.usd})</Text>
+            <Text variant="labelLarge">{t("bot.costUnavailable", { usd: bot.budget.usd })}</Text>
           ) : (
-            <BudgetBar label="Cost 24 h" used={costUsd24h} limit={bot.budget.usd} unit="USD" />
+            <BudgetBar label={t("bot.costLabel")} used={costUsd24h} limit={bot.budget.usd} unit="USD" />
           )}
         </Card.Content>
       </Card>
       <Card>
         <Card.Content style={{ gap: 8 }}>
-          <Text variant="titleMedium">Ficha</Text>
+          <Text variant="titleMedium">{t("bot.profile")}</Text>
           <BotForm initial={draftOf(bot)} onSubmit={save} />
           {notice === null ? null : <Text variant="bodySmall">{notice}</Text>}
         </Card.Content>
       </Card>
       <Card>
         <Card.Content style={{ gap: 8 }}>
-          <Text variant="titleMedium">Memory</Text>
+          <Text variant="titleMedium">{t("bot.memory")}</Text>
           <MemoryList
             load={memory.load}
             onSearch={memory.search}

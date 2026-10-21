@@ -6,19 +6,21 @@ import { ActivityIndicator, Button, Card, Text, useTheme } from "react-native-pa
 import { useApi } from "../api-context.js"
 import { AppBar } from "../components/AppBar.js"
 import { ErrorBanner } from "../components/ErrorBanner.js"
+import type { Translate } from "../i18n/index.js"
+import { useLocale } from "../i18n/index.js"
 
 type HealthState =
   | { readonly kind: "loading" }
   | { readonly kind: "loaded"; readonly health: HealthBody }
   | { readonly kind: "failed"; readonly message: string }
 
-const describeFailure = (error: unknown, baseUrl: string): string => {
+const describeFailure = (error: unknown, baseUrl: string, t: Translate): string => {
   if (error instanceof HttpError) {
     return error.status === 0
-      ? `Cannot reach the core at ${baseUrl}`
-      : `The core answered HTTP ${error.status}`
+      ? t("common.cannotReachAt", { url: baseUrl })
+      : t("common.httpAnswered", { status: error.status })
   }
-  return "The core answered with an unexpected body"
+  return t("common.unexpectedBody")
 }
 
 export interface HealthScreenProps {
@@ -28,6 +30,7 @@ export interface HealthScreenProps {
 export function HealthScreen({ onOpenSetup }: HealthScreenProps) {
   const { client, config, ready } = useApi()
   const theme = useTheme()
+  const { t } = useLocale()
   const [state, setState] = useState<HealthState>({ kind: "loading" })
 
   const load = useCallback(() => {
@@ -36,10 +39,10 @@ export function HealthScreen({ onOpenSetup }: HealthScreenProps) {
       setState(
         result._tag === "Success"
           ? { kind: "loaded", health: result.success }
-          : { kind: "failed", message: describeFailure(result.failure, config.baseUrl) },
+          : { kind: "failed", message: describeFailure(result.failure, config.baseUrl, t) },
       )
     })
-  }, [client, config.baseUrl])
+  }, [client, config.baseUrl, t])
 
   useEffect(() => {
     if (ready) {
@@ -49,23 +52,23 @@ export function HealthScreen({ onOpenSetup }: HealthScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title="Health" onRefresh={load} />
+      <AppBar title={t("health.title")} onRefresh={load} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Text variant="bodySmall">{config.baseUrl}</Text>
-        {state.kind === "loading" ? <ActivityIndicator accessibilityLabel="Loading" /> : null}
+        {state.kind === "loading" ? <ActivityIndicator accessibilityLabel={t("common.loading")} /> : null}
         {state.kind === "failed" ? <ErrorBanner message={state.message} onRetry={load} /> : null}
         {state.kind === "loaded" ? (
           <Card>
             <Card.Content style={{ gap: 4 }}>
-              <Text variant="titleLarge">{state.health.ok ? "Core is up" : "Core is degraded"}</Text>
-              <Text>{`ok: ${state.health.ok ? "yes" : "no"}`}</Text>
-              <Text>{`db: ${state.health.db}`}</Text>
-              <Text>{`version: ${state.health.version}`}</Text>
-              <Text>{`uptime: ${state.health.uptimeSeconds}s`}</Text>
+              <Text variant="titleLarge">{state.health.ok ? t("health.up") : t("health.degraded")}</Text>
+              <Text>{t("health.ok", { value: state.health.ok ? t("common.yes") : t("common.no") })}</Text>
+              <Text>{t("health.db", { db: state.health.db })}</Text>
+              <Text>{t("health.version", { version: state.health.version })}</Text>
+              <Text>{t("health.uptime", { seconds: state.health.uptimeSeconds })}</Text>
             </Card.Content>
           </Card>
         ) : null}
-        {onOpenSetup === undefined ? null : <Button onPress={onOpenSetup}>Connection settings</Button>}
+        {onOpenSetup === undefined ? null : <Button onPress={onOpenSetup}>{t("health.settings")}</Button>}
       </ScrollView>
     </View>
   )

@@ -1,6 +1,7 @@
 import type { BotSummary } from "@shoalwork/api-client"
 import { Pressable, View } from "react-native"
 import { Card, Text, useTheme } from "react-native-paper"
+import { useLocale } from "../../i18n/index.js"
 
 export interface BotCardProps {
   readonly bot: BotSummary & { readonly taskId?: string; readonly costUsd24h: number | undefined }
@@ -10,6 +11,7 @@ export interface BotCardProps {
 // One row of the Bots list: name, role, live state, the task in progress and the cost of the last 24 h.
 export function BotCard({ bot, onOpen }: BotCardProps) {
   const theme = useTheme()
+  const { t } = useLocale()
   const cost = bot.costUsd24h === undefined ? "—" : `$${bot.costUsd24h.toFixed(2)}`
   return (
     <Pressable accessibilityRole="button" onPress={() => onOpen?.(bot.id)}>
@@ -17,15 +19,15 @@ export function BotCard({ bot, onOpen }: BotCardProps) {
         <Card.Content style={{ gap: 4 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text variant="titleMedium">{bot.name}</Text>
-            <Text variant="labelLarge" accessibilityLabel={`state ${bot.state}`}>
+            <Text variant="labelLarge" accessibilityLabel={t("bot.card.state", { state: bot.state })}>
               {bot.state}
             </Text>
           </View>
           <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
             {bot.role}
           </Text>
-          <Text variant="bodySmall">{`task: ${bot.taskId ?? "—"}`}</Text>
-          <Text variant="bodySmall">{`cost 24 h: ${cost}`}</Text>
+          <Text variant="bodySmall">{t("bot.card.task", { task: bot.taskId ?? "—" })}</Text>
+          <Text variant="bodySmall">{t("bot.card.cost", { cost })}</Text>
         </Card.Content>
       </Card>
     </Pressable>

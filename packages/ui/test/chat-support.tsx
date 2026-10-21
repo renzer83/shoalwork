@@ -2,7 +2,7 @@ import { ApiClient } from "@shoalwork/api-client"
 import { render } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { PaperProvider } from "react-native-paper"
-import { StaticApiProvider, themeFor } from "../src/index.js"
+import { LocaleProvider, StaticApiProvider, themeFor } from "../src/index.js"
 
 export const BOT = "bot_3f2a9c1e-7b4d-4e8a-9f10-2c6d5e8b7a41"
 export const TASK = "task_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
@@ -120,7 +120,9 @@ export function fakeCore(route: (call: Call) => Response | undefined) {
 
 export const wrap = (client: ApiClient, ui: ReactNode) => (
   <PaperProvider theme={themeFor("light")}>
-    <StaticApiProvider client={client}>{ui}</StaticApiProvider>
+    <LocaleProvider locale="en">
+      <StaticApiProvider client={client}>{ui}</StaticApiProvider>
+    </LocaleProvider>
   </PaperProvider>
 )
 

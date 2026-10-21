@@ -1,6 +1,7 @@
 import { View } from "react-native"
 import { Text, useTheme } from "react-native-paper"
 import { Rect, Svg } from "react-native-svg"
+import { useLocale } from "../../i18n/index.js"
 
 export interface CostBar {
   readonly label: string
@@ -21,10 +22,11 @@ export function CostChart({
   readonly height?: number
 }) {
   const theme = useTheme()
+  const { t } = useLocale()
   const max = Math.max(0, ...bars.map((bar) => bar.value))
   const drawable = height - 4
   return (
-    <View accessibilityLabel={`${title}: ${bars.length} barras`} style={{ gap: 4 }}>
+    <View accessibilityLabel={t("beacon.cost.chartA11y", { title, count: bars.length })} style={{ gap: 4 }}>
       <Svg
         width="100%"
         height={height}
@@ -45,7 +47,7 @@ export function CostChart({
           )
         })}
       </Svg>
-      {bars.length === 0 ? <Text variant="bodySmall">Sem dados no período</Text> : null}
+      {bars.length === 0 ? <Text variant="bodySmall">{t("beacon.cost.noData")}</Text> : null}
     </View>
   )
 }

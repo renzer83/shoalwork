@@ -1,6 +1,7 @@
 import { View } from "react-native"
 import { Button, Card, Text } from "react-native-paper"
 import type { ExecutorView } from "../../hooks/useExecutors.js"
+import { useLocale } from "../../i18n/index.js"
 import { DOCTOR_LABEL, versionText } from "./executor-model.js"
 import { LoginStatus } from "./LoginStatus.js"
 import { QualityTable } from "./QualityTable.js"
@@ -14,6 +15,7 @@ export interface ExecutorCardProps {
 
 // One executor: its CLI and version against the pin, the doctor's verdict, the quota, the quality and the logins.
 export function ExecutorCard({ executor, probing, onReprobe }: ExecutorCardProps) {
+  const { t } = useLocale()
   const checked = executor.cli !== null
   return (
     <Card>
@@ -21,11 +23,16 @@ export function ExecutorCard({ executor, probing, onReprobe }: ExecutorCardProps
         <Text variant="titleMedium">{executor.id}</Text>
         {checked ? (
           <View style={{ gap: 2 }}>
-            <Text variant="bodySmall">{`CLI ${executor.cli ?? ""} · ${versionText(executor.installedVersion, executor.pinnedVersion)}`}</Text>
+            <Text variant="bodySmall">
+              {t("executors.cli", {
+                cli: executor.cli ?? "",
+                version: versionText(executor.installedVersion, executor.pinnedVersion, t),
+              })}
+            </Text>
             <Text variant="bodySmall">
               {executor.status === null
-                ? "Doctor: ainda não verificado"
-                : `Doctor: ${DOCTOR_LABEL[executor.status]}`}
+                ? t("executors.notChecked")
+                : t("executors.doctor", { status: t(DOCTOR_LABEL[executor.status]) })}
             </Text>
             <Button
               mode="outlined"
@@ -33,11 +40,11 @@ export function ExecutorCard({ executor, probing, onReprobe }: ExecutorCardProps
               loading={probing}
               onPress={() => onReprobe(executor.id)}
             >
-              Rodar doctor
+              {t("executors.rerun")}
             </Button>
           </View>
         ) : (
-          <Text variant="bodySmall">Sem CLI verificado pelo doctor</Text>
+          <Text variant="bodySmall">{t("executors.noCli")}</Text>
         )}
         <QuotaGauge
           usedRatio={executor.quota.usedRatio}

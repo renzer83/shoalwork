@@ -1,5 +1,6 @@
 import type { BoardTask } from "@shoalwork/api-client"
 import type { ProjectTaskState } from "@shoalwork/contracts"
+import type { MessageKey, Translate } from "../../i18n/index.js"
 
 // The columns of the board, in flow order: the states of T-060.
 export const COLUMNS: ReadonlyArray<ProjectTaskState> = [
@@ -17,6 +18,13 @@ export const COLUMNS: ReadonlyArray<ProjectTaskState> = [
 const RUNNING: ReadonlyArray<ProjectTaskState> = ["in_progress", "in_review", "testing", "merging"]
 
 export type Health = "attention" | "running" | "idle" | "unknown"
+
+export const HEALTH_KEY: Readonly<Record<Health, MessageKey>> = {
+  attention: "project.health.attention",
+  running: "project.health.running",
+  idle: "project.health.idle",
+  unknown: "project.health.unknown",
+}
 
 export interface HealthCounts {
   readonly total: number
@@ -56,13 +64,13 @@ export const ageText = (updatedAt: string | null, now: number): string => {
   return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h`
 }
 
-export const formatMetric = (key: string, value: number | null): string => {
+export const formatMetric = (key: string, value: number | null, t: Translate): string => {
   if (value === null) return "—"
   switch (key) {
     case "lead_time_median_ms":
       return value >= 3_600_000 ? `${(value / 3_600_000).toFixed(1)} h` : `${(value / 60_000).toFixed(1)} min`
     case "throughput_per_day":
-      return `${value.toFixed(2)}/day`
+      return `${value.toFixed(2)}${t("metrics.perDay")}`
     case "tokens_per_task":
       return Math.round(value).toLocaleString("en-US")
     case "no_intervention_pct":
@@ -70,7 +78,7 @@ export const formatMetric = (key: string, value: number | null): string => {
     case "idle_seconds":
       return `${value.toFixed(0)} s`
     case "stuck_per_week":
-      return `${value.toFixed(2)}/week`
+      return `${value.toFixed(2)}${t("metrics.perWeek")}`
     default:
       return String(value)
   }
@@ -92,11 +100,11 @@ export const statusOf = (error: unknown): number =>
   error instanceof Object && "status" in error ? Number(error.status) : 0
 
 // A refused action says why (the machine's reason); anything else reads as a plain failure.
-export const failureText = (error: unknown): string => {
-  if (!(error instanceof Object) || !("status" in error)) return "Request failed"
+export const failureText = (error: unknown, t: Translate): string => {
+  if (!(error instanceof Object) || !("status" in error)) return t("common.requestFailed")
   const body = "body" in error ? error.body : undefined
   if (body instanceof Object && "reason" in body && typeof body.reason === "string") {
-    return `Refused: ${body.reason}`
+    return t("common.refused", { reason: body.reason })
   }
-  return `Request failed (HTTP ${String(error.status)})`
+  return t("common.requestFailedHttp", { status: String(error.status) })
 }

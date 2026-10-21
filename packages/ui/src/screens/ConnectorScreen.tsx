@@ -11,6 +11,7 @@ import { ErrorBanner } from "../components/ErrorBanner.js"
 import { failureText } from "../hooks/failure.js"
 import { useBotNames } from "../hooks/useBotNames.js"
 import { useConnectors, useConnectorUsage } from "../hooks/useCurrents.js"
+import { useLocale } from "../i18n/index.js"
 
 export interface ConnectorScreenProps {
   // The connector's id from the route: "github", "notion" or an MCP server id.
@@ -21,6 +22,7 @@ export interface ConnectorScreenProps {
 export function ConnectorScreen({ id }: ConnectorScreenProps) {
   const theme = useTheme()
   const { client } = useApi()
+  const { t } = useLocale()
   const { load, reload } = useConnectors()
   const bots = useBotNames()
   const usage = useConnectorUsage(id)
@@ -49,7 +51,7 @@ export function ConnectorScreen({ id }: ConnectorScreenProps) {
       ),
     )
     if (result._tag === "Failure") {
-      setSaveFailure(failureText(result.failure))
+      setSaveFailure(failureText(result.failure, t))
       return
     }
     setPicked(null)
@@ -58,18 +60,20 @@ export function ConnectorScreen({ id }: ConnectorScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <AppBar title={entry?.name ?? "Connector"} onRefresh={reload} />
+      <AppBar title={entry?.name ?? t("currents.connectorTitle")} onRefresh={reload} />
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         {load.kind === "failed" ? (
-          <ErrorBanner message={`Could not load the connector (HTTP ${load.status})`} onRetry={reload} />
+          <ErrorBanner message={t("currents.connectorFailed", { status: load.status })} onRetry={reload} />
         ) : null}
-        {load.kind === "loaded" && entry === undefined ? <EmptyState title="Connector not found" /> : null}
+        {load.kind === "loaded" && entry === undefined ? (
+          <EmptyState title={t("currents.connectorNotFound")} />
+        ) : null}
         {entry === undefined ? null : (
           <Card>
             <Card.Content style={{ gap: 8 }}>
               <Text variant="titleMedium">{entry.name}</Text>
-              <Text variant="bodySmall">{`${KIND_LABEL[entry.kind]} · ${entry.status}`}</Text>
-              <Text variant="titleSmall">Permissions</Text>
+              <Text variant="bodySmall">{`${t(KIND_LABEL[entry.kind])} · ${t(entry.status === "enabled" ? "currents.statusEnabled" : "currents.statusDisabled")}`}</Text>
+              <Text variant="titleSmall">{t("currents.permissions")}</Text>
               <PermissionList permissions={entry.permissions} />
             </Card.Content>
           </Card>
@@ -77,7 +81,7 @@ export function ConnectorScreen({ id }: ConnectorScreenProps) {
         {entry === undefined ? null : (
           <Card>
             <Card.Content style={{ gap: 8 }}>
-              <Text variant="titleSmall">Bots that use it</Text>
+              <Text variant="titleSmall">{t("currents.botsUsing")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {bots.map((bot) => (
                   <Button
@@ -90,24 +94,29 @@ export function ConnectorScreen({ id }: ConnectorScreenProps) {
                 ))}
               </View>
               {saveFailure === null ? null : (
-                <Text variant="bodySmall">{`Could not save (${saveFailure})`}</Text>
+                <Text variant="bodySmall">{t("currents.saveFailed", { failure: saveFailure })}</Text>
               )}
               <Button mode="contained" onPress={() => void save()}>
-                Save bots
+                {t("currents.saveBots")}
               </Button>
             </Card.Content>
           </Card>
         )}
         <Card>
           <Card.Content style={{ gap: 6 }}>
-            <Text variant="titleSmall">Recent calls (30 days)</Text>
+            <Text variant="titleSmall">{t("currents.recentCalls")}</Text>
             {usage.load.kind === "loaded" && usage.load.rows.length === 0 ? (
-              <Text variant="bodySmall">No calls in the last 30 days</Text>
+              <Text variant="bodySmall">{t("currents.noCalls")}</Text>
             ) : null}
             {usage.load.kind === "loaded"
               ? usage.load.rows.map((row) => (
                   <Text key={`${row.at}:${row.tool}:${row.botId}`} variant="bodySmall">
-                    {`${row.at} · ${row.tool} · ${row.decision}${row.ok ? "" : " · failed"}`}
+                    {t("currents.callLine", {
+                      at: row.at,
+                      tool: row.tool,
+                      decision: row.decision,
+                      failed: row.ok ? "" : t("currents.callFailed"),
+                    })}
                   </Text>
                 ))
               : null}
