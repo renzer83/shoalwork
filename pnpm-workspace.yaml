@@ -8,6 +8,8 @@ nodeLinker: hoisted
 allowBuilds:
   esbuild: false
   electron: true
+  # The CPU binding ships inside the package for linux, darwin-arm64 and win32; its postinstall only downloads CUDA files.
+  onnxruntime-node: false
 
 # One copy of the React runtime across the apps and the shared UI (Expo needs it).
 overrides:

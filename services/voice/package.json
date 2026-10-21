@@ -12,7 +12,8 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@shoalwork/contracts": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "onnxruntime-node": "1.30.0"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
