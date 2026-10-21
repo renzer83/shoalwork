@@ -71,6 +71,18 @@ export const MemoryItemOne = Schema.Struct({
 })
 export const MemoryForgotten = Schema.Struct({ forgotten: Schema.String })
 
+// One version of a memory item (GET /memory/:id/history): the chain of supersedes, oldest first.
+export const MemoryVersion = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.String,
+  content: Schema.String,
+  createdAt: Schema.String,
+  supersededBy: Schema.NullOr(Schema.String),
+  forgotten: Schema.Boolean,
+})
+export type MemoryVersion = typeof MemoryVersion.Type
+export const MemoryHistory = Schema.Struct({ items: Schema.Array(MemoryVersion) })
+
 export const ProjectSummary = Schema.Struct({
   slug: Schema.String,
   name: Schema.String,

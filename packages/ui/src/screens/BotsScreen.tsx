@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { ScrollView, View } from "react-native"
-import { ActivityIndicator, useTheme } from "react-native-paper"
+import { ActivityIndicator, Button, useTheme } from "react-native-paper"
 import { AppBar } from "../components/AppBar.js"
 import { BotCard } from "../components/bot/BotCard.js"
 import { EmptyState } from "../components/EmptyState.js"
@@ -11,10 +12,13 @@ export interface BotsScreenProps {
   readonly onOpenBot?: (id: string) => void
 }
 
-// Every Bot with its live state (bot.state_changed) and the cost of the last 24 h.
+// Every Bot with its live state (bot.state_changed) and the cost of the last 24 h. Archived Bots are hidden unless asked.
 export function BotsScreen({ onOpenBot }: BotsScreenProps) {
   const theme = useTheme()
   const { load, reload } = useBots()
+  const [showArchived, setShowArchived] = useState(false)
+  const rows = load.kind === "loaded" ? load.rows : []
+  const visible = showArchived ? rows : rows.filter((row) => row.state !== "archived")
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AppBar title="Bots" onRefresh={reload} />
@@ -23,12 +27,18 @@ export function BotsScreen({ onOpenBot }: BotsScreenProps) {
         {load.kind === "failed" ? (
           <ErrorBanner message={`Could not load the Bots (HTTP ${load.status})`} onRetry={reload} />
         ) : null}
-        {load.kind === "loaded" && load.rows.length === 0 ? <EmptyState title="No Bots yet" /> : null}
-        {load.kind === "loaded"
-          ? load.rows.map((row) => (
-              <BotCard key={row.id} bot={row} {...(onOpenBot ? { onOpen: onOpenBot } : {})} />
-            ))
-          : null}
+        {load.kind === "loaded" ? (
+          <Button mode="text" onPress={() => setShowArchived((on) => !on)}>
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Button>
+        ) : null}
+        {load.kind === "loaded" && rows.length === 0 ? <EmptyState title="No Bots yet" /> : null}
+        {load.kind === "loaded" && rows.length > 0 && visible.length === 0 ? (
+          <EmptyState title="No active Bots" />
+        ) : null}
+        {visible.map((row) => (
+          <BotCard key={row.id} bot={row} {...(onOpenBot ? { onOpen: onOpenBot } : {})} />
+        ))}
       </ScrollView>
     </View>
   )

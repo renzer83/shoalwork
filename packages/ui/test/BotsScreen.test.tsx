@@ -1,5 +1,5 @@
 import { ApiClient } from "@shoalwork/api-client"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { PaperProvider } from "react-native-paper"
 import { afterEach, describe, expect, it } from "vitest"
 import { BotsScreen, StaticApiProvider, themeFor } from "../src/index.js"
@@ -71,5 +71,49 @@ describe("BotsScreen", () => {
     show(fakeCore(stateChangedFrame("working")))
     await waitFor(() => expect(screen.getByLabelText("state working")).toBeTruthy())
     expect(screen.queryByLabelText("state idle")).toBeNull()
+  })
+})
+
+const ARCHIVED_ID = "bot_00000000-0000-4000-8000-0000000000bb"
+
+// A core whose list is given by the test; the live feed stays empty.
+const listCore =
+  (
+    bots: ReadonlyArray<{
+      readonly id: string
+      readonly name: string
+      readonly role: string
+      readonly state: string
+    }>,
+  ): typeof fetch =>
+  async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path === "/bots") return json({ bots })
+    if (path === "/costs") return json({ rows: [], delta: { tokensInPct: null, okRatePct: null } })
+    if (path === "/events/live")
+      return new Response("", { status: 200, headers: { "content-type": "text/event-stream" } })
+    return new Response("not found", { status: 404 })
+  }
+
+describe("BotsScreen archived Bots", () => {
+  const active = { id: BOT_ID, name: "lead", role: "coordinator", state: "idle" }
+  const archived = { id: ARCHIVED_ID, name: "old-scout", role: "researcher", state: "archived" }
+
+  it("hides archived Bots until the filter asks for them", async () => {
+    show(listCore([active, archived]))
+    await waitFor(() => expect(screen.getByText("lead")).toBeTruthy())
+    expect(screen.queryByText("old-scout")).toBeNull()
+
+    fireEvent.click(screen.getByText("Show archived"))
+    expect(screen.getByText("old-scout")).toBeTruthy()
+
+    fireEvent.click(screen.getByText("Hide archived"))
+    expect(screen.queryByText("old-scout")).toBeNull()
+  })
+
+  it("says so when every Bot is archived", async () => {
+    show(listCore([archived]))
+    await waitFor(() => expect(screen.getByText("No active Bots")).toBeTruthy())
+    expect(screen.queryByText("old-scout")).toBeNull()
   })
 })

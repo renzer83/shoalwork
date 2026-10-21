@@ -12,6 +12,7 @@ import {
   EventList,
   HealthBody,
   MemoryForgotten,
+  MemoryHistory,
   MemoryHits,
   MemoryItemOne,
   TaskCreated,
@@ -216,6 +217,8 @@ export class ApiClient {
     patch: (id: string, patch: BotPatch) =>
       this.patch(`/bots/${encodeURIComponent(id)}`, patch, BotDetailOne),
     clone: (id: string) => this.post(`/bots/${encodeURIComponent(id)}/clone`, {}, BotDetailOne),
+    // Takes the Bot out of new work. The core answers 409 while it holds a task in progress.
+    archive: (id: string) => this.post(`/bots/${encodeURIComponent(id)}/archive`, {}, BotDetailOne),
   }
 
   // Pause and resume one Bot by id or name (the core's control routes). Stop is not used by the app yet.
@@ -262,6 +265,8 @@ export class ApiClient {
     edit: (id: string, content: string) =>
       this.patch(`/memory/${encodeURIComponent(id)}`, { content, userId: APP_USER_ID }, MemoryItemOne),
     forget: (id: string) => this.del(`/memory/${encodeURIComponent(id)}`, MemoryForgotten),
+    // The chain the item belongs to, oldest first; the item's own content is in it too.
+    history: (id: string) => this.get(`/memory/${encodeURIComponent(id)}/history`, MemoryHistory),
   }
 
   readonly projects = projectsApi(this)

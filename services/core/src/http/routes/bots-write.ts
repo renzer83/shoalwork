@@ -9,8 +9,16 @@ import {
   restoreBotYaml,
   writeBotYaml,
 } from "@shoalwork/bots"
-import { BotId, type NewBot, NewBot as NewBotSchema, NotFound, SchemaViolation } from "@shoalwork/contracts"
+import {
+  type Bot,
+  BotId,
+  type NewBot,
+  NewBot as NewBotSchema,
+  NotFound,
+  SchemaViolation,
+} from "@shoalwork/contracts"
 import { Effect, Schema, Struct } from "effect"
+import { SqlClient } from "effect/sql/SqlClient"
 import type { Context, Hono } from "hono"
 import {
   failureResponse,
@@ -40,7 +48,10 @@ const CLONE_NAME_MAX = 31
 const CLONE_ATTEMPTS = 20
 
 type FileError = BotFileExists | BotFileMissing | BotWriteError
-type Program = Effect.Effect<RouteResponse, RouteFailure | FileError, BotRegistry>
+type Program = Effect.Effect<RouteResponse, RouteFailure | FileError, BotRegistry | SqlClient>
+
+// The actor of the bot.state_changed event an archive writes (the app asked for it).
+const APP_ACTOR = "user:app"
 
 const BodyObject = Schema.Record(Schema.String, Schema.Unknown)
 
@@ -61,7 +72,7 @@ const fileAnswer = (error: FileError): Effect.Effect<RouteResponse> => {
 }
 
 // Every write program ends here: file refusals and typed failures become responses.
-const respond = (program: Program): Effect.Effect<RouteResponse, never, BotRegistry> =>
+const respond = (program: Program): Effect.Effect<RouteResponse, never, BotRegistry | SqlClient> =>
   program.pipe(
     Effect.catchTags({
       BotFileExists: fileAnswer,
@@ -168,6 +179,37 @@ const cloneBot = (id: string, botsDir: string): Program =>
     return yield* persistNew(bot, botsDir)
   })
 
+const archivedAnswer = (bot: Bot): RouteResponse => ({
+  status: 200,
+  body: { bot: { ...bot, state: "archived" } },
+})
+
+// Archiving takes the Bot out of new work and writes no file (the state lives in the registry). Idempotent: an
+// archived Bot answers 200 with no new event. A Bot holding a task not yet finished answers 409; the task is left to
+// its own end or to a stop. The check and the state write share one transaction.
+const archiveBot = (id: string): Program =>
+  Effect.gen(function* () {
+    const botId = yield* botIdOf(id)
+    const registry = yield* BotRegistry
+    const sql = yield* SqlClient
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const bot = yield* registry.get(botId)
+        const listed = (yield* registry.list()).find((entry) => entry.id === botId)
+        if (listed?.state === "archived") {
+          return archivedAnswer(bot)
+        }
+        const [open] = yield* sql<{ readonly n: number }>`SELECT COUNT(*) AS n FROM tasks
+          WHERE bot_id = ${botId} AND state NOT IN ('done', 'failed', 'cancelled')`
+        if ((open?.n ?? 0) > 0) {
+          return CONFLICT("bot has a task in progress")
+        }
+        yield* registry.setState(botId, "archived", undefined, APP_ACTOR)
+        return archivedAnswer(bot)
+      }),
+    )
+  })
+
 // Writes are mounted only when the composition root gives the bots directory (AppDeps.botsDir).
 export const registerBotWriteRoutes = (app: Hono, runEffect: RunEffect, botsDir: string): void => {
   app.post("/bots", async (c) =>
@@ -179,5 +221,8 @@ export const registerBotWriteRoutes = (app: Hono, runEffect: RunEffect, botsDir:
   })
   app.post("/bots/:id/clone", async (c) =>
     sendResponse(c, await runEffect(respond(cloneBot(c.req.param("id"), botsDir)))),
+  )
+  app.post("/bots/:id/archive", async (c) =>
+    sendResponse(c, await runEffect(respond(archiveBot(c.req.param("id"))))),
   )
 }

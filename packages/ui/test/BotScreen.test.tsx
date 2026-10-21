@@ -6,6 +6,10 @@ import { BOT, type Call, fakeCore, json, renderWith } from "./chat-support.js"
 
 afterEach(cleanup)
 
+// The ficha loads in three requests (bot, costs, then the memory list), and the feed connects after the first render.
+// Each wait names the screen state it needs; the bound is for a loaded machine, not a sleep.
+const LOAD_TIMEOUT = { timeout: 5000 }
+
 // The ficha as GET /bots/:id answers it: the full Bot definition plus the live state.
 const botDetail = (state: string) => ({
   id: BOT,
@@ -53,11 +57,11 @@ describe("BotScreen controls", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("state: idle")).toBeTruthy())
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Pause"))
 
-    await waitFor(() => expect(screen.getByText("state: paused")).toBeTruthy())
+    await screen.findByText("state: paused", {}, LOAD_TIMEOUT)
     expect(screen.getByText("Resume")).toBeTruthy()
     expect(core.calls.filter((call) => call.method === "POST")).toEqual([
       { method: "POST", path: "/control/pause", body: { bot: BOT } },
@@ -77,11 +81,11 @@ describe("BotScreen controls", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("state: paused")).toBeTruthy())
+    await screen.findByText("state: paused", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Resume"))
 
-    await waitFor(() => expect(screen.getByText("state: idle")).toBeTruthy())
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
     expect(core.calls.filter((call) => call.method === "POST")).toEqual([
       { method: "POST", path: "/control/resume", body: { bot: BOT } },
     ])
@@ -96,11 +100,11 @@ describe("BotScreen controls", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("state: idle")).toBeTruthy())
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Pause"))
 
-    await waitFor(() => expect(screen.getByText("pause failed (HTTP 404)")).toBeTruthy())
+    await screen.findByText("pause failed (HTTP 404)", {}, LOAD_TIMEOUT)
     expect(screen.getByText("state: idle")).toBeTruthy()
   })
 
@@ -112,13 +116,13 @@ describe("BotScreen controls", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("state: idle")).toBeTruthy())
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
 
     // The feed connects after the first render; push until the frame lands.
     await waitFor(() => {
       core.push(1, "bot.state_changed", { botId: BOT, from: "idle", to: "paused" })
       expect(screen.getByText("state: paused")).toBeTruthy()
-    })
+    }, LOAD_TIMEOUT)
   })
 })
 
@@ -138,13 +142,13 @@ describe("MemoryList edit", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("old text")).toBeTruthy())
+    await screen.findByText("old text", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Edit"))
     fireEvent.change(screen.getByLabelText("Memory text"), { target: { value: "new text" } })
     fireEvent.click(screen.getByText("Save memory"))
 
-    await waitFor(() => expect(screen.getByText("new text")).toBeTruthy())
+    await screen.findByText("new text", {}, LOAD_TIMEOUT)
     expect(screen.queryByText("old text")).toBeNull()
     expect(core.calls.filter((call) => call.method === "PATCH")).toEqual([
       { method: "PATCH", path: "/memory/mem-1", body: { content: "new text", userId: "app" } },
@@ -159,13 +163,13 @@ describe("MemoryList edit", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("old text")).toBeTruthy())
+    await screen.findByText("old text", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Edit"))
     fireEvent.change(screen.getByLabelText("Memory text"), { target: { value: "   " } })
     fireEvent.click(screen.getByText("Save memory"))
 
-    expect(screen.getByText("Memory cannot be empty")).toBeTruthy()
+    await screen.findByText("Memory cannot be empty", {}, LOAD_TIMEOUT)
     expect(core.calls.some((call) => call.method === "PATCH")).toBe(false)
   })
 
@@ -178,13 +182,141 @@ describe("MemoryList edit", () => {
       return undefined
     })
     renderWith(core.client, <BotScreen idOrName={BOT} />)
-    await waitFor(() => expect(screen.getByText("old text")).toBeTruthy())
+    await screen.findByText("old text", {}, LOAD_TIMEOUT)
 
     fireEvent.click(screen.getByText("Edit"))
     fireEvent.change(screen.getByLabelText("Memory text"), { target: { value: "new text" } })
     fireEvent.click(screen.getByText("Save memory"))
 
-    await waitFor(() => expect(screen.getByText("Could not save (HTTP 400)")).toBeTruthy())
+    await screen.findByText("Could not save (HTTP 400)", {}, LOAD_TIMEOUT)
     expect(screen.getByLabelText("Memory text")).toBeTruthy()
+  })
+})
+
+describe("BotScreen archive", () => {
+  it("asks for confirmation, then sends POST /bots/:id/archive and shows the Bot as archived", async () => {
+    let archived = false
+    const core = fakeCore((call) => {
+      if (isPost(call, `/bots/${BOT}/archive`)) {
+        archived = true
+        return json({ bot: botDetail("archived") })
+      }
+      if (call.path === `/bots/${BOT}`) return json({ bot: botDetail(archived ? "archived" : "idle") })
+      if (call.path.startsWith("/costs")) return costs()
+      if (call.path.startsWith("/memory")) return json([])
+      return undefined
+    })
+    renderWith(core.client, <BotScreen idOrName={BOT} />)
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
+
+    fireEvent.click(screen.getByText("Archive"))
+    expect(core.calls.some((call) => call.method === "POST")).toBe(false)
+    fireEvent.click(screen.getByText("Confirm archive"))
+
+    await screen.findByText("state: archived", {}, LOAD_TIMEOUT)
+    expect(
+      screen.getByText("Archived: this Bot takes no new tasks. Its memory and history stay."),
+    ).toBeTruthy()
+    expect(core.calls.filter((call) => call.method === "POST")).toEqual([
+      { method: "POST", path: `/bots/${BOT}/archive`, body: {} },
+    ])
+  })
+
+  it("keeps the Bot when the confirmation is dismissed", async () => {
+    const core = fakeCore((call) => {
+      if (call.path === `/bots/${BOT}`) return json({ bot: botDetail("idle") })
+      if (call.path.startsWith("/costs")) return costs()
+      if (call.path.startsWith("/memory")) return json([])
+      return undefined
+    })
+    renderWith(core.client, <BotScreen idOrName={BOT} />)
+    await screen.findByText("state: idle", {}, LOAD_TIMEOUT)
+
+    fireEvent.click(screen.getByText("Archive"))
+    fireEvent.click(screen.getByText("Keep"))
+
+    expect(screen.getByText("Archive")).toBeTruthy()
+    expect(core.calls.some((call) => call.method === "POST")).toBe(false)
+  })
+
+  it("shows the refusal when the Bot holds a task in progress", async () => {
+    const core = fakeCore((call) => {
+      if (isPost(call, `/bots/${BOT}/archive`)) {
+        return json({ error: "conflict", reason: "bot has a task in progress" }, 409)
+      }
+      if (call.path === `/bots/${BOT}`) return json({ bot: botDetail("working") })
+      if (call.path.startsWith("/costs")) return costs()
+      if (call.path.startsWith("/memory")) return json([])
+      return undefined
+    })
+    renderWith(core.client, <BotScreen idOrName={BOT} />)
+    await screen.findByText("state: working", {}, LOAD_TIMEOUT)
+
+    fireEvent.click(screen.getByText("Archive"))
+    fireEvent.click(screen.getByText("Confirm archive"))
+
+    await screen.findByText("archive failed (HTTP 409)", {}, LOAD_TIMEOUT)
+    expect(screen.getByText("state: working")).toBeTruthy()
+  })
+})
+
+describe("MemoryList history", () => {
+  const versions = [
+    {
+      id: "mem-0",
+      scope: "bot",
+      ownerId: BOT,
+      kind: "semantic",
+      content: "first **text** <i>kept</i>",
+      createdAt: "2026-10-20T10:00:00.000Z",
+      supersededBy: "mem-1",
+      forgotten: false,
+    },
+    {
+      id: "mem-1",
+      scope: "bot",
+      ownerId: BOT,
+      kind: "semantic",
+      content: "earlier text",
+      createdAt: "2026-10-21T09:00:00.000Z",
+      supersededBy: null,
+      forgotten: false,
+    },
+  ]
+
+  it("shows the earlier versions of an item, oldest first, with their text as plain data", async () => {
+    const core = fakeCore((call) => {
+      if (call.path === "/memory/mem-1/history") return json({ items: versions })
+      if (call.path === `/bots/${BOT}`) return json({ bot: botDetail("idle") })
+      if (call.path.startsWith("/costs")) return costs()
+      if (call.path.startsWith("/memory")) return json([memoryHit("mem-1", "current text")])
+      return undefined
+    })
+    renderWith(core.client, <BotScreen idOrName={BOT} />)
+    await screen.findByText("current text", {}, LOAD_TIMEOUT)
+
+    fireEvent.click(screen.getByText("History"))
+
+    await screen.findByText("first **text** <i>kept</i>", {}, LOAD_TIMEOUT)
+    expect(screen.getByText("1. superseded · 2026-10-20T10:00:00.000Z")).toBeTruthy()
+    expect(screen.getByText("2. current · 2026-10-21T09:00:00.000Z")).toBeTruthy()
+    expect(screen.getByText("earlier text")).toBeTruthy()
+    expect(core.calls.filter((call) => call.path === "/memory/mem-1/history")).toHaveLength(1)
+  })
+
+  it("shows the status when the core refuses the history", async () => {
+    const core = fakeCore((call) => {
+      if (call.path === "/memory/mem-1/history") return json({ error: "not found" }, 404)
+      if (call.path === `/bots/${BOT}`) return json({ bot: botDetail("idle") })
+      if (call.path.startsWith("/costs")) return costs()
+      if (call.path.startsWith("/memory")) return json([memoryHit("mem-1", "current text")])
+      return undefined
+    })
+    renderWith(core.client, <BotScreen idOrName={BOT} />)
+    await screen.findByText("current text", {}, LOAD_TIMEOUT)
+
+    fireEvent.click(screen.getByText("History"))
+
+    await screen.findByText("History failed (HTTP 404)", {}, LOAD_TIMEOUT)
   })
 })

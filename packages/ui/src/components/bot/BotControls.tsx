@@ -11,11 +11,16 @@ export interface BotControlsProps {
 // Pause while the Bot runs, resume once it is paused. The label follows the state, which the live feed keeps current.
 export function BotControls({ state, control }: BotControlsProps) {
   const paused = state === "paused"
+  const archived = state === "archived"
   const action: ControlAction = paused ? "resume" : "pause"
   const waiting = state === "waiting_approval" || state === "blocked"
   return (
     <View style={{ gap: 6 }}>
-      <Button mode="outlined" disabled={control.pending !== null} onPress={() => control.run(action)}>
+      <Button
+        mode="outlined"
+        disabled={control.pending !== null || archived}
+        onPress={() => control.run(action)}
+      >
         {paused ? "Resume" : "Pause"}
       </Button>
       {waiting && !paused ? (

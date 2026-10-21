@@ -2,16 +2,18 @@ import type { MemoryHit } from "@shoalwork/api-client"
 import { useState } from "react"
 import { View } from "react-native"
 import { Button, Card, HelperText, Text, TextInput } from "react-native-paper"
-import type { MemoryEdit } from "../../hooks/useBotMemory.js"
+import type { MemoryEdit, MemoryHistoryLoad } from "../../hooks/useBotMemory.js"
+import { MemoryHistory } from "./MemoryHistory.js"
 
 export interface MemoryItemProps {
   readonly hit: MemoryHit
   readonly onEdit: (memoryId: string, content: string) => Promise<MemoryEdit>
   readonly onForget: (memoryId: string) => void
+  readonly onHistory: (memoryId: string) => Promise<MemoryHistoryLoad>
 }
 
 // One memory item. Edit opens an inline field; a saved edit closes it, and the list is read again by the caller.
-export function MemoryItem({ hit, onEdit, onForget }: MemoryItemProps) {
+export function MemoryItem({ hit, onEdit, onForget, onHistory }: MemoryItemProps) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(hit.content)
   const [saving, setSaving] = useState(false)
@@ -88,6 +90,7 @@ export function MemoryItem({ hit, onEdit, onForget }: MemoryItemProps) {
                 Forget
               </Button>
             </View>
+            <MemoryHistory memoryId={hit.id} load={onHistory} />
           </>
         )}
       </Card.Content>

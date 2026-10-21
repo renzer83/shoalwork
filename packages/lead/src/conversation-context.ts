@@ -56,7 +56,9 @@ export const factsFor = (
   channel: ReplyChannel = "telegram",
 ) =>
   Effect.gen(function* () {
-    const all = yield* deps.bots.list()
+    // An archived Bot takes no new work, so the rules never name it as an owner (intake would refuse it).
+    // An archived Bot takes no new work, so the rules never name it as an owner (intake would refuse it).
+    const all = (yield* deps.bots.list()).filter((bot) => bot.state !== "archived")
     const available = yield* Effect.forEach(deps.executors.list(), (id) =>
       deps.executors.get(id).pipe(
         Effect.flatMap((executor) => executor.quota()),

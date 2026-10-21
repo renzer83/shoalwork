@@ -3,7 +3,7 @@ import type { BotRegistryShape } from "@shoalwork/bots"
 import {
   exceeds,
   type ModelTier,
-  type NotFound,
+  NotFound,
   newTaskId,
   SchemaViolation,
   streamIds,
@@ -102,6 +102,13 @@ export const makeIntake =
       // A continuation is refused before anything is stored; the same check runs again inside the transaction below.
       yield* authorizeResume(deps.tasks, spec)
       const bot = yield* deps.bots.get(spec.botId)
+      // An archived Bot takes no new work: it is refused like a Bot the registry does not know.
+      const archived = (yield* deps.bots.list()).some(
+        (entry) => entry.id === spec.botId && entry.state === "archived",
+      )
+      if (archived) {
+        return yield* Effect.fail(new NotFound({ entity: "Bot", id: spec.botId }))
+      }
       const used = yield* botUsageInWindow(deps.beacon, spec.botId, deps.botBudgetWindowMs)
       if (exceeds(usageToBudget(used), bot.budget).exceeded) {
         yield* refuse(deps, spec, bot.budget, usageToBudget(used))

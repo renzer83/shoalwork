@@ -71,7 +71,13 @@ export interface BotRegistryShape {
   readonly get: (id: BotId) => Effect.Effect<Bot, NotFound | SqlError>
   readonly getByName: (name: string) => Effect.Effect<Bot, NotFound | SqlError>
   readonly list: () => Effect.Effect<ReadonlyArray<Bot & { state: BotState }>, SqlError>
-  readonly setState: (id: BotId, state: BotState, taskId?: TaskId) => Effect.Effect<void, SqlError>
+  // Writes the state and bot.state_changed in one transaction. `by` is the actor of the event (default: the registry).
+  readonly setState: (
+    id: BotId,
+    state: BotState,
+    taskId?: TaskId,
+    by?: string,
+  ) => Effect.Effect<void, SqlError>
 }
 
 export class BotRegistry extends Context.Service<BotRegistry, BotRegistryShape>()("@shoalwork/BotRegistry") {}
@@ -220,7 +226,7 @@ const makeRegistry = (sql: SqlClient, beacon: BeaconShape): BotRegistryShape => 
         )
       }),
 
-    setState: (id, state, taskId) =>
+    setState: (id, state, taskId, by = "system:registry") =>
       sql
         .withTransaction(
           Effect.gen(function* () {
@@ -239,7 +245,7 @@ const makeRegistry = (sql: SqlClient, beacon: BeaconShape): BotRegistryShape => 
                 to: state,
                 ...(taskId === undefined ? {} : { taskId }),
               },
-              actor: "system:registry",
+              actor: by,
               correlationId: taskId ?? randomUUID(),
             }).pipe(Effect.catchTag("Conflict", (e) => Effect.die(e)))
           }),

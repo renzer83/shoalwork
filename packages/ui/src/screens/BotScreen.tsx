@@ -5,6 +5,7 @@ import { ScrollView, View } from "react-native"
 import { ActivityIndicator, Card, Text, useTheme } from "react-native-paper"
 import { useApi } from "../api-context.js"
 import { AppBar } from "../components/AppBar.js"
+import { ArchiveBot } from "../components/bot/ArchiveBot.js"
 import { BotControls } from "../components/bot/BotControls.js"
 import { BotForm } from "../components/bot/BotForm.js"
 import { BudgetBar } from "../components/bot/BudgetBar.js"
@@ -13,6 +14,7 @@ import { MemoryList } from "../components/bot/MemoryList.js"
 import { TankBadge } from "../components/bot/TankBadge.js"
 import { ErrorBanner } from "../components/ErrorBanner.js"
 import { useBot } from "../hooks/useBot.js"
+import { useBotArchive } from "../hooks/useBotArchive.js"
 import { useBotControl } from "../hooks/useBotControl.js"
 import { useBotMemory } from "../hooks/useBotMemory.js"
 
@@ -54,6 +56,7 @@ function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
   const { client } = useApi()
   const memory = useBotMemory(bot.id)
   const control = useBotControl(bot.id, onChanged)
+  const archive = useBotArchive(bot.id, onChanged)
   const [notice, setNotice] = useState<string | null>(null)
 
   // The name is the file name and is not sent; the core refuses it anyway.
@@ -84,6 +87,7 @@ function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
           <Text variant="labelMedium">{`Connectors: ${bot.connectors.length === 0 ? "none" : bot.connectors.join(", ")}`}</Text>
           <TankBadge mode={bot.tank.mode} host={bot.tank.host} />
           <BotControls state={bot.state} control={control} />
+          <ArchiveBot archived={bot.state === "archived"} archive={archive} />
           {costUsd24h === undefined ? (
             <Text variant="labelLarge">Cost 24 h: unavailable (budget USD {bot.budget.usd})</Text>
           ) : (
@@ -106,6 +110,7 @@ function BotBody({ bot, costUsd24h, onChanged }: BotBodyProps) {
             onSearch={memory.search}
             onForget={memory.forget}
             onEdit={memory.edit}
+            onHistory={memory.history}
           />
         </Card.Content>
       </Card>
