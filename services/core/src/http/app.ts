@@ -13,6 +13,7 @@ import {
 } from "./principal.js"
 import { registerApprovalRoutes } from "./routes/approvals.js"
 import { registerBotRoutes } from "./routes/bots.js"
+import { registerBotWriteRoutes } from "./routes/bots-write.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerCostRoutes } from "./routes/costs.js"
 import { registerContextCostRoutes } from "./routes/costs-context.js"
@@ -51,6 +52,8 @@ export interface AppDeps {
   // Without it neither route exists and an execution token reaches nothing but the read routes.
   readonly runPolicy?: RunPolicy | undefined
   // The MCP registry routes (T-083): /mcp-servers, /bots/:id/mcp and the OAuth callback. Without it none is mounted.
+  // The directory of bots/*.yaml. Mounts the write routes (POST /bots, PATCH /bots/:id, clone) when given.
+  readonly botsDir?: string | undefined
   readonly runMcpServers?: RunMcpServers | undefined
   // GITHUB_WEBHOOK_SECRET (config.ts). Unset: the GitHub route answers 503 and processes nothing.
   readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
@@ -188,6 +191,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
+  if (deps.botsDir !== undefined) registerBotWriteRoutes(app, deps.runEffect, deps.botsDir)
   if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)
   if (deps.runMemory !== undefined) {
     registerMemoryRoutes(app, deps.runMemory)

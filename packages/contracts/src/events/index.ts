@@ -8,6 +8,7 @@ import {
   BotProposedPayload,
   BotStateChangedPayload,
 } from "./bot.js"
+import { BotUpdatedPayload } from "./bot-updated.js"
 import { DecisionMadePayload, DecisionOutcomePayload } from "./decision.js"
 import {
   ExecutorEventPayload,
@@ -52,6 +53,7 @@ export const EventType = Schema.Literals([
   "decision.outcome",
   "bot.created",
   "bot.state_changed",
+  "bot.updated",
   "executor.started",
   "executor.event",
   "executor.finished",
@@ -105,6 +107,7 @@ export const EventPayloads = {
   "decision.outcome": DecisionOutcomePayload,
   "bot.created": BotCreatedPayload,
   "bot.state_changed": BotStateChangedPayload,
+  "bot.updated": BotUpdatedPayload,
   "executor.started": ExecutorStartedPayload,
   "executor.event": ExecutorEventPayload,
   "executor.finished": ExecutorFinishedPayload,
@@ -183,6 +186,8 @@ export const decodeNewEvent = (raw: unknown): Effect.Effect<NewEvent, SchemaViol
     )
     return { ...event, payload }
   })
+
+export { BotUpdatedPayload, SENSITIVE_BOT_FIELDS } from "./bot-updated.js"
 
 export const streamIds = {
   bot: (id: BotId) => `bot:${id}`,

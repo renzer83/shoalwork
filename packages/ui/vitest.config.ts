@@ -4,6 +4,9 @@ import { defineConfig } from "vitest/config"
 // The screens are React Native; in tests react-native-web renders them in jsdom.
 export default defineConfig({
   resolve: {
+    // One copy of effect for the screens and for @shoalwork/contracts (dist resolves it from its own package).
+    // Two copies of the same version break Schema's internal checks (RegExp filters throw on Symbol keys).
+    dedupe: ["effect"],
     extensions: [".web.tsx", ".web.ts", ".web.js", ".web.mjs", ".tsx", ".ts", ".js", ".mjs", ".json"],
     alias: {
       "react-native": "react-native-web",

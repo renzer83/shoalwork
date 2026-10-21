@@ -10,6 +10,7 @@ import {
   type NewEvent,
   NotFound,
   type SchemaViolation,
+  SENSITIVE_BOT_FIELDS,
   streamIds,
   type TaskId,
 } from "@shoalwork/contracts"
@@ -61,6 +62,12 @@ const botIdFor = (name: string): BotId => {
 export interface BotRegistryShape {
   readonly syncFromDir: (dir: string) => Effect.Effect<ReadonlyArray<Bot>, SchemaViolation | SqlError>
   readonly upsert: (bot: NewBot, by: string) => Effect.Effect<Bot, SqlError | Conflict>
+  // Replaces the definition of an existing Bot (same id and name) and appends bot.updated in the same transaction.
+  readonly update: (
+    id: BotId,
+    next: NewBot,
+    by: string,
+  ) => Effect.Effect<Bot & { readonly state: BotState }, NotFound | SqlError | Conflict>
   readonly get: (id: BotId) => Effect.Effect<Bot, NotFound | SqlError>
   readonly getByName: (name: string) => Effect.Effect<Bot, NotFound | SqlError>
   readonly list: () => Effect.Effect<ReadonlyArray<Bot & { state: BotState }>, SqlError>
@@ -75,6 +82,34 @@ const appendEvent = (beacon: BeaconShape, event: NewEvent): Effect.Effect<void, 
     Effect.catchTag("SchemaViolation", (e) => Effect.die(e)),
     Effect.asVoid,
   )
+
+// Top-level fields a PATCH may change. `executors` is split into the two lists the event names.
+const EDITABLE_TOP = [
+  "role",
+  "instructions",
+  "kind",
+  "modelTiers",
+  "connectors",
+  "budget",
+  "policy",
+  "tank",
+  "memory",
+  "telegram",
+] as const
+
+const differs = (a: unknown, b: unknown): boolean => JSON.stringify(a) !== JSON.stringify(b)
+
+const changedFields = (a: Bot, b: Bot): Array<string> => {
+  const fields: Array<string> = []
+  if (differs(a.executors.preferred, b.executors.preferred)) fields.push("executors.preferred")
+  if (differs(a.executors.allowed, b.executors.allowed)) fields.push("executors.allowed")
+  for (const key of EDITABLE_TOP) {
+    if (differs(a[key], b[key])) fields.push(key)
+  }
+  return fields
+}
+
+const isSensitiveField = (field: string): boolean => SENSITIVE_BOT_FIELDS.includes(field)
 
 const makeRegistry = (sql: SqlClient, beacon: BeaconShape): BotRegistryShape => {
   // Insert or update by name, inside one write transaction. The id of an existing name is never changed.
@@ -135,6 +170,34 @@ const makeRegistry = (sql: SqlClient, beacon: BeaconShape): BotRegistryShape => 
       }),
 
     upsert: (bot, by) => writeBot(bot, by, null),
+
+    update: (id, next, by) =>
+      sql.withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* sql`SELECT * FROM bots WHERE id = ${id}`
+          const [row] = yield* decodeBotRows(rows)
+          if (row === undefined) {
+            return yield* Effect.fail(new NotFound({ entity: "Bot", id }))
+          }
+          const current = yield* decodeStoredBot(row)
+          if (current.name !== next.name) {
+            return yield* Effect.die(new Error("bot name is immutable"))
+          }
+          const full: Bot = { ...next, id }
+          const fields = changedFields(current, full)
+          yield* sql`UPDATE bots SET definition = ${JSON.stringify(full)}, updated_at = ${nowIso()} WHERE id = ${id}`
+          if (fields.length > 0) {
+            yield* appendEvent(beacon, {
+              streamId: streamIds.bot(id),
+              type: "bot.updated",
+              payload: { botId: id, fields, by, sensitive: fields.some(isSensitiveField) },
+              actor: by,
+              correlationId: randomUUID(),
+            })
+          }
+          return { ...full, state: row.state }
+        }),
+      ),
 
     get: (id) =>
       Effect.gen(function* () {

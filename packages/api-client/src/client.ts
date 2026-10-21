@@ -1,15 +1,17 @@
-import { type EventType, SchemaViolation, TaskSpec } from "@shoalwork/contracts"
+import { type EventType, type NewBot, SchemaViolation, TaskSpec } from "@shoalwork/contracts"
 import { Effect, Schema, Struct } from "effect"
 import { HttpError } from "./errors.js"
 import {
   ApprovalList,
   ApprovalResolved,
+  BotDetailOne,
   BotList,
-  BotOne,
   CostReport,
   EventList,
   HealthBody,
+  MemoryForgotten,
   MemoryHits,
+  MemoryItemOne,
   ProjectList,
   TaskCreated,
   TaskView,
@@ -22,6 +24,14 @@ type Method = "GET" | "POST" | "PATCH" | "DELETE"
 export const NewTaskBody = TaskSpec.mapFields(Struct.omit(["id"]))
 export type NewTaskBody = typeof NewTaskBody.Encoded
 
+// The app's identity for memory writes (memory.userId, the `user:<id>` source) until multi-client (F11).
+export const APP_USER_ID = "app"
+
+// Body of POST /bots: the Bot definition without the id, which the core assigns.
+export type NewBotBody = typeof NewBot.Encoded
+// Body of PATCH /bots/:id: any editable field. The name is the file name and does not change.
+export type BotPatch = Partial<Omit<NewBotBody, "name">>
+
 export interface EventsQuery {
   readonly stream: string
   readonly after?: number
@@ -30,7 +40,8 @@ export interface EventsQuery {
 
 export interface MemoryQuery {
   readonly bot: string
-  readonly q: string
+  // Absent: the Bot's current items, newest first.
+  readonly q?: string
   readonly k?: number
   readonly kinds?: ReadonlyArray<string>
 }
@@ -196,7 +207,11 @@ export class ApiClient {
 
   readonly bots = {
     list: () => this.get("/bots", BotList),
-    get: (idOrName: string) => this.get(`/bots/${encodeURIComponent(idOrName)}`, BotOne),
+    get: (idOrName: string) => this.get(`/bots/${encodeURIComponent(idOrName)}`, BotDetailOne),
+    create: (bot: NewBotBody) => this.post("/bots", bot, BotDetailOne),
+    patch: (id: string, patch: BotPatch) =>
+      this.patch(`/bots/${encodeURIComponent(id)}`, patch, BotDetailOne),
+    clone: (id: string) => this.post(`/bots/${encodeURIComponent(id)}/clone`, {}, BotDetailOne),
   }
 
   readonly tasks = {
@@ -232,6 +247,9 @@ export class ApiClient {
         withQuery("/memory", { bot: query.bot, q: query.q, k: query.k, kinds: query.kinds?.join(",") }),
         MemoryHits,
       ),
+    edit: (id: string, content: string) =>
+      this.patch(`/memory/${encodeURIComponent(id)}`, { content, userId: APP_USER_ID }, MemoryItemOne),
+    forget: (id: string) => this.del(`/memory/${encodeURIComponent(id)}`, MemoryForgotten),
   }
 
   readonly projects = {

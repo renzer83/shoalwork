@@ -186,9 +186,9 @@ const addLeadMemory = async (content: string): Promise<string> => {
 }
 
 describe("GET /memory", () => {
-  it("answers 400 when q is missing or blank", async () => {
-    expect((await call("GET", `/memory?bot=${leadId}`)).status).toBe(400)
+  it("answers 400 when q is blank; without q the route lists the Bot's items", async () => {
     expect((await call("GET", `/memory?bot=${leadId}&q=%20%20`)).status).toBe(400)
+    expect((await call("GET", `/memory?bot=${leadId}`)).status).toBe(200)
   })
 
   it("answers 400 when bot is not a BotId", async () => {

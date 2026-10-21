@@ -6,6 +6,7 @@ import type { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
 import type { Context, Hono } from "hono"
 import { type Principal, principalOf, ScopeViolation } from "../principal.js"
+import { listCurrentItems } from "./memory-list.js"
 import { failureResponse, type RouteResponse, sendResponse, UNAUTHORIZED } from "./respond.js"
 
 export type MemoryServices = Reef | SqlClient | BotRegistry
@@ -187,6 +188,13 @@ const botFor = (
   return Effect.fail(new ScopeViolation({ where: "memory.search.bot" }))
 }
 
+const listRecent = (bot: BotId, k: number, kinds: ReadonlyArray<MemoryKind> | undefined) =>
+  listCurrentItems(bot, k).pipe(
+    Effect.map((items): RouteResponse => {
+      const kept = items.filter((item) => kinds === undefined || kinds.includes(item.kind))
+      return { status: 200, body: kept.map(toView) }
+    }),
+  )
 // GET /memory?bot=<BotId>&q=<text>&k=<1..100, default 20>&kinds=<a,b> → bare array of hits (the MCP decodes this).
 const searchRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServices> => {
   const principal = principalOf(c.req.raw)
@@ -194,11 +202,14 @@ const searchRoute = (c: Context): Effect.Effect<RouteResponse, never, MemoryServ
     return Effect.succeed(UNAUTHORIZED)
   }
   return Effect.gen(function* () {
-    const q = c.req.query("q") ?? ""
-    yield* requireText("memory.search.q", q)
     const bot = yield* botFor(principal, c.req.query("bot"))
     const k = yield* parseK(c.req.query("k"))
     const kinds = yield* parseKinds(c.req.query("kinds"))
+    const q = c.req.query("q")
+    if (q === undefined) {
+      return yield* listRecent(bot, k, kinds)
+    }
+    yield* requireText("memory.search.q", q)
     const reef = yield* Reef
     const hits: ReadonlyArray<Scored> = yield* reef.search(q, {
       scopes: [{ scope: "bot", ownerId: bot }],

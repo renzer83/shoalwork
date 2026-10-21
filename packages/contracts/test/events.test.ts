@@ -30,6 +30,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "decision.outcome",
   "bot.created",
   "bot.state_changed",
+  "bot.updated",
   "executor.started",
   "executor.event",
   "executor.finished",
@@ -90,6 +91,7 @@ const VALID: Record<EventType, Record<string, unknown>> = {
   "decision.outcome": { decisionId: "dec_1", outcome: "correct" },
   "bot.created": { bot: fixture("bot.json"), by: "user:renan" },
   "bot.state_changed": { botId: BOT, from: "idle", to: "working", taskId: TASK },
+  "bot.updated": { botId: BOT, fields: ["role", "budget"], by: "api", sensitive: true },
   "executor.started": {
     taskId: TASK,
     stepId: STEP,
@@ -274,6 +276,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "decision.outcome": "outcome",
   "bot.created": "by",
   "bot.state_changed": "to",
+  "bot.updated": "fields",
   "executor.started": "cwd",
   "executor.event": "taskId",
   "executor.finished": "durationMs",
@@ -335,8 +338,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 48 types", () => {
-    expect(EVENT_TYPES).toHaveLength(48)
+  it("EventType is exactly the 49 types", () => {
+    expect(EVENT_TYPES).toHaveLength(49)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

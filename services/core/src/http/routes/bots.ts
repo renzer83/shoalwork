@@ -24,8 +24,8 @@ const readBot = (idOrName: string) =>
     if (found === undefined) {
       return yield* Effect.fail(new NotFound({ entity: "Bot", id: idOrName }))
     }
-    const summary = { id: found.id, name: found.name, role: found.role, state: found.state }
-    return { status: 200, body: { bot: summary } } satisfies RouteResponse
+    // The full definition (the ficha) plus the live state; the summary fields are a subset of it.
+    return { status: 200, body: { bot: found } } satisfies RouteResponse
   }).pipe(Effect.catch(failureResponse))
 
 export const registerBotRoutes = (app: Hono, runEffect: RunEffect): void => {

@@ -1,4 +1,4 @@
-import { Approval, BotState, Event, TaskSpec, TaskState, Tide, Verdict } from "@shoalwork/contracts"
+import { Approval, Bot, BotState, Event, TaskSpec, TaskState, Tide, Verdict } from "@shoalwork/contracts"
 import { Schema } from "effect"
 
 // Response shapes of the core routes (02-architecture.md §12). Fields the app does not read are left out:
@@ -25,6 +25,11 @@ export type BotSummary = typeof BotSummary.Type
 export const BotList = Schema.Struct({ bots: Schema.Array(BotSummary) })
 export const BotOne = Schema.Struct({ bot: BotSummary })
 
+// The ficha: the full Bot definition plus the live state (GET /bots/:idOrName).
+export const BotDetail = Schema.Struct({ ...Bot.fields, state: BotState })
+export type BotDetail = typeof BotDetail.Type
+export const BotDetailOne = Schema.Struct({ bot: BotDetail })
+
 export const TaskView = Schema.Struct({
   spec: TaskSpec,
   state: TaskState,
@@ -50,10 +55,21 @@ export const MemoryHit = Schema.Struct({
   ownerId: Schema.String,
   kind: Schema.String,
   content: Schema.String,
-  score: Schema.Number,
+  score: Schema.optionalKey(Schema.Number),
 })
 export type MemoryHit = typeof MemoryHit.Type
 export const MemoryHits = Schema.Array(MemoryHit)
+// The list (GET /memory without q) carries no score; the search does.
+export const MemoryItemOne = Schema.Struct({
+  item: Schema.Struct({
+    id: Schema.String,
+    scope: Schema.String,
+    ownerId: Schema.String,
+    kind: Schema.String,
+    content: Schema.String,
+  }),
+})
+export const MemoryForgotten = Schema.Struct({ forgotten: Schema.String })
 
 export const ProjectSummary = Schema.Struct({
   slug: Schema.String,
