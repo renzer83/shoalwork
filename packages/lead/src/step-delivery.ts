@@ -154,6 +154,6 @@ export const makeDeliverStep =
 export const makeDeliverFor = (deps: DeliverDeps & { readonly gh: GhClientShape }) => {
   const pr = makeDeliver(deps)
   const step = makeDeliverStep(deps)
-  return (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>) =>
-    isPlanStep(spec) ? step(spec, ctx, progress) : pr(spec, ctx, progress)
+  return (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>, isReplay = false) =>
+    isPlanStep(spec) ? step(spec, ctx, progress) : pr(spec, ctx, progress, isReplay)
 }

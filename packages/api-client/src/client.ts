@@ -3,6 +3,7 @@ import { Effect, Schema, Struct } from "effect"
 import { beaconApi } from "./beacon-client.js"
 import { HttpError } from "./errors.js"
 import { metricsApi, projectsApi } from "./projects-client.js"
+import { replayApi } from "./replay-client.js"
 import {
   ApprovalList,
   ApprovalResolved,
@@ -227,8 +228,6 @@ export class ApiClient {
     resume: (bot: string) => this.post("/control/resume", { bot }, ControlOk),
   }
 
-  readonly beacon = beaconApi(this)
-
   readonly tasks = {
     create: (spec: NewTaskBody) =>
       Schema.encodeUnknownEffect(NewTaskBody)(spec).pipe(
@@ -272,6 +271,10 @@ export class ApiClient {
   readonly projects = projectsApi(this)
 
   readonly metrics = metricsApi(this)
+
+  readonly beacon = beaconApi(this)
+
+  readonly replay = replayApi(this)
 
   readonly tides = {
     list: (bot?: string) => this.get(withQuery("/tides", { bot }), TideList),

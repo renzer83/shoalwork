@@ -275,6 +275,16 @@ export {
 export { Planning, PlanningLive, type PlanningOptions, type PlanningShape } from "./planning.js"
 export { makePodNotes, PodNotes, PodNotesLive, type PodNotesShape } from "./pod-notes.js"
 export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
+export {
+  makeReplay,
+  type ReplayComparison,
+  type ReplayDeps,
+  type ReplayDiff,
+  type ReplayShape,
+  type ReplayStarted,
+  type RunSummary,
+  replayFromServices,
+} from "./replay.js"
 export { appChannelOut, makeReplyPort, telegramChannelOut } from "./reply-port.js"
 export {
   type ApprovalResume,

@@ -197,7 +197,10 @@ export const makeFakeTank = (
                 }),
     exec: (_ctx, cmd) =>
       Effect.sync(() => {
-        commands.push(cmd)
+        // The probe of the commit a run starts from (executor.started.baseSha, T-122) is not a command of the work itself.
+        if (cmd.join(" ") !== "git rev-parse HEAD") {
+          commands.push(cmd)
+        }
         return answer(cmd)
       }),
     spawnStream: unused,
@@ -255,6 +258,8 @@ export const leadLayer = (opts: {
   readonly extra?: ReadonlyArray<Executor>
   readonly tiers?: TierConfig
   readonly tank?: FakeTank
+  // A real Tank instead of the fake one (tests over a temporary git repo).
+  readonly tankLayer?: Layer.Layer<Tank>
   readonly config?: Partial<LeadConfig>
   readonly guarded?: boolean
   // Real Beacon over the same SQLite connection as the task tables (needed to prove transactional behaviour).
@@ -287,7 +292,13 @@ export const leadLayer = (opts: {
   // gh is faked: a code task's PR is the default one of GhClientTest (sandbox PR #1).
   const gh = GhClientTest()
   const deps = Layer.provideMerge(
-    Layer.mergeAll(Layer.succeed(Tank, tank.shape), gh.layer, registry, tokens, opts.services ?? Layer.empty),
+    Layer.mergeAll(
+      opts.tankLayer ?? Layer.succeed(Tank, tank.shape),
+      gh.layer,
+      registry,
+      tokens,
+      opts.services ?? Layer.empty,
+    ),
     store,
   )
   return Layer.provideMerge(LeadLive(opts.tiers ?? TEST_TIERS, opts.config), deps)

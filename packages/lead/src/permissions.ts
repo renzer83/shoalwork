@@ -1,15 +1,17 @@
-import type {
-  Bot,
-  ExecutorId,
-  ExecutorTask,
-  PermissionMode,
-  PolicyRule,
-  StepId,
-  TaskSpec,
+import {
+  type Bot,
+  type ExecutorId,
+  type ExecutorTask,
+  GIT_SHA_PATTERN,
+  type PermissionMode,
+  type PolicyRule,
+  type StepId,
+  type TaskSpec,
 } from "@shoalwork/contracts"
 import { type ExecutorContext, REEF_MCP_TOOLS } from "@shoalwork/executors"
 import { Policy } from "@shoalwork/policy"
-import { Effect, Option } from "effect"
+import { Tank } from "@shoalwork/tank"
+import { Cause, Effect, Option } from "effect"
 import { withBridgeMode } from "./executor-task.js"
 
 // What a run may do without asking, derived from the Bot's policy (T-057). allowedTools only ever narrows what the
@@ -131,7 +133,24 @@ export const startedPayload = (input: {
   }
 }
 
-// Records executor.started through the given event writer (the Lead's taskEvent).
+// The commit the run's worktree is at, for a replay to start from (T-122). Undefined without a worktree or a Tank, or when
+// git does not answer: the event is recorded without it and a replay then starts from the branch tip.
+const headSha = (context: ExecutorContext): Effect.Effect<string | undefined> =>
+  Effect.gen(function* () {
+    const tank = Option.getOrUndefined(yield* Effect.serviceOption(Tank))
+    if (tank === undefined || context.worktree === undefined) return undefined
+    const head = yield* Effect.suspend(() =>
+      tank.exec(context, ["git", "rev-parse", "HEAD"], { timeoutMs: 10_000 }),
+    )
+    const sha = head.stdout.trim()
+    return head.exitCode === 0 && GIT_SHA_PATTERN.test(sha) ? sha : undefined
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed<string | undefined>(undefined),
+    ),
+  )
+
+// Records executor.started through the given event writer.
 export const recordStarted = (
   emit: (
     taskId: Pick<TaskSpec, "id">["id"],
@@ -139,4 +158,10 @@ export const recordStarted = (
     payload: unknown,
   ) => Effect.Effect<unknown, unknown>,
   input: Parameters<typeof startedPayload>[0],
-) => emit(input.spec.id, "executor.started", startedPayload(input))
+) =>
+  Effect.flatMap(headSha(input.context), (baseSha) =>
+    emit(input.spec.id, "executor.started", {
+      ...startedPayload(input),
+      ...(baseSha === undefined ? {} : { baseSha }),
+    }),
+  )

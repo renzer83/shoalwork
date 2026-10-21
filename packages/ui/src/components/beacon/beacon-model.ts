@@ -96,3 +96,19 @@ export const formatInstant = (occurredAt: DateTime.Utc): string =>
 // The bot id of a bot stream ("bot:<id>"), or undefined for any other stream.
 export const botIdOf = (streamId: string): string | undefined =>
   streamId.startsWith("bot:") ? streamId.slice("bot:".length) : undefined
+
+// The task id of a task stream ("task:<id>"), or undefined for any other stream: the events a replay can start from.
+export const taskIdOf = (streamId: string): string | undefined =>
+  streamId.startsWith("task:task_") ? streamId.slice("task:".length) : undefined
+
+// "1.5 s" / "2 min 5 s" for a run time in milliseconds; a negative delta keeps its sign.
+export const formatDuration = (ms: number): string => {
+  const sign = ms < 0 ? "-" : ""
+  const seconds = Math.round(Math.abs(ms) / 1000)
+  if (seconds < 60) return `${sign}${(Math.abs(ms) / 1000).toFixed(1)} s`
+  return `${sign}${Math.floor(seconds / 60)} min ${seconds % 60} s`
+}
+
+// A cost difference with its sign, so "+" and "-" read at a glance.
+export const formatUsdDelta = (value: number): string =>
+  `${value < 0 ? "-" : "+"}US$ ${Math.abs(value).toFixed(4)}`

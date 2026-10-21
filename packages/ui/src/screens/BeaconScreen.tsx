@@ -17,10 +17,12 @@ import { EventDetail } from "../components/beacon/EventDetail.js"
 import { EventFilters } from "../components/beacon/EventFilters.js"
 import { EventTable } from "../components/beacon/EventTable.js"
 import { PeriodPicker } from "../components/beacon/PeriodPicker.js"
+import { ReplayCompare } from "../components/beacon/ReplayCompare.js"
 import { SavingsCards } from "../components/beacon/SavingsCards.js"
 import { ErrorBanner } from "../components/ErrorBanner.js"
 import { useBeaconEvents } from "../hooks/useBeaconEvents.js"
 import { useBeaconSummary } from "../hooks/useBeaconSummary.js"
+import { useReplay } from "../hooks/useReplay.js"
 
 export interface BeaconScreenProps {
   // Opens the Bot of a bot stream from the event detail.
@@ -48,6 +50,7 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
   const [selected, setSelected] = useState<Event | null>(null)
   const summary = useBeaconSummary(period, by)
   const feed = useBeaconEvents(applied, period)
+  const replay = useReplay()
   const unknownTypes = parseTypes(draft.types).unknown
 
   return (
@@ -150,7 +153,18 @@ export function BeaconScreen({ onOpenBot }: BeaconScreenProps) {
               )}
             </>
           ) : null}
-          <EventDetail event={selected} onOpenBot={onOpenBot} />
+          <EventDetail event={selected} onOpenBot={onOpenBot} onReplay={(taskId) => replay.start(taskId)} />
+          {replay.load.kind === "starting" ? (
+            <ActivityIndicator accessibilityLabel="Starting replay" />
+          ) : null}
+          {replay.load.kind === "failed" ? <ErrorBanner message={replay.load.message} /> : null}
+          {replay.load.kind === "loaded" ? (
+            <ReplayCompare
+              comparison={replay.load.comparison}
+              onRefresh={replay.refresh}
+              onClose={replay.close}
+            />
+          ) : null}
         </Panel>
       </ScrollView>
     </View>

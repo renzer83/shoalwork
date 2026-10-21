@@ -30,6 +30,7 @@ import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./r
 import { registerProjectRoutes } from "./routes/projects.js"
 import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
+import { registerReplayRoutes } from "./routes/replay.js"
 import type { RunEffect } from "./routes/respond.js"
 import { registerTaskRoutes } from "./routes/tasks.js"
 import { registerTideRunRoutes } from "./routes/tide-runs.js"
@@ -197,6 +198,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerMessageRoutes(app, deps.runEffect)
+  registerReplayRoutes(app, deps.runEffect)
   registerPodRoutes(app, deps.runEffect)
   registerTideRunRoutes(app, deps.runEffect)
   registerConnectorRoutes(app, deps.runEffect, deps.botsDir)

@@ -44,6 +44,7 @@ import {
 } from "./ops.js"
 import { PodClosedPayload, PodOpenedPayload } from "./pod.js"
 import { ExecutorQuotaAdjustedPayload } from "./quota.js"
+import { ReplayCreatedPayload } from "./replay.js"
 import { SecretAccessedPayload } from "./secret.js"
 import { TaskPlannedPayload, TaskReceivedPayload, TaskStateChangedPayload } from "./task.js"
 import { TideFiredPayload, TideSkippedPayload } from "./tide.js"
@@ -102,6 +103,7 @@ export const EventType = Schema.Literals([
   "notion.tool_called",
   "mcp.called",
   "mcp.server_changed",
+  "replay.created",
 ])
 export type EventType = typeof EventType.Type
 
@@ -158,6 +160,7 @@ export const EventPayloads = {
   "notion.tool_called": NotionToolCalledPayload,
   "mcp.called": McpCalledPayload,
   "mcp.server_changed": McpServerChangedPayload,
+  "replay.created": ReplayCreatedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.
@@ -197,6 +200,13 @@ export const decodeNewEvent = (raw: unknown): Effect.Effect<NewEvent, SchemaViol
   })
 
 export { BotUpdatedPayload, SENSITIVE_BOT_FIELDS } from "./bot-updated.js"
+export {
+  GIT_SHA_PATTERN,
+  GitSha,
+  MODEL_NAME_PATTERN,
+  ReplayCreatedPayload,
+  ReplayOverrides,
+} from "./replay.js"
 
 export const streamIds = {
   bot: (id: BotId) => `bot:${id}`,

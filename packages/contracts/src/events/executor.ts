@@ -3,6 +3,7 @@ import { Usage } from "../budget.js"
 import { ExecutorEvent, PermissionMode } from "../executor.js"
 import { BotId, ExecutorId, SessionId, StepId, TaskId } from "../ids.js"
 import { Verdict } from "../verdict.js"
+import { GitSha } from "./replay.js"
 
 export const ExecutorStartedPayload = Schema.Struct({
   taskId: TaskId,
@@ -16,6 +17,8 @@ export const ExecutorStartedPayload = Schema.Struct({
   // T-057 still decode (resume and cost reports read this payload).
   permissionMode: Schema.optional(PermissionMode),
   allowedTools: Schema.optional(Schema.Array(Schema.String)),
+  // Commit the worktree was at when the run started (T-122): the base a replay starts from. Absent when unknown.
+  baseSha: Schema.optional(GitSha),
 })
 
 export const ExecutorEventPayload = Schema.Struct({

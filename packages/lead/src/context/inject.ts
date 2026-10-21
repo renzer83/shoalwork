@@ -16,6 +16,7 @@ import { makeMemorySummaryCache, type SummaryCache } from "./compact-cache.js"
 import { type ContextConfig, DEFAULT_COMPACTION, DEFAULT_CONTEXT_CONFIG } from "./config.js"
 import { removeInstructionFiles, writeInstructionFiles } from "./instructions-file.js"
 import { fallbackDecision, makeContextPlanner, type PlanningDecision } from "./planner.js"
+import { keepSnapshot, type ReplayRun } from "./replay-run.js"
 import type { ContextTokenSource, TokenizerShape } from "./tokenizer.js"
 
 export type { BriefingCode, BriefingDocs, BriefingMemory, BriefingRankedCode } from "./briefing.js"
@@ -99,6 +100,8 @@ export interface InjectInput {
   readonly carry?: Carry | undefined
   // Files the task is about besides the ones its prompt names (retry: the files the previous attempt edited).
   readonly activeFiles?: ReadonlyArray<string> | undefined
+  // The replay this run is (read once by the runner): its frozen context replaces the briefing.
+  readonly replay?: ReplayRun | undefined
 }
 
 // Where the briefing goes when the worktree files cannot carry it: claude-code takes it as --append-system-prompt;
@@ -147,32 +150,39 @@ export const makeInjector = (deps: InjectDeps) => {
             .pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause))))
 
     return Effect.gen(function* () {
+      // A replay (T-122) may reuse the context text of its source; the runner read it before the run started.
+      const replay = input.replay
       const plan = planner.plan(spec, input.decision ?? fallbackDecision(spec.tier))
-      const built = yield* buildBriefing(
-        {
-          memory: deps.memory,
-          code: deps.code,
-          rankedCode: deps.rankedCode,
-          docs: deps.docs,
-          tank: deps.tank,
-          tokenizer: deps.tokenizer,
-          summarizer: deps.summarizer,
-          summaries,
-          onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
-        },
-        {
-          spec,
-          bot,
-          ctx,
-          plan,
-          config,
-          working: input.carry?.working,
-          activeFiles: input.activeFiles,
-          executor,
-        },
-      ).pipe(Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause).pipe(Effect.as(undefined)))))
+      const built =
+        replay?.frozen ??
+        (yield* buildBriefing(
+          {
+            memory: deps.memory,
+            code: deps.code,
+            rankedCode: deps.rankedCode,
+            docs: deps.docs,
+            tank: deps.tank,
+            tokenizer: deps.tokenizer,
+            summarizer: deps.summarizer,
+            summaries,
+            onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
+          },
+          {
+            spec,
+            bot,
+            ctx,
+            plan,
+            config,
+            working: input.carry?.working,
+            activeFiles: input.activeFiles,
+            executor,
+          },
+        ).pipe(
+          Effect.catchCause((cause) => stopOnInterrupt(cause, report(cause).pipe(Effect.as(undefined)))),
+        ))
       if (built === undefined) return task
       yield* announce(built)
+      yield* keepSnapshot(spec, built)
       if (ctx.worktree === undefined) return asInstructions(task, executor, built)
       const written = yield* writeInstructionFiles(ctx, built).pipe(
         Effect.provideService(Tank, deps.tank),

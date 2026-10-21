@@ -74,6 +74,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "notion.tool_called",
   "mcp.called",
   "mcp.server_changed",
+  "replay.created",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -276,6 +277,13 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     durationMs: 120,
   },
   "mcp.server_changed": { action: "upserted", server: "github" },
+  "replay.created": {
+    replayId: "rpl_1",
+    replayOf: TASK,
+    taskId: "task_1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    overrides: { executor: "codex" },
+    contextFrozen: true,
+  },
 }
 
 // One required field per type; removing it must reject the payload.
@@ -331,6 +339,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "notion.tool_called": "decision",
   "mcp.called": "durationMs",
   "mcp.server_changed": "server",
+  "replay.created": "replayOf",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -351,8 +360,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 51 types", () => {
-    expect(EVENT_TYPES).toHaveLength(51)
+  it("EventType is exactly the 52 types", () => {
+    expect(EVENT_TYPES).toHaveLength(52)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

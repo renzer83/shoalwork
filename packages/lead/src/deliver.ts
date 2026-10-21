@@ -18,12 +18,21 @@ export interface DeliverDeps {
 
 // Only an ok run of a code task with a repo is delivered, inside the worktree the Bot wrote to (before release).
 // A failed delivery turns the outcome into a Delivery failure, so the verdict is not ok and the worktree is kept.
+// The evidence line of a replay that would have delivered: the run measured something and pushed nothing.
+export const DELIVERY_SKIPPED = "delivery skipped (replay)"
+
+// `isReplay` comes from the runner, which read the replay row once and failed the run if it could not: a replay
+// (T-122) measures a run, so it pushes no branch and opens no PR in the Bot's name.
 export const makeDeliver =
   ({ tank, gh, raiseError }: DeliverDeps) =>
-  (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>) =>
+  (spec: TaskSpec, ctx: TankContext, progress: Ref.Ref<Progress>, isReplay = false) =>
     Effect.gen(function* () {
       const { outcome } = yield* Ref.get(progress)
       if (outcome._tag !== "Done" || spec.kind !== "code" || spec.repo === undefined) return
+      if (isReplay) {
+        yield* Ref.update(progress, withArtifact({ kind: "text", ref: DELIVERY_SKIPPED }))
+        return
+      }
       yield* deliverCode(
         tank,
         ctx,

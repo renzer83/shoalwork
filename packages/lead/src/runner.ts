@@ -12,6 +12,7 @@ import { BOT_BUDGET_WINDOW_MS, pauseBotOnBreach, watchBudgets } from "./budget.j
 import { makeConsume } from "./consume.js"
 import type { ContextConfig } from "./context/config.js"
 import type { BriefingMemory } from "./context/inject.js"
+import { alignReplayBase, replayRunOf } from "./context/replay-run.js"
 import type { ControlShape, RunHandle } from "./control.js"
 import { editedFiles } from "./edited-files.js"
 import { waitedSince } from "./inline-wait.js"
@@ -145,7 +146,10 @@ export const makeRunner = (deps: RunnerDeps) => {
       yield* Ref.update(progress, (p) => ({ ...p, stepId, attempt: attempts }))
       yield* setup.markWorking(spec)
       const bot = yield* bots.get(spec.botId)
-      const chosen = yield* chooseForTask(tiers, bot, spec, executors)
+      // A replay row that cannot be read or applied stops the run here (ReplayUnavailable): it is never run, or
+      // delivered, as an ordinary task with its overrides lost.
+      const replay = yield* replayRunOf(spec)
+      const chosen = yield* chooseForTask(tiers, bot, spec, executors, replay?.link)
       if (Option.isNone(chosen)) {
         const message = `no executor available for tier ${spec.tier}`
         yield* raiseError(spec, "lead.executor", "NoExecutor", message)
@@ -168,6 +172,8 @@ export const makeRunner = (deps: RunnerDeps) => {
         Effect.gen(function* () {
           // The process groups of this run are written down so that a restart can kill the ones it leaves behind.
           yield* Effect.forkScoped(watchProcesses(sql, spec.id, ctx.cwd))
+          // A replay's worktree is put on the source's commit before executor.started records the one it starts from.
+          yield* alignReplayBase({ tank, raiseError }, spec, ctx, replay, carry?.worktree === undefined)
           yield* recordStarted(taskEvent, { spec, bot, stepId, executor: executor.id, model, task, context })
           const activeFiles = carry === undefined ? undefined : yield* editedFiles(beacon, spec.id, ctx.cwd)
           const delivered = yield* setup.inject(ctx, {
@@ -177,6 +183,7 @@ export const makeRunner = (deps: RunnerDeps) => {
             executor: executor.id,
             carry,
             activeFiles,
+            replay,
           })
           yield* consume(
             spec,
@@ -188,7 +195,7 @@ export const makeRunner = (deps: RunnerDeps) => {
             model,
             watch,
           )
-          yield* deliver(spec, ctx, progress)
+          yield* deliver(spec, ctx, progress, replay !== undefined)
         }).pipe(Effect.scoped, Effect.as(ctx))
       // The whole bracket (MCP grant, Tank context, release, token revoke) lives in run-setup.ts.
       const run = setup.acquire(
