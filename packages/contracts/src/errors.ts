@@ -14,6 +14,8 @@ export class NotFound extends Data.TaggedError("NotFound")<{
 export class Conflict extends Data.TaggedError("Conflict")<{
   streamId: string
   expectedVersion: number
+  // Why the write was refused (an illegal transition, a WIP limit). Optional: the Beacon has no reason.
+  reason?: string
 }> {}
 
 export class BudgetExceeded extends Data.TaggedError("BudgetExceeded")<{

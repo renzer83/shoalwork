@@ -19,6 +19,7 @@ import { registerEventRoutes } from "./routes/events.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
 import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
+import { registerProjectRoutes } from "./routes/projects.js"
 import { registerReefRoutes } from "./routes/reef.js"
 import { registerReflexRoutes } from "./routes/reflex.js"
 import type { RunEffect } from "./routes/respond.js"
@@ -107,6 +108,9 @@ const bearerMatches = (header: string | undefined, expected: string): boolean =>
 
 // EventSource cannot set headers, so the live feed also accepts ?token=. Other routes take only the header.
 const LIVE_PATH = "/events/live"
+// The board page holds no secret (it asks for the token like the chat page), and its feed also takes ?token=.
+const BOARD_PAGE_PATH = /^\/projects\/[^/]+\/board$/
+const BOARD_LIVE_PATH = /^\/projects\/[^/]+\/live$/
 
 export const makeApp = (deps: AppDeps): Hono => {
   const app = new Hono()
@@ -119,13 +123,15 @@ export const makeApp = (deps: AppDeps): Hono => {
     if (
       c.req.path === "/health" ||
       c.req.path === "/" ||
+      BOARD_PAGE_PATH.test(c.req.path) ||
       GENERIC_WEBHOOK_PATH.test(c.req.path) ||
       c.req.path === GITHUB_WEBHOOK_PATH
     ) {
       return next()
     }
     const header = c.req.header("authorization")
-    const queryToken = c.req.path === LIVE_PATH ? c.req.query("token") : undefined
+    const queryToken =
+      c.req.path === LIVE_PATH || BOARD_LIVE_PATH.test(c.req.path) ? c.req.query("token") : undefined
     if (bearerMatches(header, expectedToken) || tokenMatches(queryToken, expectedToken)) {
       setPrincipal(c.req.raw, API_PRINCIPAL)
       return next()
@@ -163,6 +169,7 @@ export const makeApp = (deps: AppDeps): Hono => {
 
   registerBotRoutes(app, deps.runEffect)
   registerTaskRoutes(app, deps.runEffect)
+  registerProjectRoutes(app, deps.runEffect)
   registerApprovalRoutes(app, deps.runEffect)
   registerTideRoutes(app, deps.runEffect)
   registerGenericWebhookRoutes(app, deps.runEffect)

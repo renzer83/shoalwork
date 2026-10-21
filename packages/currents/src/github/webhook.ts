@@ -102,6 +102,9 @@ const IssuesIn = Schema.Struct({
     title: Schema.String,
     state: Schema.optional(Schema.String),
     html_url: Schema.optional(Schema.String),
+    labels: Schema.optional(
+      Schema.Array(Schema.Union([Schema.String, Schema.Struct({ name: Schema.optional(Schema.String) })])),
+    ),
   }),
 })
 
@@ -114,6 +117,7 @@ const PullRequestIn = Schema.Struct({
     title: Schema.String,
     state: Schema.optional(Schema.String),
     html_url: Schema.optional(Schema.String),
+    merged: Schema.optional(Schema.Boolean),
     head: Schema.Struct({ ref: Schema.String, repo: Schema.optional(HeadRepo) }),
   }),
 })
@@ -154,6 +158,19 @@ const nonEmpty = (value: string | null | undefined): string | undefined =>
 
 const optionalText = (key: string, value: string | undefined, max: number): Record<string, string> =>
   value === undefined ? {} : { [key]: cleanText(value, max) }
+
+// Label names of an issue, cleaned and capped. A label is third-party text (R14): it is data, never an instruction.
+// The board reads it to know if an issue may run (T-060).
+const labelNames = (
+  labels: ReadonlyArray<string | { readonly name?: string | undefined }> | undefined,
+): Record<string, ReadonlyArray<string>> => {
+  if (labels === undefined) return {}
+  const names = labels
+    .map((label) => (typeof label === "string" ? label : (label.name ?? "")))
+    .map((name) => cleanText(name, 50))
+    .filter((name) => name !== "")
+  return names.length === 0 ? {} : { labels: names }
+}
 
 const fail = (event: string) => () =>
   new GithubPayloadError({ event, message: "payload does not match the expected GitHub shape" })
@@ -203,6 +220,7 @@ export const reduceGithubDelivery = (
           number: issue.number,
           title: cleanText(issue.title, 200),
           ...optionalText("state", issue.state, 30),
+          ...labelNames(issue.labels),
         })
       }
       case "pull_request": {
@@ -221,6 +239,7 @@ export const reduceGithubDelivery = (
           title: cleanText(pr.title, 200),
           headBranch: cleanText(pr.head.ref, 200),
           ...optionalText("state", pr.state, 30),
+          ...(pr.merged === true ? { merged: true } : {}),
         })
       }
       case "workflow_run": {

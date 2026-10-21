@@ -66,6 +66,7 @@ describe("reduceGithubDelivery", () => {
             number: 3,
             title: "Add sum helper",
             state: "open",
+            labels: ["enhancement"],
           },
         },
       })

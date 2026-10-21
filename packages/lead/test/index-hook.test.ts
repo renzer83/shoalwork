@@ -2,7 +2,7 @@ import { it } from "@effect/vitest"
 import { type ExecutorEvent, type RepoRef, repoKeyOf } from "@shoalwork/contracts"
 import type { Executor, ExecutorContext } from "@shoalwork/executors"
 import { Indexer, type IndexReport, WalkError } from "@shoalwork/reef"
-import { Duration, Effect, Layer } from "effect"
+import { Deferred, Duration, Effect, Layer } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import { describe, expect } from "vitest"
 import { INDEX_QUEUE, startIndexHook } from "../src/hooks/index-repo.js"
@@ -52,7 +52,7 @@ const until = <E, R>(check: Effect.Effect<boolean, E, R>) =>
   })
 
 // Indexer stand-in: the same repo id rule as the real one (repoKeyOf of the url), and it stores one chunk for it.
-const fakeIndexer = (opts: { readonly fail?: boolean } = {}) => {
+const fakeIndexer = (opts: { readonly fail?: boolean; readonly gate?: Deferred.Deferred<void> } = {}) => {
   const urls: Array<string> = []
   const layer = Layer.effect(
     Indexer,
@@ -62,6 +62,9 @@ const fakeIndexer = (opts: { readonly fail?: boolean } = {}) => {
         index: (_dir, options) =>
           Effect.gen(function* () {
             urls.push(options?.repoUrl ?? "")
+            if (opts.gate !== undefined) {
+              yield* Deferred.await(opts.gate)
+            }
             if (opts.fail === true) {
               return yield* Effect.fail(new WalkError({ reason: "git", detail: "boom" }))
             }
@@ -182,7 +185,9 @@ describe("index job after a code task", () => {
     "after the index job, the reef server is attached to a run on the same repo under the https, ssh and scp forms",
     () => {
       const contexts: Array<ExecutorContext> = []
-      const indexer = fakeIndexer()
+      // The index job is held at a gate the test controls, so "nothing indexed yet" holds however slow the run setup is.
+      const gate = Deferred.makeUnsafe<void>()
+      const indexer = fakeIndexer({ gate })
       return Effect.gen(function* () {
         yield* startIndexHook(HOOK)
         const lead = yield* Lead
@@ -191,6 +196,7 @@ describe("index job after a code task", () => {
         yield* lead.runOnce(first.id)
         // Before anything is indexed the run gets no reef server.
         expect(contexts[0]?.mcp).toBeUndefined()
+        yield* Deferred.succeed(gate, undefined)
         yield* until(Effect.map(chunkCount(REPO_KEY), (n) => n > 0))
         for (const url of [HTTPS, SSH, SCP]) {
           const next = yield* lead.intake(specFor(bot, { repo: { url, base: "main" } }))

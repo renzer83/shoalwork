@@ -11,6 +11,8 @@ import { eventsList } from "./commands/events.js"
 import { factoryCommand } from "./commands/factory.js"
 import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
+import { projectCommand } from "./commands/project.js"
+import { ptaskCommand } from "./commands/ptask.js"
 import { reflexExport } from "./commands/reflex.js"
 import { taskSend, taskShow } from "./commands/task.js"
 import { tideCommand } from "./commands/tide.js"
@@ -40,6 +42,9 @@ const USAGE = [
   "       shoalwork memory history <memory id>",
   "       shoalwork bot list | shoalwork bot from-template <role> --project <slug>",
   "       shoalwork factory import <file> | shoalwork factory baseline [--project <slug>]",
+  "       shoalwork project add --slug <slug> --name <name> --repo <url> [--base <branch>] [--max <n>]",
+  "       shoalwork project list | shoalwork project sync <slug>",
+  "       shoalwork ptask move <slug> <task id> --to <state> [--reason <text>] | shoalwork ptask retry <slug> <task id>",
   "  --url / --token override the APP_URL and API_TOKEN environment variables",
 ].join("\n")
 
@@ -269,6 +274,10 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return botCommand(rest)
     case "factory":
       return factoryCommand(rest)
+    case "project":
+      return projectCommand(rest)
+    case "ptask":
+      return ptaskCommand(rest)
     default:
       return Effect.fail(
         new UsageError({

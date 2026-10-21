@@ -15,6 +15,7 @@ import {
   ExecutorStartedPayload,
   UsageRecordedPayload,
 } from "./executor.js"
+import { ProjectTaskState, ProjectTaskStateChangedPayload } from "./factory.js"
 import {
   GithubCheckSuitePayload,
   GithubIssuesPayload,
@@ -76,6 +77,7 @@ export const EventType = Schema.Literals([
   "pod.closed",
   "step.verified",
   "review.decided",
+  "project_task.state_changed",
 ])
 export type EventType = typeof EventType.Type
 
@@ -119,6 +121,7 @@ export const EventPayloads = {
   "pod.closed": PodClosedPayload,
   "step.verified": StepVerifiedPayload,
   "review.decided": ReviewDecidedPayload,
+  "project_task.state_changed": ProjectTaskStateChangedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.
@@ -160,5 +163,17 @@ export const decodeNewEvent = (raw: unknown): Effect.Effect<NewEvent, SchemaViol
 export const streamIds = {
   bot: (id: BotId) => `bot:${id}`,
   task: (id: TaskId) => `task:${id}`,
+  project: (slug: string) => `project:${slug}`,
   system: "system",
 } as const
+
+// The payloads of the events the board and the factory read, exported for the packages that decode them.
+export {
+  GithubCheckSuitePayload,
+  GithubIssuesPayload,
+  GithubPullRequestPayload,
+  GithubPushPayload,
+  GithubWorkflowRunPayload,
+  ProjectTaskState,
+  ProjectTaskStateChangedPayload,
+}

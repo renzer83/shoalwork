@@ -17,6 +17,8 @@ export const GithubIssuesPayload = Schema.Struct({
   number: Schema.Int,
   title: Schema.String,
   state: Schema.optional(Schema.String),
+  // Label names, cleaned. The board reads them to know if an issue is ready to run (T-060).
+  labels: Schema.optional(Schema.Array(Schema.String)),
 })
 
 export const GithubPullRequestPayload = Schema.Struct({
@@ -25,6 +27,8 @@ export const GithubPullRequestPayload = Schema.Struct({
   title: Schema.String,
   state: Schema.optional(Schema.String),
   headBranch: Schema.optional(Schema.String),
+  // True when the PR was merged (not only closed). The board finishes a task on a merge (T-060).
+  merged: Schema.optional(Schema.Boolean),
 })
 
 export const GithubWorkflowRunPayload = Schema.Struct({

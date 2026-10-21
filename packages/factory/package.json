@@ -14,6 +14,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@shoalwork/beacon": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
     "@shoalwork/db": "workspace:*",
     "effect": "catalog:"

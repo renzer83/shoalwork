@@ -18,6 +18,7 @@ import {
   type TierConfig,
   tierMappingFrom,
 } from "@shoalwork/executors"
+import { KanbanLive } from "@shoalwork/factory"
 import {
   ApprovalFlowLive,
   type ConsolidateHookOptions,
@@ -128,7 +129,7 @@ const TankFromConfig = Layer.unwrap(
 )
 
 const DomainLive = (config: AppConfigShape, tiers: TierConfig) =>
-  Layer.mergeAll(BotRegistryLive, TankFromConfig, makeRegistry(executorsFor(config, tiers))).pipe(
+  Layer.mergeAll(BotRegistryLive, TankFromConfig, makeRegistry(executorsFor(config, tiers)), KanbanLive).pipe(
     Layer.provideMerge(PersistenceLive),
   )
 

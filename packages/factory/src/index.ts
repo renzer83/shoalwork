@@ -1,3 +1,7 @@
 export * from "./baseline.js"
 export * from "./export-schema.js"
 export * from "./import.js"
+export * from "./kanban.js"
+export * from "./kanban-live.js"
+export * from "./kanban-rows.js"
+export * from "./sync-github.js"
