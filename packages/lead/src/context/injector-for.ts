@@ -1,6 +1,6 @@
 import { repoKeyOf } from "@shoalwork/contracts"
 import type { IndexerShape, RankerShape } from "@shoalwork/reef"
-import type { BriefingCode } from "./briefing.js"
+import type { BriefingCode, BriefingDocs } from "./briefing.js"
 import { type InjectDeps, makeInjector } from "./inject.js"
 import { makeRankedCode } from "./ranked-code.js"
 
@@ -20,10 +20,14 @@ export const makeInjectorFor = (sources: InjectorSources) => {
   const { indexer, ranker } = sources
   const code: BriefingCode | undefined =
     indexer === undefined ? undefined : (repo, query, k) => indexer.search(repoKeyOf(repo.url), query, k)
+  // The docs of the task's symbols come from the same index under the same key (T-099).
+  const docs: BriefingDocs | undefined =
+    indexer === undefined ? undefined : (repo, symbols) => indexer.docs(repoKeyOf(repo.url), symbols)
   return makeInjector({
     tank: sources.tank,
     memory: sources.memory,
     code,
+    docs,
     rankedCode: indexer === undefined || ranker === undefined ? undefined : makeRankedCode(indexer, ranker),
     config: sources.context,
     recordAssembled: sources.recordAssembled,

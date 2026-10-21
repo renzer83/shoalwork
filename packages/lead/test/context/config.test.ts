@@ -48,7 +48,7 @@ describe("context config", () => {
       const text = [
         "budget: { chat: 1, decision: 1, light: 1, heavy: 1 }",
         "reserve_for_answer: 0",
-        "blocks: { instructions: 1.5, rules: 1, memory: 1, code: 1, working: 1, acceptance: 1, task: 1 }",
+        "blocks: { instructions: 1.5, rules: 1, memory: 1, code: 1, git: 1, docs: 1, working: 1, acceptance: 1, task: 1 }",
         "levels: { top3: { memory: 1, code: 1 }, full: { memory: 1, code: 1 } }",
       ].join("\n")
       const error = yield* Effect.flip(decodeContextConfigText(text, "ctx.yaml"))
@@ -60,7 +60,7 @@ describe("context config", () => {
     [
       `budget: ${patch.budget ?? "{ chat: 2000, decision: 2000, light: 8000, heavy: 24000 }"}`,
       `reserve_for_answer: ${patch.reserve ?? 300}`,
-      `blocks: ${patch.blocks ?? "{ instructions: 700, rules: 600, memory: 1500, code: 4000, working: 500, acceptance: 250, task: 150 }"}`,
+      `blocks: ${patch.blocks ?? "{ instructions: 700, rules: 600, memory: 1500, code: 4000, git: 800, docs: 1200, working: 500, acceptance: 250, task: 150 }"}`,
       "levels: { top3: { memory: 3, code: 3 }, full: { memory: 8, code: 6 } }",
     ].join("\n")
 
@@ -73,7 +73,7 @@ describe("context config", () => {
   it.effect("rejects fixed caps that do not fit the smallest tier minus the reserve", () =>
     Effect.gen(function* () {
       const blocks =
-        "{ instructions: 700, rules: 601, memory: 1500, code: 4000, working: 500, acceptance: 250, task: 150 }"
+        "{ instructions: 700, rules: 601, memory: 1500, code: 4000, git: 800, docs: 1200, working: 500, acceptance: 250, task: 150 }"
       const error = yield* Effect.flip(decodeContextConfigText(textWith({ blocks }), "ctx.yaml"))
       expect(error._tag).toBe("ConfigError")
       expect(error.message).toContain("smallest tier")

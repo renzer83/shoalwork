@@ -16,6 +16,8 @@ blocks:
   rules: 600
   memory: 1500
   code: 4000
+  git: 800
+  docs: 1200
   working: 500
   acceptance: 250
   task: 150

@@ -6,6 +6,7 @@ import { describeFailure } from "../verdict.js"
 import {
   type Briefing,
   type BriefingCode,
+  type BriefingDocs,
   type BriefingMemory,
   type BriefingRankedCode,
   buildBriefing,
@@ -14,7 +15,7 @@ import { type ContextConfig, DEFAULT_CONTEXT_CONFIG } from "./config.js"
 import { removeInstructionFiles, writeInstructionFiles } from "./instructions-file.js"
 import { fallbackDecision, makeContextPlanner, type PlanningDecision } from "./planner.js"
 
-export type { BriefingCode, BriefingMemory, BriefingRankedCode } from "./briefing.js"
+export type { BriefingCode, BriefingDocs, BriefingMemory, BriefingRankedCode } from "./briefing.js"
 
 // Payload of the context.assembled event.
 export interface ContextAssembled {
@@ -57,6 +58,8 @@ export interface InjectDeps {
   readonly code?: BriefingCode | undefined
   // The same search ranked with the six signals; it serves the code block when present, `code` is the fallback.
   readonly rankedCode?: BriefingRankedCode | undefined
+  // The repo index's markdown search for the task's symbols (T-099); without it there is no docs block.
+  readonly docs?: BriefingDocs | undefined
   // config/context.yaml (or the defaults): budgets per tier, block caps and the size of each level.
   readonly config?: ContextConfig | undefined
   // Records the context.assembled event. A failure to record never fails the run.
@@ -129,6 +132,7 @@ export const makeInjector = (deps: InjectDeps) => {
           memory: deps.memory,
           code: deps.code,
           rankedCode: deps.rankedCode,
+          docs: deps.docs,
           tank: deps.tank,
           onSourceError: (source, cause) => report(cause, `lead.context.${source}`),
         },

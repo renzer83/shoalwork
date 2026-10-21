@@ -29,5 +29,7 @@ export const CodeChunkKey = Schema.Struct({
   sha256: Schema.String,
   has_embedding: Schema.Literals([0, 1]),
   has_commit_time: Schema.Literals([0, 1]),
+  // The stored JSON array of symbols: a chunk whose symbols changed (docs gained them) is rewritten even if its text did not.
+  symbols: Schema.String,
 })
 export type CodeChunkKey = typeof CodeChunkKey.Type

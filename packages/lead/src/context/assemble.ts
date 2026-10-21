@@ -7,6 +7,8 @@ export const BLOCK_ORDER = [
   "rules",
   "memory",
   "code",
+  "git",
+  "docs",
   "working",
   "acceptance",
   "handoff",
@@ -47,6 +49,8 @@ export interface Assembled {
 // blocks are cut once nothing else is left. The task block is never cut.
 const CUT_ORDER: ReadonlyArray<BlockName> = [
   "code",
+  "docs",
+  "git",
   "working",
   "memory",
   "rules",

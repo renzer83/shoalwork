@@ -162,7 +162,7 @@ describe("rank config", () => {
   const base = [
     "budget: { chat: 2000, decision: 2000, light: 8000, heavy: 24000 }",
     "reserve_for_answer: 300",
-    "blocks: { instructions: 700, rules: 600, memory: 1500, code: 4000, working: 500, acceptance: 250, task: 150 }",
+    "blocks: { instructions: 700, rules: 600, memory: 1500, code: 4000, git: 800, docs: 1200, working: 500, acceptance: 250, task: 150 }",
     "levels: { top3: { memory: 3, code: 3 }, full: { memory: 8, code: 6 } }",
   ]
 

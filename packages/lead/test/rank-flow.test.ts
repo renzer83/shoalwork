@@ -41,6 +41,7 @@ const indexerStub = Layer.succeed(Indexer, {
   index: () => Effect.die("not used"),
   search: () => Effect.succeed([]),
   candidates: () => Effect.succeed(CANDIDATES),
+  docs: () => Effect.succeed([]),
 })
 
 const successRows = Effect.gen(function* () {
@@ -113,6 +114,7 @@ describe("chunks cut by the budget", () => {
       index: () => Effect.die("not used"),
       search: () => Effect.succeed([]),
       candidates: () => Effect.succeed(["b1", "b2", "b3", "b4"].map((id, i) => bigCandidate(id, 10 - i))),
+      docs: () => Effect.succeed([]),
     })
     return Effect.gen(function* () {
       const lead = yield* Lead

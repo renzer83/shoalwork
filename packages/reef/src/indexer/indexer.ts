@@ -5,6 +5,7 @@ import { nowIso } from "@shoalwork/db"
 import { Context, Effect, Layer, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
+import { type DocHit, docsForSymbols } from "../docs/symbol-docs.js"
 import { Embedder, EmbedderTest, type EmbedError } from "../embedder.js"
 import { EmbeddingShapeError, encodeEmbedding } from "../rows.js"
 import { type CodeChunk, chunkFile, MAX_CHUNK_CHARS } from "./chunk.js"
@@ -67,9 +68,15 @@ export interface IndexFailure {
 
 export type IndexError = WalkError | SqlError | Schema.SchemaError
 export type SearchError = EmbeddingShapeError | SqlError | Schema.SchemaError
+export type DocsError = SqlError | Schema.SchemaError
 
 export interface IndexerShape {
   readonly index: (repoDir: string, options?: IndexOptions) => Effect.Effect<IndexReport, IndexError>
+  // Markdown excerpts that name the symbols (T-099): the documentation of what a task touches.
+  readonly docs: (
+    repo: string,
+    symbols: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<DocHit>, DocsError>
   readonly search: (
     repo: string,
     query: string,
@@ -104,7 +111,8 @@ const sameLayout = (stored: ReadonlyArray<CodeChunkKey>, chunks: ReadonlyArray<C
       row.has_embedding === 1 &&
       row.start_line === chunk.startLine &&
       row.end_line === chunk.endLine &&
-      row.sha256 === chunk.sha256
+      row.sha256 === chunk.sha256 &&
+      row.symbols === JSON.stringify(chunk.symbols)
     )
   })
 
@@ -195,7 +203,7 @@ export const IndexerLive = (
           const repo = yield* repoIdOf(repoDir, indexOptions)
           const paths = yield* listRepoFiles(root)
           const storedRows = yield* decodeKeys(
-            yield* sql`SELECT id, path, start_line, end_line, sha256, embedding IS NOT NULL AS has_embedding,
+            yield* sql`SELECT id, path, start_line, end_line, sha256, symbols, embedding IS NOT NULL AS has_embedding,
               last_commit_at IS NOT NULL AS has_commit_time
               FROM code_chunks WHERE repo = ${repo} ORDER BY path, start_line`,
           )
@@ -279,7 +287,10 @@ export const IndexerLive = (
           Effect.provideService(Embedder, embedder),
         )
 
-      return { index, search, candidates }
+      const docs = (repo: string, symbols: ReadonlyArray<string>) =>
+        docsForSymbols(repo, symbols).pipe(Effect.provideService(SqlClient, sql))
+
+      return { index, search, candidates, docs }
     }),
   )
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { markdownSymbols } from "../docs/doc-symbols.js"
 import { findSymbols, type Lang } from "./symbols.js"
 
 export const WINDOW_LINES = 60
@@ -63,6 +64,7 @@ const windows = (
   from: number,
   to: number,
   symbols: ReadonlyArray<string>,
+  symbolsOf?: (windowFrom: number, windowTo: number) => ReadonlyArray<string>,
 ): Array<CodeChunk> => {
   const chunks: Array<CodeChunk> = []
   let start = from
@@ -77,7 +79,7 @@ const windows = (
       chars += next
       end++
     }
-    const chunk = makeChunk(lines, start, end, symbols)
+    const chunk = makeChunk(lines, start, end, symbolsOf === undefined ? symbols : symbolsOf(start, end))
     if (chunk !== null) {
       chunks.push(chunk)
     }
@@ -106,6 +108,10 @@ const segment = (
 // without symbols); otherwise fixed windows.
 export const chunkFile = (lang: Lang, content: string): ReadonlyArray<CodeChunk> => {
   const lines = splitLines(content)
+  // Markdown has no declarations: its windows carry the headings' words and the backticked identifiers they name.
+  if (lang === "md") {
+    return windows(lines, 0, lines.length, [], (from, to) => markdownSymbols(lines.slice(from, to)))
+  }
   const hits = findSymbols(lang, lines)
   const [first] = hits
   if (first === undefined) {
