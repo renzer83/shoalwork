@@ -1,21 +1,23 @@
 import type { MemoryHit } from "@shoalwork/api-client"
 import { useState } from "react"
 import { View } from "react-native"
-import { Button, Card, Text, TextInput } from "react-native-paper"
-import type { MemoryLoad } from "../../hooks/useBotMemory.js"
+import { Button, Text, TextInput } from "react-native-paper"
+import type { MemoryEdit, MemoryLoad } from "../../hooks/useBotMemory.js"
 import { EmptyState } from "../EmptyState.js"
 import { ErrorBanner } from "../ErrorBanner.js"
+import { MemoryItem } from "./MemoryItem.js"
 
 export interface MemoryListProps {
   readonly load: MemoryLoad
   readonly onSearch: (text: string) => void
   readonly onForget: (memoryId: string) => void
+  readonly onEdit: (memoryId: string, content: string) => Promise<MemoryEdit>
 }
 
 const hitsOf = (load: MemoryLoad): ReadonlyArray<MemoryHit> => (load.kind === "loaded" ? load.hits : [])
 
-// The Bot's memory: the current items, or the hits of a search. Edit is not here yet (the list only forgets).
-export function MemoryList({ load, onSearch, onForget }: MemoryListProps) {
+// The Bot's memory: the current items, or the hits of a search. Each item can be edited or forgotten.
+export function MemoryList({ load, onSearch, onForget, onEdit }: MemoryListProps) {
   const [text, setText] = useState("")
   const hits = hitsOf(load)
   return (
@@ -35,17 +37,7 @@ export function MemoryList({ load, onSearch, onForget }: MemoryListProps) {
       ) : null}
       {load.kind === "loaded" && hits.length === 0 ? <EmptyState title="No memory to show" /> : null}
       {hits.map((hit) => (
-        <Card key={hit.id}>
-          <Card.Content style={{ gap: 4 }}>
-            <Text variant="labelMedium">
-              {hit.score === undefined ? hit.kind : `${hit.kind} · score ${hit.score.toFixed(2)}`}
-            </Text>
-            <Text variant="bodyMedium">{hit.content}</Text>
-            <Button compact onPress={() => onForget(hit.id)}>
-              Forget
-            </Button>
-          </Card.Content>
-        </Card>
+        <MemoryItem key={hit.id} hit={hit} onEdit={onEdit} onForget={onForget} />
       ))}
     </View>
   )

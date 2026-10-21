@@ -27,6 +27,9 @@ export type NewTaskBody = typeof NewTaskBody.Encoded
 // The app's identity for memory writes (memory.userId, the `user:<id>` source) until multi-client (F11).
 export const APP_USER_ID = "app"
 
+// Answer of POST /control/pause and /control/resume. The new state reaches the app as bot.state_changed.
+const ControlOk = Schema.Struct({ ok: Schema.Literal(true) })
+
 // Body of POST /bots: the Bot definition without the id, which the core assigns.
 export type NewBotBody = typeof NewBot.Encoded
 // Body of PATCH /bots/:id: any editable field. The name is the file name and does not change.
@@ -212,6 +215,12 @@ export class ApiClient {
     patch: (id: string, patch: BotPatch) =>
       this.patch(`/bots/${encodeURIComponent(id)}`, patch, BotDetailOne),
     clone: (id: string) => this.post(`/bots/${encodeURIComponent(id)}/clone`, {}, BotDetailOne),
+  }
+
+  // Pause and resume one Bot by id or name (the core's control routes). Stop is not used by the app yet.
+  readonly control = {
+    pause: (bot: string) => this.post("/control/pause", { bot }, ControlOk),
+    resume: (bot: string) => this.post("/control/resume", { bot }, ControlOk),
   }
 
   readonly tasks = {
