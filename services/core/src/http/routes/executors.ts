@@ -5,10 +5,22 @@ import { ExecutorRegistry, QuotaStore } from "@shoalwork/executors"
 import { DateTime, Effect, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { Hono } from "hono"
+import { hostDoctor } from "../../executors-compose.js"
 import { failureResponse, type RouteResponse, type RunEffect, sendResponse } from "./respond.js"
 
 // Who the event names: the API, as the control routes do.
 const BY = "api"
+
+// The reports of packages/executors/src/doctor.ts, checked on the way out. Mirrored by apps/cli/src/commands/executors.ts.
+const DoctorReportWire = Schema.Struct({
+  executor: ExecutorId,
+  bin: Schema.String,
+  installed: Schema.NullOr(Schema.String),
+  pinned: Schema.String,
+  status: Schema.Literals(["ok", "drift", "missing", "auth_missing"]),
+  detail: Schema.optionalKey(Schema.String),
+})
+const DoctorList = Schema.Array(DoctorReportWire)
 
 // `exhaustedUntil`: an ISO instant, or null to clear the mark. The store reads an instant not after now as a clear, so
 // clearing sends the epoch. A future instant only extends the window (the store never shortens it).
@@ -64,8 +76,24 @@ const setQuota = (rawId: string, raw: unknown) =>
     return { status: 200, body: status } satisfies RouteResponse
   }).pipe(Effect.catch(failureResponse))
 
+// GET /executors/doctor: the CLI versions and logins of this host (T-081), as the core's environment sees them.
+const doctorReports = Effect.gen(function* () {
+  const reports = yield* hostDoctor()
+  const body = yield* Schema.encodeUnknownEffect(DoctorList)(reports)
+  return { status: 200, body: { reports: body } } satisfies RouteResponse
+}).pipe(
+  Effect.catchTag("ConfigError", (error) =>
+    Effect.succeed({
+      status: 500,
+      body: { error: "config unreadable", key: error.key },
+    } satisfies RouteResponse),
+  ),
+  Effect.catch(failureResponse),
+)
+
 export const registerExecutorRoutes = (app: Hono, runEffect: RunEffect): void => {
   app.get("/executors/quota", async (c) => sendResponse(c, await runEffect(listQuotas)))
+  app.get("/executors/doctor", async (c) => sendResponse(c, await runEffect(doctorReports)))
   app.post("/executors/:id/quota", async (c) => {
     const raw: unknown = await c.req.json().catch(() => null)
     return sendResponse(c, await runEffect(setQuota(c.req.param("id"), raw)))

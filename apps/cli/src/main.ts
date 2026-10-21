@@ -9,6 +9,7 @@ import { controlScope, controlStatus, controlStopTask } from "./commands/control
 import { costsContext, costsReport, type GoalNotMet, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
 import { executorCommand } from "./commands/executor.js"
+import { executorsCommand } from "./commands/executors.js"
 import { factoryCommand } from "./commands/factory.js"
 import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
@@ -31,6 +32,8 @@ const USAGE = [
   "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
   "       shoalwork executor quota | shoalwork executor quota set <executor id> --exhausted-until <iso|clear>",
+  "       shoalwork executors doctor [--strict] | shoalwork executors list",
+  "       shoalwork executors record --executor <id> --version <semver> --dry-run",
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
   "       shoalwork costs context [--by task|bot|executor|level] [--since <iso|7d>] [--compare <iso|14d|baseline:<project>>] [--goal <0..1>] [--json]",
   "       shoalwork tide list [--bot <bot id or name>] | shoalwork tide add --bot <bot> --file <tide.json>",
@@ -273,6 +276,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return costs(rest)
     case "executor":
       return executorCommand(rest)
+    case "executors":
+      return executorsCommand(rest)
     case "reflex":
       return reflex(rest)
     case "memory":

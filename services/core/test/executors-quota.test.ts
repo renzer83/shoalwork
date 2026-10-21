@@ -20,11 +20,13 @@ const quotaConfig = Schema.decodeUnknownSync(QuotaConfig)({
   executors: { "claude-code": { windows: [{ kind: "5h", soft_tokens: 100 }] } },
 })
 
-// The real registry, store and Beacon, composed as the core composes them, over a temporary database.
+// The real registry, store and Beacon, composed as the core composes them, over a temporary database. The boot doctor is
+// stubbed with no reports: this test must not probe the CLIs installed on the host.
 const TestLayer = RegistryFromConfig(
   { permissionBridge: false, codexModel: undefined },
   DEFAULT_TIERS,
   quotaConfig,
+  () => Effect.succeed([]),
 ).pipe(
   Layer.provideMerge(QuotaStoreLive(quotaConfig)),
   Layer.provideMerge(Layer.provideMerge(BeaconLive, withTempDb())),

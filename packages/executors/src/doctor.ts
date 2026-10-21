@@ -29,10 +29,11 @@ export type DoctorReport = {
 }
 
 // `pinned` comes from the yaml; `env` is the allowlisted environment chosen by the composition root. The doctor never
-// reads process.env itself.
+// reads process.env itself. `timeoutMs` bounds each CLI call (default DEFAULT_PROBE_TIMEOUT_MS).
 export type DoctorConfigShape = {
   readonly pinned: ExecutorVersions
   readonly env: Readonly<Record<string, string>>
+  readonly timeoutMs?: number
 }
 
 export class DoctorConfig extends Context.Service<DoctorConfig, DoctorConfigShape>()(
@@ -61,18 +62,34 @@ export const loadExecutorVersions = (path: string): Effect.Effect<ExecutorVersio
 export const DoctorConfigLive = (
   path: string,
   env: Readonly<Record<string, string>>,
+  timeoutMs?: number,
 ): Layer.Layer<DoctorConfig, ConfigError> =>
-  Layer.effect(DoctorConfig, loadExecutorVersions(path).pipe(Effect.map((pinned) => ({ pinned, env }))))
+  Layer.effect(
+    DoctorConfig,
+    loadExecutorVersions(path).pipe(
+      Effect.map((pinned) => (timeoutMs === undefined ? { pinned, env } : { pinned, env, timeoutMs })),
+    ),
+  )
 
-// Upper bound for every CLI call the doctor makes. Real CLIs answer --version in well under a second.
-const PROBE_TIMEOUT_MS = 10_000
+// Upper bound for each CLI call the doctor makes. A real CLI can take over 10 s on a loaded host (gemini --version
+// measured at ~12 s), so the default is generous; a caller that wants a tighter bound passes timeoutMs.
+export const DEFAULT_PROBE_TIMEOUT_MS = 30_000
+
+// How many CLIs are probed at once. The probes are independent, so the boot waits for the slowest, not the sum.
+export const PROBE_CONCURRENCY = 4
 
 type Env = Readonly<Record<string, string>>
+// What a probe needs: the allowlisted env and the bound of each CLI call.
+type Probe = { readonly env: Env; readonly timeoutMs: number }
 type CliRun = { readonly exitCode: number; readonly stdout: string; readonly timedOut: boolean }
 
 // argv only, never a shell. null: the binary could not be spawned (not on PATH, not executable).
-const runCli = (env: Env, bin: string, args: ReadonlyArray<string>): Effect.Effect<CliRun | null> =>
-  runProcess([bin, ...args], { cwd: env.HOME ?? tmpdir(), env, timeoutMs: PROBE_TIMEOUT_MS }).pipe(
+const runCli = (probe: Probe, bin: string, args: ReadonlyArray<string>): Effect.Effect<CliRun | null> =>
+  runProcess([bin, ...args], {
+    cwd: probe.env.HOME ?? tmpdir(),
+    env: probe.env,
+    timeoutMs: probe.timeoutMs,
+  }).pipe(
     Effect.map(({ exitCode, stdout, timedOut }): CliRun => ({ exitCode, stdout, timedOut })),
     Effect.catchTag("TankError", () => Effect.succeed(null)),
   )
@@ -83,8 +100,8 @@ type VersionRead =
   | { readonly ok: true; readonly installed: string }
   | { readonly ok: false; readonly detail: string }
 
-const readVersion = (env: Env, bin: string): Effect.Effect<VersionRead> =>
-  runCli(env, bin, ["--version"]).pipe(
+const readVersion = (probe: Probe, bin: string): Effect.Effect<VersionRead> =>
+  runCli(probe, bin, ["--version"]).pipe(
     Effect.map((run): VersionRead => {
       if (run === null) return { ok: false, detail: `cannot run ${bin}` }
       if (run.timedOut) return { ok: false, detail: `${bin} --version timed out` }
@@ -97,7 +114,7 @@ const readVersion = (env: Env, bin: string): Effect.Effect<VersionRead> =>
   )
 
 // Each authProblem returns null when the CLI is logged in, otherwise a short reason (never the CLI's output).
-type AuthProblem = (env: Env, bin: string) => Effect.Effect<string | null>
+type AuthProblem = (probe: Probe, bin: string) => Effect.Effect<string | null>
 
 const AuthStatus = Schema.Struct({ authMethod: Schema.String })
 
@@ -112,8 +129,8 @@ const authMethodOf = (stdout: string): string | null => {
   return Schema.is(AuthStatus)(value) ? value.authMethod : null
 }
 
-const claudeAuth: AuthProblem = (env, bin) =>
-  runCli(env, bin, ["auth", "status"]).pipe(
+const claudeAuth: AuthProblem = (probe, bin) =>
+  runCli(probe, bin, ["auth", "status"]).pipe(
     Effect.map((run) => {
       if (run === null || run.timedOut || run.exitCode !== 0) return "claude auth status failed"
       const method = authMethodOf(run.stdout)
@@ -122,15 +139,16 @@ const claudeAuth: AuthProblem = (env, bin) =>
     }),
   )
 
-const codexAuth: AuthProblem = (env, bin) =>
-  runCli(env, bin, ["login", "status"]).pipe(
+const codexAuth: AuthProblem = (probe, bin) =>
+  runCli(probe, bin, ["login", "status"]).pipe(
     Effect.map((run) =>
       run !== null && !run.timedOut && run.exitCode === 0 ? null : "codex login status failed",
     ),
   )
 
-const geminiAuth: AuthProblem = (env) =>
+const geminiAuth: AuthProblem = (probe) =>
   Effect.sync(() => {
+    const env = probe.env
     if ((env.GEMINI_API_KEY ?? "") !== "") return null
     const home = env.GEMINI_CLI_HOME ?? env.HOME
     if (home === undefined) return "neither GEMINI_CLI_HOME nor HOME is set"
@@ -139,8 +157,9 @@ const geminiAuth: AuthProblem = (env) =>
       : "no GEMINI_API_KEY and no .gemini/oauth_creds.json"
   })
 
-const opencodeAuth: AuthProblem = (env) =>
+const opencodeAuth: AuthProblem = (probe) =>
   Effect.sync(() => {
+    const env = probe.env
     const dataHome =
       env.XDG_DATA_HOME ?? (env.HOME === undefined ? undefined : join(env.HOME, ".local", "share"))
     if (dataHome === undefined) return "neither XDG_DATA_HOME nor HOME is set"
@@ -185,13 +204,13 @@ const report = (
 
 // Precedence: missing > auth_missing > drift > ok. A drifted version with no login is reported as auth_missing, with
 // the drift kept in detail.
-const checkCli = (cfg: DoctorConfigShape, entry: CliEntry): Effect.Effect<DoctorReport> =>
+const checkCli = (pinnedAll: ExecutorVersions, probe: Probe, entry: CliEntry): Effect.Effect<DoctorReport> =>
   Effect.gen(function* () {
-    const pinned = cfg.pinned[entry.pin]
-    const version = yield* readVersion(cfg.env, entry.bin)
+    const pinned = pinnedAll[entry.pin]
+    const version = yield* readVersion(probe, entry.bin)
     if (!version.ok) return report(entry, pinned, null, "missing", version.detail)
     const installed = version.installed
-    const authProblem = yield* entry.authProblem(cfg.env, entry.bin)
+    const authProblem = yield* entry.authProblem(probe, entry.bin)
     const drift = installed === pinned ? null : `installed ${installed}, pinned ${pinned}`
     if (authProblem !== null) {
       return report(entry, pinned, installed, "auth_missing", joinDetail(authProblem, drift))
@@ -200,13 +219,13 @@ const checkCli = (cfg: DoctorConfigShape, entry: CliEntry): Effect.Effect<Doctor
     return report(entry, pinned, installed, "ok", undefined)
   })
 
-// Never fails: every problem with a CLI becomes its report. Running it is the core's job; this only describes.
+// Never fails: every problem with a CLI becomes its report. Running it is the core's job; this only describes. The CLIs
+// are probed PROBE_CONCURRENCY at a time, and the reports keep the order of CLI_EXECUTORS.
 export const doctor = (): Effect.Effect<ReadonlyArray<DoctorReport>, never, DoctorConfig> =>
   Effect.gen(function* () {
     const cfg = yield* DoctorConfig
-    const reports: Array<DoctorReport> = []
-    for (const entry of CLI_EXECUTORS) {
-      reports.push(yield* checkCli(cfg, entry))
-    }
-    return reports
+    const probe: Probe = { env: cfg.env, timeoutMs: cfg.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS }
+    return yield* Effect.forEach(CLI_EXECUTORS, (entry) => checkCli(cfg.pinned, probe, entry), {
+      concurrency: PROBE_CONCURRENCY,
+    })
   })
