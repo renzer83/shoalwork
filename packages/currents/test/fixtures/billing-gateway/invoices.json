@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "invoice_id": "b-1",
+      "customer": "c-1",
+      "subscription": null,
+      "invoice_number": "B-1",
+      "state": "paid",
+      "currency": "eur",
+      "due_cents": 1500,
+      "paid_cents": 1500,
+      "issued_at": "2026-01-02T00:00:00.000Z",
+      "url": null
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "customer_id": "c-1",
+      "contact": { "email": "bruno@example.test", "display": "Bruno Teste" },
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "card": {
+        "brand": "mastercard",
+        "last4": "1111",
+        "number": "5555555555554444",
+        "cvc": "123"
+      }
+    },
+    {
+      "customer_id": "c-2",
+      "contact": { "email": null, "display": null },
+      "created_at": "2026-01-03T00:00:00.000Z"
+    }
+  ]
+}

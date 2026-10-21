@@ -1,0 +1,6 @@
+{
+  "projects": [
+    { "slug": "p-1", "title": "Projeto Um", "internal_owner": "ops" },
+    { "slug": "p-2", "title": "Projeto Dois" }
+  ]
+}

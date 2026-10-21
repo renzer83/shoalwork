@@ -1,0 +1,32 @@
+{
+  "baseUrl": "https://billing-gateway.example.test",
+  "mapping": {
+    "customers": {
+      "path": "/customers",
+      "items": "$.data",
+      "fields": {
+        "id": "$.customer_id",
+        "email": "$.contact.email",
+        "name": "$.contact.display",
+        "createdAt": "$.created_at",
+        "defaultPaymentCard": "$.card"
+      }
+    },
+    "invoices": {
+      "path": "/invoices",
+      "items": "$.data",
+      "fields": {
+        "id": "$.invoice_id",
+        "customerId": "$.customer",
+        "subscriptionId": "$.subscription",
+        "number": "$.invoice_number",
+        "status": "$.state",
+        "currency": "$.currency",
+        "amountDue": "$.due_cents",
+        "amountPaid": "$.paid_cents",
+        "createdAt": "$.issued_at",
+        "hostedInvoiceUrl": "$.url"
+      }
+    }
+  }
+}

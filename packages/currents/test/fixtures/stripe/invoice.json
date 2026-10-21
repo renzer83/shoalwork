@@ -1,0 +1,14 @@
+{
+  "id": "in_TEST0001",
+  "object": "invoice",
+  "customer": "cus_TEST0001",
+  "subscription": "sub_TEST0001",
+  "number": "ABC-0001",
+  "status": "paid",
+  "currency": "eur",
+  "amount_due": 1900,
+  "amount_paid": 1900,
+  "created": 1767225600,
+  "hosted_invoice_url": "https://invoice.example.test/in_TEST0001",
+  "livemode": false
+}

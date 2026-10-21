@@ -1,0 +1,13 @@
+{
+  "baseUrl": "https://control-panel.example.test/api/",
+  "mapping": {
+    "projects": {
+      "path": "/projects",
+      "items": "$.projects",
+      "fields": {
+        "id": "$.slug",
+        "name": "$.title"
+      }
+    }
+  }
+}

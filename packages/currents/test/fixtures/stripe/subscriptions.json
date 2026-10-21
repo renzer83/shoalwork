@@ -1,0 +1,26 @@
+{
+  "object": "list",
+  "url": "/v1/subscriptions",
+  "has_more": false,
+  "data": [
+    {
+      "id": "sub_TEST0001",
+      "object": "subscription",
+      "customer": "cus_TEST0001",
+      "status": "active",
+      "cancel_at_period_end": false,
+      "currency": "eur",
+      "items": {
+        "object": "list",
+        "data": [
+          {
+            "id": "si_TEST0001",
+            "object": "subscription_item",
+            "quantity": 1,
+            "price": { "id": "price_TEST0001" }
+          }
+        ]
+      }
+    }
+  ]
+}

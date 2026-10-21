@@ -1,0 +1,42 @@
+{
+  "object": "list",
+  "url": "/v1/customers",
+  "has_more": true,
+  "data": [
+    {
+      "id": "cus_TEST0001",
+      "object": "customer",
+      "email": "ana@example.com",
+      "name": "Ana Teste",
+      "created": 1767225600,
+      "invoice_settings": {
+        "default_payment_method": {
+          "id": "pm_TEST0001",
+          "object": "payment_method",
+          "type": "card",
+          "billing_details": {
+            "email": "ana@example.com",
+            "name": "Ana Teste",
+            "address": { "line1": "Rua Fictícia 1", "postal_code": "0000-000" }
+          },
+          "card": {
+            "brand": "visa",
+            "last4": "4242",
+            "exp_month": 12,
+            "exp_year": 2030,
+            "fingerprint": "FP_TEST_0001",
+            "country": "PT"
+          }
+        }
+      }
+    },
+    {
+      "id": "cus_TEST0002",
+      "object": "customer",
+      "email": null,
+      "name": null,
+      "created": 1767398400,
+      "invoice_settings": { "default_payment_method": null }
+    }
+  ]
+}
