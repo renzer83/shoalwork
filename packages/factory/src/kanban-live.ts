@@ -22,13 +22,16 @@ import {
   type MoveInput,
   moveInTransaction,
   type NewProject,
+  type NewSprint,
   projectBySlug,
+  type SetTaskSprintInput,
   type SyncReport,
   taskById,
   taskByIssue,
   tasksOf,
 } from "./kanban.js"
 import { type ProjectView, projectView, stateOf, taskView } from "./kanban-rows.js"
+import { addSprintInTransaction, setTaskSprintInTransaction, sprintsOf } from "./kanban-sprints.js"
 import { decideDelivery, type GithubDelivery, repoOf } from "./sync-github.js"
 
 // The board reads the GitHub events of the log and applies them. The delivery id is the idempotency key:
@@ -267,6 +270,11 @@ export const KanbanLive: Layer.Layer<Kanban, never, SqlClient | Beacon> = Layer.
         return { project, applied, skipped }
       })
 
+    const listSprints = (project: string) => sprintsOf(sql, project)
+    const addSprint = (input: NewSprint) => sql.withTransaction(addSprintInTransaction(sql, beacon, input))
+    const setTaskSprint = (input: SetTaskSprintInput) =>
+      sql.withTransaction(setTaskSprintInTransaction(sql, beacon, input))
+
     const shape: KanbanShape = {
       listProjects,
       addProject,
@@ -274,6 +282,9 @@ export const KanbanLive: Layer.Layer<Kanban, never, SqlClient | Beacon> = Layer.
       move,
       retry: (project, taskId, actor) => retry(project, taskId, actor),
       sync,
+      listSprints,
+      addSprint,
+      setTaskSprint,
     }
     return shape
   }),

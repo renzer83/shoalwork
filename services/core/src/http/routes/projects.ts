@@ -5,6 +5,8 @@ import { Effect, Exit, Schema, Scope, Stream } from "effect"
 import type { Hono } from "hono"
 import { type SSEStreamingApi, streamSSE } from "hono/streaming"
 import { boardHtml } from "../board-ui.js"
+import { registerMetricRoutes } from "./project-metrics.js"
+import { registerSprintRoutes } from "./project-sprints.js"
 import { failureResponse, type RouteResponse, type RunEffect, sendResponse } from "./respond.js"
 
 // Who the events name when a board move comes through the API.
@@ -35,6 +37,35 @@ const MoveBody = Schema.Struct({
   to: ProjectTaskState,
   reason: Schema.optionalKey(Schema.String),
 })
+
+// Body of PATCH /projects/:slug/tasks/:taskId: exactly one action per call. `pause` is a move to `blocked`.
+const TaskPatch = Schema.Union([
+  Schema.Struct({ move: MoveBody }),
+  Schema.Struct({ retry: Schema.Literal(true) }),
+  Schema.Struct({ pause: Schema.Literal(true) }),
+  Schema.Struct({ sprintId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))) }),
+])
+
+const patchTask = (slug: string, taskId: string, raw: unknown) =>
+  Effect.gen(function* () {
+    const patch = yield* Schema.decodeUnknownEffect(TaskPatch)(raw)
+    const kanban = yield* Kanban
+    const task =
+      "move" in patch
+        ? yield* kanban.move({
+            project: slug,
+            taskId,
+            to: patch.move.to,
+            reason: patch.move.reason,
+            actor: ACTOR,
+          })
+        : "retry" in patch
+          ? yield* kanban.retry(slug, taskId, ACTOR)
+          : "pause" in patch
+            ? yield* kanban.move({ project: slug, taskId, to: "blocked", reason: "paused", actor: ACTOR })
+            : yield* kanban.setTaskSprint({ project: slug, taskId, sprintId: patch.sprintId, actor: ACTOR })
+    return { status: 200, body: { task } } satisfies RouteResponse
+  }).pipe(Effect.catch(failureResponse))
 
 const listProjects = Effect.gen(function* () {
   const projects = yield* (yield* Kanban).listProjects()
@@ -164,6 +195,12 @@ export const registerProjectRoutes = (app: Hono, runEffect: RunEffect): void => 
   app.post("/projects/:slug/tasks/:taskId/retry", async (c) =>
     sendResponse(c, await runEffect(retryTask(c.req.param("slug"), c.req.param("taskId")))),
   )
+  app.patch("/projects/:slug/tasks/:taskId", async (c) => {
+    const raw: unknown = await c.req.json().catch(() => null)
+    return sendResponse(c, await runEffect(patchTask(c.req.param("slug"), c.req.param("taskId"), raw)))
+  })
+  registerSprintRoutes(app, runEffect)
+  registerMetricRoutes(app, runEffect)
   app.get("/projects/:slug/board", (c) => c.html(boardHtml))
   app.get("/projects/:slug/live", (c) => {
     const after = parseCursor(c.req.header("last-event-id"))

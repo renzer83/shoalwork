@@ -65,6 +65,8 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "step.verified",
   "review.decided",
   "project_task.state_changed",
+  "project_task.sprint_changed",
+  "sprint.created",
   "secret.accessed",
   "executor.quota_adjusted",
   "notion.page_created",
@@ -231,6 +233,15 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     removed: [],
   },
   "project_task.state_changed": { project: "faturium", taskId: "ptask_1", from: "backlog", to: "ready" },
+  "project_task.sprint_changed": { project: "faturium", taskId: "ptask_1", from: null, to: "sprint_1" },
+  "sprint.created": {
+    project: "faturium",
+    sprintId: "sprint_1",
+    name: "Sprint 1",
+    startsAt: ISO,
+    endsAt: "2026-11-02T12:00:00.000Z",
+    goal: "ship the board",
+  },
   "secret.accessed": { botId: BOT, key: "TELEGRAM_BOT_TOKEN" },
   "executor.quota_adjusted": {
     executor: "claude-code",
@@ -311,6 +322,8 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "step.verified": "final",
   "review.decided": "decision",
   "project_task.state_changed": "to",
+  "project_task.sprint_changed": "to",
+  "sprint.created": "sprintId",
   "secret.accessed": "key",
   "executor.quota_adjusted": "executor",
   "notion.page_created": "pageId",
@@ -338,8 +351,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 49 types", () => {
-    expect(EVENT_TYPES).toHaveLength(49)
+  it("EventType is exactly the 51 types", () => {
+    expect(EVENT_TYPES).toHaveLength(51)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

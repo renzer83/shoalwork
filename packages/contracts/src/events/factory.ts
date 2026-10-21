@@ -24,3 +24,23 @@ export const ProjectTaskStateChangedPayload = Schema.Struct({
   reason: Schema.optional(Schema.String),
 })
 export type ProjectTaskStateChangedPayload = typeof ProjectTaskStateChangedPayload.Type
+
+// A sprint of a project is created (T-115): a named time box, dates as ISO-8601 instants.
+export const SprintCreatedPayload = Schema.Struct({
+  project: Schema.String,
+  sprintId: Schema.String,
+  name: Schema.String,
+  startsAt: Schema.String,
+  endsAt: Schema.String,
+  goal: Schema.String,
+})
+export type SprintCreatedPayload = typeof SprintCreatedPayload.Type
+
+// A task moves into or out of a sprint (`null` = no sprint). Not a state change: the task keeps its version.
+export const ProjectTaskSprintChangedPayload = Schema.Struct({
+  project: Schema.String,
+  taskId: Schema.String,
+  from: Schema.NullOr(Schema.String),
+  to: Schema.NullOr(Schema.String),
+})
+export type ProjectTaskSprintChangedPayload = typeof ProjectTaskSprintChangedPayload.Type

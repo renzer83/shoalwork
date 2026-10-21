@@ -28,8 +28,19 @@ export const TaskRow = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   version: Schema.Int,
   updated_at: Schema.NullOr(Schema.String),
+  sprint_id: Schema.NullOr(Schema.String),
 })
 export type TaskRow = typeof TaskRow.Type
+
+export const SprintRow = Schema.Struct({
+  id: Schema.String,
+  project: Schema.String,
+  name: Schema.String,
+  starts_at: Schema.String,
+  ends_at: Schema.String,
+  goal: Schema.String,
+})
+export type SprintRow = typeof SprintRow.Type
 
 export const stateOf = (raw: string): ProjectTaskState => (Schema.is(ProjectTaskState)(raw) ? raw : "backlog")
 
@@ -58,6 +69,16 @@ export interface ProjectTaskView {
   readonly manualInterventions: number
   readonly version: number
   readonly updatedAt: string | null
+  readonly sprintId: string | null
+}
+
+export interface SprintView {
+  readonly id: string
+  readonly project: string
+  readonly name: string
+  readonly startsAt: string
+  readonly endsAt: string
+  readonly goal: string
 }
 
 const decodeCommands = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)))
@@ -92,4 +113,14 @@ export const taskView = (row: TaskRow): ProjectTaskView => ({
   manualInterventions: row.manual_interventions,
   version: row.version,
   updatedAt: row.updated_at,
+  sprintId: row.sprint_id,
+})
+
+export const sprintView = (row: SprintRow): SprintView => ({
+  id: row.id,
+  project: row.project,
+  name: row.name,
+  startsAt: row.starts_at,
+  endsAt: row.ends_at,
+  goal: row.goal,
 })

@@ -12,8 +12,8 @@ export const NAV_ENTRIES: ReadonlyArray<NavEntry> = [
   { key: "bots", href: "/bots", label: "Bots", ready: true },
   { key: "health", href: "/health", label: "Saúde", ready: true },
   { key: "setup", href: "/setup", label: "Configurar", ready: true },
-  { key: "projects", href: "/projects", label: "Projetos", ready: false },
-  { key: "pods", href: "/pods", label: "Times", ready: false },
+  { key: "projects", href: "/projects", label: "Projetos", ready: true },
+  { key: "pods", href: "/pods", label: "Times", ready: true },
 ]
 
 export const visibleNavEntries = (entries: ReadonlyArray<NavEntry> = NAV_ENTRIES): ReadonlyArray<NavEntry> =>

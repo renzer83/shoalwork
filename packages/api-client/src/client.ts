@@ -1,6 +1,7 @@
 import { type EventType, type NewBot, SchemaViolation, TaskSpec } from "@shoalwork/contracts"
 import { Effect, Schema, Struct } from "effect"
 import { HttpError } from "./errors.js"
+import { metricsApi, projectsApi } from "./projects-client.js"
 import {
   ApprovalList,
   ApprovalResolved,
@@ -12,7 +13,6 @@ import {
   MemoryForgotten,
   MemoryHits,
   MemoryItemOne,
-  ProjectList,
   TaskCreated,
   TaskView,
   TideList,
@@ -261,9 +261,9 @@ export class ApiClient {
     forget: (id: string) => this.del(`/memory/${encodeURIComponent(id)}`, MemoryForgotten),
   }
 
-  readonly projects = {
-    list: () => this.get("/projects", ProjectList),
-  }
+  readonly projects = projectsApi(this)
+
+  readonly metrics = metricsApi(this)
 
   readonly tides = {
     list: (bot?: string) => this.get(withQuery("/tides", { bot }), TideList),

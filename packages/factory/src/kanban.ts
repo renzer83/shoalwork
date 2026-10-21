@@ -14,6 +14,7 @@ import {
   ProjectRow,
   type ProjectTaskView,
   type ProjectView,
+  type SprintView,
   stateOf,
   TaskRow,
   taskView,
@@ -58,6 +59,24 @@ export interface MoveInput {
   readonly actor: string
 }
 
+// A new sprint of a project: dates are ISO-8601 instants, the goal may be empty.
+export interface NewSprint {
+  readonly project: string
+  readonly name: string
+  readonly startsAt: string
+  readonly endsAt: string
+  readonly goal: string
+  readonly actor: string
+}
+
+// The sprint of a task: a sprint id, or null to take the task out of its sprint.
+export interface SetTaskSprintInput {
+  readonly project: string
+  readonly taskId: string
+  readonly sprintId: string | null
+  readonly actor: string
+}
+
 export interface SyncReport {
   readonly project: string
   readonly applied: number
@@ -79,6 +98,13 @@ export interface KanbanShape {
   readonly sync: (
     project: string,
   ) => Effect.Effect<SyncReport, NotFound | Conflict | SchemaViolation | SqlError>
+  readonly listSprints: (project: string) => Effect.Effect<ReadonlyArray<SprintView>, SqlError>
+  readonly addSprint: (
+    input: NewSprint,
+  ) => Effect.Effect<SprintView, NotFound | Conflict | SchemaViolation | SqlError>
+  readonly setTaskSprint: (
+    input: SetTaskSprintInput,
+  ) => Effect.Effect<ProjectTaskView, NotFound | Conflict | SchemaViolation | SqlError>
 }
 
 export class Kanban extends Context.Service<Kanban, KanbanShape>()("@shoalwork/Kanban") {}
@@ -104,7 +130,7 @@ export const projectBySlug = (sql: SqlClient, slug: string) =>
 export const tasksOf = (sql: SqlClient, project: string) =>
   Effect.gen(function* () {
     const rows = yield* sql`SELECT id, project, title, issue_number, pr_number, state, retries,
-      manual_interventions, branch, version, updated_at FROM project_tasks
+      manual_interventions, branch, version, updated_at, sprint_id FROM project_tasks
       WHERE project = ${project} ORDER BY created_at, id`
     return yield* decodeTasks(rows)
   })
@@ -112,7 +138,7 @@ export const tasksOf = (sql: SqlClient, project: string) =>
 export const taskById = (sql: SqlClient, project: string, taskId: string) =>
   Effect.gen(function* () {
     const rows = yield* sql`SELECT id, project, title, issue_number, pr_number, state, retries,
-      manual_interventions, branch, version, updated_at FROM project_tasks
+      manual_interventions, branch, version, updated_at, sprint_id FROM project_tasks
       WHERE project = ${project} AND id = ${taskId} ORDER BY CASE source WHEN 'board' THEN 0 ELSE 1 END, source LIMIT 1`
     const [row] = yield* decodeTasks(rows)
     return row
@@ -121,7 +147,7 @@ export const taskById = (sql: SqlClient, project: string, taskId: string) =>
 export const taskByIssue = (sql: SqlClient, project: string, issueNumber: number) =>
   Effect.gen(function* () {
     const rows = yield* sql`SELECT id, project, title, issue_number, pr_number, state, retries,
-      manual_interventions, branch, version, updated_at FROM project_tasks
+      manual_interventions, branch, version, updated_at, sprint_id FROM project_tasks
       WHERE project = ${project} AND issue_number = ${issueNumber} ORDER BY CASE source WHEN 'board' THEN 0 ELSE 1 END, source LIMIT 1`
     const [row] = yield* decodeTasks(rows)
     return row

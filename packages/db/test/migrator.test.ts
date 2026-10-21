@@ -48,6 +48,7 @@ describe("runMigrations", () => {
         "0028_mcp_servers.sql",
         "0029_tokenizer.sql",
         "0030_summaries.sql",
+        "0031_sprints.sql",
       ])
     }).pipe(Effect.provide(withRawTempDb())),
   )

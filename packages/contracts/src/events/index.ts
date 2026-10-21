@@ -16,7 +16,12 @@ import {
   ExecutorStartedPayload,
   UsageRecordedPayload,
 } from "./executor.js"
-import { ProjectTaskState, ProjectTaskStateChangedPayload } from "./factory.js"
+import {
+  ProjectTaskSprintChangedPayload,
+  ProjectTaskState,
+  ProjectTaskStateChangedPayload,
+  SprintCreatedPayload,
+} from "./factory.js"
 import {
   GithubCheckSuitePayload,
   GithubInstallationPayload,
@@ -88,6 +93,8 @@ export const EventType = Schema.Literals([
   "step.verified",
   "review.decided",
   "project_task.state_changed",
+  "project_task.sprint_changed",
+  "sprint.created",
   "secret.accessed",
   "executor.quota_adjusted",
   "notion.page_created",
@@ -142,6 +149,8 @@ export const EventPayloads = {
   "step.verified": StepVerifiedPayload,
   "review.decided": ReviewDecidedPayload,
   "project_task.state_changed": ProjectTaskStateChangedPayload,
+  "project_task.sprint_changed": ProjectTaskSprintChangedPayload,
+  "sprint.created": SprintCreatedPayload,
   "secret.accessed": SecretAccessedPayload,
   "executor.quota_adjusted": ExecutorQuotaAdjustedPayload,
   "notion.page_created": NotionPagePayload,
@@ -206,6 +215,8 @@ export {
   GithubPullRequestPayload,
   GithubPushPayload,
   GithubWorkflowRunPayload,
+  ProjectTaskSprintChangedPayload,
   ProjectTaskState,
   ProjectTaskStateChangedPayload,
+  SprintCreatedPayload,
 }
