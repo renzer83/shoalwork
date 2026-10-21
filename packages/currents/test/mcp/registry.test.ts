@@ -10,6 +10,7 @@ import {
   layerWith,
   McpRegistry,
   makeBot,
+  STDIO_TEST_TIMEOUT_MS,
   secretsFake,
   stdioServer,
 } from "./support.js"
@@ -92,29 +93,35 @@ describe("McpRegistry CRUD", () => {
 })
 
 describe("McpRegistry over a stdio server", () => {
-  it.live("test connects and lists the tools of the fake server", () =>
-    Effect.gen(function* () {
-      const registry = yield* McpRegistry
-      const server = yield* registry.upsert(stdioServer("fake"))
-      const { tools } = yield* registry.test(server.id)
-      expect(tools.map((tool) => tool.name).sort()).toEqual(["echo", "fail", "secret_len"])
-      expect(tools.find((tool) => tool.name === "echo")?.description).toBe("Echoes the text.")
-    }).pipe(Effect.provide(Live)),
+  it.live(
+    "test connects and lists the tools of the fake server",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* McpRegistry
+        const server = yield* registry.upsert(stdioServer("fake"))
+        const { tools } = yield* registry.test(server.id)
+        expect(tools.map((tool) => tool.name).sort()).toEqual(["echo", "fail", "secret_len"])
+        expect(tools.find((tool) => tool.name === "echo")?.description).toBe("Echoes the text.")
+      }).pipe(Effect.provide(Live)),
+    STDIO_TEST_TIMEOUT_MS,
   )
 
-  it.live("call runs an allowed tool and records the call without its arguments", () =>
-    Effect.gen(function* () {
-      const registry = yield* McpRegistry
-      const botId = yield* makeBot
-      yield* registry.upsert(stdioServer("fake"))
-      yield* registry.allow(botId, "fake", ["echo"])
-      const result = yield* registry.call(botId, "fake", "echo", { text: "hello-argument" })
-      expect(textOf(result)).toBe("echo:hello-argument")
-      const events = yield* eventsOf(yield* SqlClient, "mcp.called")
-      expect(events).toHaveLength(1)
-      expect(events[0]).toMatchObject({ botId, server: "fake", tool: "echo", decision: "allow", ok: true })
-      expect(JSON.stringify(events)).not.toContain("hello-argument")
-    }).pipe(Effect.provide(Live)),
+  it.live(
+    "call runs an allowed tool and records the call without its arguments",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* McpRegistry
+        const botId = yield* makeBot
+        yield* registry.upsert(stdioServer("fake"))
+        yield* registry.allow(botId, "fake", ["echo"])
+        const result = yield* registry.call(botId, "fake", "echo", { text: "hello-argument" })
+        expect(textOf(result)).toBe("echo:hello-argument")
+        const events = yield* eventsOf(yield* SqlClient, "mcp.called")
+        expect(events).toHaveLength(1)
+        expect(events[0]).toMatchObject({ botId, server: "fake", tool: "echo", decision: "allow", ok: true })
+        expect(JSON.stringify(events)).not.toContain("hello-argument")
+      }).pipe(Effect.provide(Live)),
+    STDIO_TEST_TIMEOUT_MS,
   )
 
   it.live("call is denied when the policy does not allow it, and the server is never reached", () => {
@@ -147,35 +154,42 @@ describe("McpRegistry over a stdio server", () => {
     }).pipe(Effect.provide(layerWith({ secretsOf: secrets, gate: gate.gate })))
   })
 
-  it.live("policyChecked skips the second evaluation but still enforces the Bot's tool list", () => {
-    const gate = gateSaying("deny")
-    return Effect.gen(function* () {
-      const registry = yield* McpRegistry
-      const botId = yield* makeBot
-      yield* registry.upsert(stdioServer("fake"))
-      yield* registry.allow(botId, "fake", ["echo"])
-      const ok = yield* registry.call(botId, "fake", "echo", { text: "a" }, { policyChecked: true })
-      expect(textOf(ok)).toBe("echo:a")
-      const refused = yield* Effect.flip(registry.call(botId, "fake", "fail", {}, { policyChecked: true }))
-      expect(refused._tag).toBe("PolicyDenied")
-      expect(gate.asked).toEqual([])
-    }).pipe(Effect.provide(layerWith({ secretsOf: secrets, gate: gate.gate })))
-  })
+  it.live(
+    "policyChecked skips the second evaluation but still enforces the Bot's tool list",
+    () => {
+      const gate = gateSaying("deny")
+      return Effect.gen(function* () {
+        const registry = yield* McpRegistry
+        const botId = yield* makeBot
+        yield* registry.upsert(stdioServer("fake"))
+        yield* registry.allow(botId, "fake", ["echo"])
+        const ok = yield* registry.call(botId, "fake", "echo", { text: "a" }, { policyChecked: true })
+        expect(textOf(ok)).toBe("echo:a")
+        const refused = yield* Effect.flip(registry.call(botId, "fake", "fail", {}, { policyChecked: true }))
+        expect(refused._tag).toBe("PolicyDenied")
+        expect(gate.asked).toEqual([])
+      }).pipe(Effect.provide(layerWith({ secretsOf: secrets, gate: gate.gate })))
+    },
+    STDIO_TEST_TIMEOUT_MS,
+  )
 
-  it.live("injects the Vault key as an env var of the server; a tool error is a result with ok false", () =>
-    Effect.gen(function* () {
-      const registry = yield* McpRegistry
-      const botId = yield* makeBot
-      yield* registry.upsert(stdioServer("fake", ["FAKE_SECRET"]))
-      yield* registry.allow(botId, "fake", "*")
-      const length = yield* registry.call(botId, "fake", "secret_len", {})
-      expect(textOf(length)).toBe(String(FAKE_SECRET_VALUE.length))
-      const failing = yield* registry.call(botId, "fake", "fail", {})
-      expect(failing).toMatchObject({ isError: true })
-      const events = yield* eventsOf(yield* SqlClient, "mcp.called")
-      expect(okFlags(events)).toEqual([true, false])
-      expect(JSON.stringify(events)).not.toContain(FAKE_SECRET_VALUE)
-    }).pipe(Effect.provide(Live)),
+  it.live(
+    "injects the Vault key as an env var of the server; a tool error is a result with ok false",
+    () =>
+      Effect.gen(function* () {
+        const registry = yield* McpRegistry
+        const botId = yield* makeBot
+        yield* registry.upsert(stdioServer("fake", ["FAKE_SECRET"]))
+        yield* registry.allow(botId, "fake", "*")
+        const length = yield* registry.call(botId, "fake", "secret_len", {})
+        expect(textOf(length)).toBe(String(FAKE_SECRET_VALUE.length))
+        const failing = yield* registry.call(botId, "fake", "fail", {})
+        expect(failing).toMatchObject({ isError: true })
+        const events = yield* eventsOf(yield* SqlClient, "mcp.called")
+        expect(okFlags(events)).toEqual([true, false])
+        expect(JSON.stringify(events)).not.toContain(FAKE_SECRET_VALUE)
+      }).pipe(Effect.provide(Live)),
+    STDIO_TEST_TIMEOUT_MS,
   )
 
   it.live("a missing Vault key is a secret error that names no value", () =>

@@ -50,6 +50,8 @@ const ServerList = Schema.Struct({ servers: Schema.Array(Schema.Struct({ id: Sch
 const ToolList = Schema.Struct({ tools: Schema.Array(Schema.Struct({ name: Schema.String })) })
 
 const fake = { name: "fake", transport: "stdio", command: process.execPath, args: [FAKE_SERVER], envKeys: [] }
+// Spawning the fake server is a real process start: a few seconds on a cold CI runner, over the 5 s vitest default.
+const SPAWN_TIMEOUT_MS = 30_000
 
 describe("MCP registry routes", () => {
   it("require the API token", async () => {
@@ -66,26 +68,30 @@ describe("MCP registry routes", () => {
     expect((await post("/mcp-servers", { name: "bad name", transport: "stdio" })).status).toBe(400)
   })
 
-  it("tests a server by listing its tools, and answers 502 when the process cannot start", async () => {
-    const listed = Schema.decodeUnknownSync(ServerList)(
-      await (await app.request("/mcp-servers", { headers: AUTH })).json(),
-    )
-    const id = listed.servers[0]?.id ?? ""
-    const tested = await post(`/mcp-servers/${id}/test`, {})
-    expect(tested.status).toBe(200)
-    const body = Schema.decodeUnknownSync(ToolList)(await tested.json())
-    expect(body.tools.map((tool) => tool.name).sort()).toEqual(["echo", "fail", "secret_len"])
+  it(
+    "tests a server by listing its tools, and answers 502 when the process cannot start",
+    async () => {
+      const listed = Schema.decodeUnknownSync(ServerList)(
+        await (await app.request("/mcp-servers", { headers: AUTH })).json(),
+      )
+      const id = listed.servers[0]?.id ?? ""
+      const tested = await post(`/mcp-servers/${id}/test`, {})
+      expect(tested.status).toBe(200)
+      const body = Schema.decodeUnknownSync(ToolList)(await tested.json())
+      expect(body.tools.map((tool) => tool.name).sort()).toEqual(["echo", "fail", "secret_len"])
 
-    await post("/mcp-servers", { ...fake, name: "broken", command: "/nonexistent/binary", args: [] })
-    const broken = await post("/mcp-servers/broken/test", {})
-    expect(broken.status).toBe(502)
-    expect(await broken.json()).toMatchObject({
-      error: "mcp server failed",
-      server: "broken",
-      reason: "connect",
-    })
-    expect((await post("/mcp-servers/unknown/test", {})).status).toBe(404)
-  })
+      await post("/mcp-servers", { ...fake, name: "broken", command: "/nonexistent/binary", args: [] })
+      const broken = await post("/mcp-servers/broken/test", {})
+      expect(broken.status).toBe(502)
+      expect(await broken.json()).toMatchObject({
+        error: "mcp server failed",
+        server: "broken",
+        reason: "connect",
+      })
+      expect((await post("/mcp-servers/unknown/test", {})).status).toBe(404)
+    },
+    SPAWN_TIMEOUT_MS,
+  )
 
   it("allows a server for a Bot and refuses an unknown server or a malformed Bot id", async () => {
     const stored = await runtime.runPromise(

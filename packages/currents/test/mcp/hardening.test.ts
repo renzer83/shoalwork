@@ -11,7 +11,16 @@ import {
   makeMcpRegistry,
   NewMcpServer,
 } from "../../src/mcp/index.js"
-import { eventsOf, gateSaying, layerWith, McpRegistry, makeBot, secretsFake, stdioServer } from "./support.js"
+import {
+  eventsOf,
+  gateSaying,
+  layerWith,
+  McpRegistry,
+  makeBot,
+  STDIO_TEST_TIMEOUT_MS,
+  secretsFake,
+  stdioServer,
+} from "./support.js"
 
 const secrets = secretsFake({})
 const Live = layerWith({ secretsOf: secrets, gate: gateSaying("allow").gate })
@@ -98,21 +107,24 @@ describe("call hardening", () => {
     }).pipe(Effect.provide(Live)),
   )
 
-  it.live("an event that cannot be appended is logged and the call still returns its result", () =>
-    Effect.gen(function* () {
-      const sql = yield* SqlClient
-      const real = yield* Beacon
-      const registry = makeMcpRegistry(
-        sql,
-        { ...real, append: () => Effect.die(new Error("beacon down")) },
-        { secretsOf: secrets, gate: gateSaying("allow").gate },
-      )
-      const botId = yield* makeBot
-      yield* registry.upsert(stdioServer("fake"))
-      yield* registry.allow(botId, "fake", "*")
-      const result = yield* registry.call(botId, "fake", "echo", { text: "still-here" })
-      expect(JSON.stringify(result)).toContain("echo:still-here")
-    }).pipe(Effect.provide(Live)),
+  it.live(
+    "an event that cannot be appended is logged and the call still returns its result",
+    () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient
+        const real = yield* Beacon
+        const registry = makeMcpRegistry(
+          sql,
+          { ...real, append: () => Effect.die(new Error("beacon down")) },
+          { secretsOf: secrets, gate: gateSaying("allow").gate },
+        )
+        const botId = yield* makeBot
+        yield* registry.upsert(stdioServer("fake"))
+        yield* registry.allow(botId, "fake", "*")
+        const result = yield* registry.call(botId, "fake", "echo", { text: "still-here" })
+        expect(JSON.stringify(result)).toContain("echo:still-here")
+      }).pipe(Effect.provide(Live)),
+    STDIO_TEST_TIMEOUT_MS,
   )
 })
 

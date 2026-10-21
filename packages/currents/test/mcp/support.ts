@@ -13,6 +13,9 @@ export const FAKE_SERVER = fileURLToPath(new URL("./fake-server.mjs", import.met
 // Built at runtime so the secret scanner sees no literal.
 export const FAKE_SECRET_VALUE = ["fake", "vault", "value", "123"].join("-")
 
+// Spawning the fake server is a real process start: a few seconds on a cold CI runner, over the 5 s vitest default.
+export const STDIO_TEST_TIMEOUT_MS = 30_000
+
 export const stdioServer = (name: string, envKeys: ReadonlyArray<string> = []) => ({
   name,
   transport: "stdio" as const,
