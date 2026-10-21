@@ -15,6 +15,8 @@ export const BLOCK_ORDER = [
 export type BlockName = (typeof BLOCK_ORDER)[number]
 
 export interface BlockItem {
+  // Identifies the item to the caller (a code chunk id): assemble reports which ids made it into the text.
+  readonly id?: string | undefined
   readonly text: string
   readonly score?: number | undefined
 }
@@ -37,6 +39,8 @@ export interface Assembled {
   readonly text: string
   readonly used: number
   readonly dropped: ReadonlyArray<{ readonly block: string; readonly items: number }>
+  // The ids of the items that carry one and are in `text`.
+  readonly kept: ReadonlySet<string>
 }
 
 // Which block gives up room first when the whole is over the budget and sizes tie, and the order in which fixed
@@ -142,5 +146,8 @@ export const assemble = (
     const items = own.reduce((sum, s) => sum + s.dropped + (s.block.omitted ?? 0), 0)
     return items > 0 ? [{ block: name, items }] : []
   })
-  return { text, used: estimateTokens(text), dropped }
+  const kept = new Set(
+    states.flatMap((state) => state.items.flatMap((item) => (item.id === undefined ? [] : [item.id]))),
+  )
+  return { text, used: estimateTokens(text), dropped, kept }
 }

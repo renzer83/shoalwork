@@ -28,3 +28,14 @@ levels:
   full:
     memory: 8
     code: 6
+
+# Ranking of code candidates (6 signals). The weights are in [0, 1] and add up to 1; the weekly rank-tune stores its own
+# in the database and those win over these.
+rank:
+  weights:
+    bm25: 0.25
+    cosine: 0.25
+    recency: 0.10
+    imports: 0.15
+    success: 0.15
+    proximity: 0.10

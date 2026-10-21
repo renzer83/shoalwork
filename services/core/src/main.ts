@@ -20,6 +20,7 @@ import {
   startFactoryFiber,
   startIndexFiber,
   startLeadWorker,
+  startRankTuneFiber,
   startTidesFiber,
   startWatchdogFiber,
 } from "./runtime.js"
@@ -172,6 +173,10 @@ const serveUntilInterrupted = (
     const indexing = startIndexFiber({ pollMs: 1000, heartbeatMs: 30_000 })
     yield* Effect.addFinalizer(() =>
       Fiber.interrupt(indexing).pipe(Effect.andThen(Effect.logInfo("shutdown: indexing stopped"))),
+    )
+    const rankTune = startRankTuneFiber({ pollMs: TIDES_POLL_MS })
+    yield* Effect.addFinalizer(() =>
+      Fiber.interrupt(rankTune).pipe(Effect.andThen(Effect.logInfo("shutdown: rank-tune stopped"))),
     )
     // Without TELEGRAM_BOT_TOKEN this fiber ends at once (the Telegram layer is a no-op).
     const conversation = startConversationFiber()

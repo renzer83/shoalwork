@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
 import { ConfigError } from "@shoalwork/contracts"
+import { DEFAULT_WEIGHTS, RankWeights } from "@shoalwork/reef"
 import { Effect, Schema } from "effect"
 import { parse } from "yaml"
 
@@ -24,6 +25,8 @@ const Shape = Schema.Struct({
     top3: Schema.Struct({ memory: Count, code: Count }),
     full: Schema.Struct({ memory: Count, code: Count }),
   }),
+  // Ranking of code candidates (T-096): six weights that add up to 1. Weights stored by the weekly tuning win over these.
+  rank: Schema.optionalKey(Schema.Struct({ weights: RankWeights })),
 })
 
 // The blocks that are not cut in the normal course (see assemble): their caps together have to fit the smallest tier,
@@ -62,6 +65,7 @@ export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
     top3: { memory: 3, code: 3 },
     full: { memory: 8, code: 6 },
   },
+  rank: { weights: DEFAULT_WEIGHTS },
 }
 
 const describeCause = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause))
@@ -76,9 +80,11 @@ export const decodeContextConfigText = (
       try: (): unknown => parse(text),
       catch: (cause) => new ConfigError({ key: source, message: `invalid YAML: ${describeCause(cause)}` }),
     })
-    return yield* Schema.decodeUnknownEffect(ContextConfig)(raw).pipe(
+    const decoded = yield* Schema.decodeUnknownEffect(ContextConfig)(raw).pipe(
       Effect.mapError((error) => new ConfigError({ key: source, message: error.message })),
     )
+    // A file written before the ranking existed gets the default weights.
+    return decoded.rank === undefined ? { ...decoded, rank: { weights: DEFAULT_WEIGHTS } } : decoded
   })
 
 // The path comes from the composition root; this package never reads process.env.

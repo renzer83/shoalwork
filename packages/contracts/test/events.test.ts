@@ -51,6 +51,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "bot.proposed",
   "bot.proposal_resolved",
   "context.assembled",
+  "context.weights_updated",
   "agent.msg",
   "github.issues",
   "github.pull_request",
@@ -152,6 +153,14 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     used: 5200,
     budget: 23000,
     dropped: [{ block: "code", items: 2 }],
+    ranked: [{ id: "chk_1", used: true, signals: [1, 0.5, 0.25, 0, 0.75, 0.6] }],
+  },
+  "context.weights_updated": {
+    before: { bm25: 0.25, cosine: 0.25, recency: 0.1, imports: 0.15, success: 0.15, proximity: 0.1 },
+    after: { bm25: 0.2, cosine: 0.25, recency: 0.1, imports: 0.2, success: 0.15, proximity: 0.1 },
+    samples: 120,
+    objectiveBefore: -2.5,
+    objectiveAfter: 1.25,
   },
   "agent.msg": { kind: "result", from: BOT, taskId: TASK, verdict: fixture("verdict.json"), artifacts: [] },
   "github.issues": {
@@ -238,6 +247,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "bot.proposed": "requestedBy",
   "bot.proposal_resolved": "status",
   "context.assembled": "level",
+  "context.weights_updated": "samples",
   "agent.msg": "kind",
   "github.issues": "number",
   "github.pull_request": "number",
@@ -270,8 +280,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 40 types", () => {
-    expect(EVENT_TYPES).toHaveLength(40)
+  it("EventType is exactly the 41 types", () => {
+    expect(EVENT_TYPES).toHaveLength(41)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

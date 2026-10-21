@@ -13,8 +13,11 @@ export {
 export { CodeChunkKey, CodeChunkRow, SymbolList } from "./rows.js"
 export {
   CODE_SEARCH_DEFAULT_K,
+  type CodeCandidate,
   type CodeSearchHit,
+  RANK_CANDIDATES,
   SYMBOL_BOOST,
+  searchCodeCandidates,
   searchCodeChunks,
 } from "./search.js"
 export { findSymbols, type Lang, langOf } from "./symbols.js"

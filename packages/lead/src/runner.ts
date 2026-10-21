@@ -3,7 +3,7 @@ import type { BotRegistryShape } from "@shoalwork/bots"
 import { type TaskId, type TaskSpec, type Verdict, ZERO_USAGE } from "@shoalwork/contracts"
 import type { GhClientShape } from "@shoalwork/currents"
 import type { ExecutorContext, ExecutorRegistry, TierConfig } from "@shoalwork/executors"
-import type { IndexerShape } from "@shoalwork/reef"
+import type { IndexerShape, RankerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Cause, Clock, Effect, Exit, Option, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
@@ -14,11 +14,13 @@ import { makeConsume } from "./consume.js"
 import type { ContextConfig } from "./context/config.js"
 import type { BriefingMemory } from "./context/inject.js"
 import type { ControlShape, RunHandle } from "./control.js"
+import { editedFiles } from "./edited-files.js"
 import { waitedSince } from "./inline-wait.js"
 import { makeLifecycle } from "./lifecycle.js"
 import type { McpTokensShape } from "./mcp-tokens.js"
 import { permissionOf, recordStarted } from "./permissions.js"
 import type { PodNotesShape } from "./pod-notes.js"
+import { makeRankFeedback } from "./rank-feedback.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
@@ -91,6 +93,8 @@ export interface RunnerDeps {
   readonly tokens: McpTokensShape
   // The repo index, when the composition root has one (the briefing reads code from it).
   readonly indexer?: IndexerShape | undefined
+  // Ranker of the index candidates (T-096), when the composition root has one.
+  readonly ranker?: RankerShape | undefined
   // Approvals (T-054), when the composition root has them: a run that needs one is recorded and later resumed.
   readonly approvals?: ApprovalGate | undefined
   // Messages from Pod topics waiting for the next round of a task (pod-notes.ts).
@@ -101,7 +105,8 @@ export interface RunnerDeps {
 // is spent once for all rounds. Each run records one executor.finished; only the last one settles the task.
 export const makeRunner = (deps: RunnerDeps) => {
   const { sql, beacon, tasks, bots, tank, executors, tiers, config, control } = deps
-  const lifecycle = makeLifecycle({ beacon, tasks, bots })
+  const onAttempt = deps.ranker === undefined ? undefined : makeRankFeedback({ beacon, sql })
+  const lifecycle = makeLifecycle({ beacon, tasks, bots, onAttempt })
   const { taskEvent, raiseError, abandon, cancelUnstarted } = lifecycle
   const approval = makeApprovalRunner({ approvals: deps.approvals, sql, beacon, tank, bots, lifecycle })
   const { record } = approval
@@ -116,6 +121,7 @@ export const makeRunner = (deps: RunnerDeps) => {
     memory: deps.memory,
     raiseError,
     indexer: deps.indexer,
+    ranker: deps.ranker,
     context: config.context,
     recordAssembled: (spec, payload) => taskEvent(spec.id, "context.assembled", payload),
   })
@@ -161,12 +167,14 @@ export const makeRunner = (deps: RunnerDeps) => {
           // The process groups of this run are written down so that a restart can kill the ones it leaves behind.
           yield* Effect.forkScoped(watchProcesses(sql, spec.id, ctx.cwd))
           yield* recordStarted(taskEvent, { spec, bot, stepId, executor: executor.id, model, task, context })
+          const activeFiles = carry === undefined ? undefined : yield* editedFiles(beacon, spec.id, ctx.cwd)
           const delivered = yield* setup.inject(ctx, {
             spec,
             bot,
             task: withBridgeMode(task, context),
             executor: executor.id,
             carry,
+            activeFiles,
           })
           yield* consume(
             spec,

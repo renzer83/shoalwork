@@ -2,6 +2,7 @@ import { Beacon, BeaconLive, BeaconTest } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import {
   type Bot,
+  type ConfigError,
   type ExecutorEvent,
   ExecutorId,
   type ExecutorTask,
@@ -15,6 +16,7 @@ import {
 import { GhClientTest } from "@shoalwork/currents"
 import { withTempDb } from "@shoalwork/db/testing"
 import { type Executor, ExecutorRegistry, makeRegistry, TierConfig } from "@shoalwork/executors"
+import type { Indexer, Ranker } from "@shoalwork/reef"
 import { type ExecResult, Tank, type TankContext, type TankShape } from "@shoalwork/tank"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
@@ -261,6 +263,8 @@ export const leadLayer = (opts: {
   readonly wrapStore?: (real: TaskStoreShape) => TaskStoreShape
   // Wraps the real token store, e.g. to make issuing fail.
   readonly wrapTokens?: (real: McpTokensShape) => McpTokensShape
+  // Optional services the Lead picks up when present (Indexer, Ranker); they may need the database.
+  readonly services?: Layer.Layer<Indexer | Ranker, ConfigError, SqlClient>
 }) => {
   const tank = opts.tank ?? makeFakeTank()
   const registry =
@@ -283,7 +287,7 @@ export const leadLayer = (opts: {
   // gh is faked: a code task's PR is the default one of GhClientTest (sandbox PR #1).
   const gh = GhClientTest()
   const deps = Layer.provideMerge(
-    Layer.mergeAll(Layer.succeed(Tank, tank.shape), gh.layer, registry, tokens),
+    Layer.mergeAll(Layer.succeed(Tank, tank.shape), gh.layer, registry, tokens, opts.services ?? Layer.empty),
     store,
   )
   return Layer.provideMerge(LeadLive(opts.tiers ?? TEST_TIERS, opts.config), deps)

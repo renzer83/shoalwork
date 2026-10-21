@@ -76,7 +76,7 @@ export const memoryBlock = (hits: ReadonlyArray<Scored>, config: ContextConfig):
 const codeItem = (hit: CodeSearchHit): BlockItem => {
   const body = redactSecrets(clipLines(hit.content, CODE_ITEM_MAX))
   const where = `${oneLine(hit.path, 200)}:${hit.startLine}-${hit.endLine}`
-  return { text: `- ${where} (${oneLine(hit.lang, 20)})\n${fenced(body)}`, score: hit.score }
+  return { id: hit.id, text: `- ${where} (${oneLine(hit.lang, 20)})\n${fenced(body)}`, score: hit.score }
 }
 
 export const codeBlock = (hits: ReadonlyArray<CodeSearchHit>, config: ContextConfig): Block => ({

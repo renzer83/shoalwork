@@ -28,6 +28,7 @@ import { AgentMsgPayload, MessageInboundPayload, MessageOutboundPayload } from "
 import {
   BudgetExceededPayload,
   ContextAssembledPayload,
+  ContextWeightsUpdatedPayload,
   ControlChangedPayload,
   ErrorRaisedPayload,
   WatchdogRecoveredPayload,
@@ -68,6 +69,7 @@ export const EventType = Schema.Literals([
   "bot.proposed",
   "bot.proposal_resolved",
   "context.assembled",
+  "context.weights_updated",
   "agent.msg",
   "github.issues",
   "github.pull_request",
@@ -113,6 +115,7 @@ export const EventPayloads = {
   "bot.proposed": BotProposedPayload,
   "bot.proposal_resolved": BotProposalResolvedPayload,
   "context.assembled": ContextAssembledPayload,
+  "context.weights_updated": ContextWeightsUpdatedPayload,
   "agent.msg": AgentMsgPayload,
   "github.issues": GithubIssuesPayload,
   "github.pull_request": GithubPullRequestPayload,

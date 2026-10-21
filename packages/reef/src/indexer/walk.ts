@@ -24,6 +24,7 @@ export interface WalkedFile {
 const messageOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause))
 
 const GIT_TIMEOUT_MS = 60_000
+const GIT_LOG_TIMEOUT_MS = 15_000
 // A parent shell may export these; they would make `git -C <dir>` read some other repository.
 const GIT_ENV_STRIPPED = new Set(["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"])
 
@@ -120,6 +121,28 @@ export const originUrlOf = (repoDir: string): Effect.Effect<string | undefined> 
     Effect.map((stdout) => {
       const url = stdout.trim()
       return url === "" ? undefined : url
+    }),
+    Effect.catch(() => Effect.succeed(undefined)),
+  )
+
+// ISO-8601 UTC instant of the last commit that touched `path` (`git log -1 --format=%ct -- <path>`), or undefined when
+// git has none (untracked file) or cannot say. The path is literal (`[id].ts` is not a glob). Argv only, bounded in time.
+export const lastCommitIso = (repoDir: string, path: string): Effect.Effect<string | undefined> =>
+  Effect.tryPromise({
+    try: (signal) =>
+      new Promise<string>((resolve, reject) => {
+        execFile(
+          "git",
+          ["--literal-pathspecs", "-C", repoDir, "log", "-1", "--format=%ct", "--", path],
+          { encoding: "utf8", maxBuffer: 1024, timeout: GIT_LOG_TIMEOUT_MS, signal, env: gitEnv() },
+          (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
+        )
+      }),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.map((stdout) => {
+      const seconds = Number.parseInt(stdout.trim(), 10)
+      return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : undefined
     }),
     Effect.catch(() => Effect.succeed(undefined)),
   )

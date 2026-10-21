@@ -1,4 +1,5 @@
 export { renderTemplate, tideMatches } from "./render.js"
 export { nextRunAfter } from "./scheduler.js"
+export { makeSystemTide, type SystemTideOptions, startSystemTide } from "./system.js"
 export { makeTides, TideSkipped, Tides, TidesLive, type TidesOptions, type TidesShape } from "./tides.js"
 export { handleEvent, isBotOwnEvent, isFeedback, optsInToBotOwn } from "./triggers.js"

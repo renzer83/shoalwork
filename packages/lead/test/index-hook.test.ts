@@ -84,6 +84,7 @@ const fakeIndexer = (opts: { readonly fail?: boolean; readonly gate?: Deferred.D
             return report
           }),
         search: () => Effect.succeed([]),
+        candidates: () => Effect.succeed([]),
       }
     }),
   )

@@ -14,13 +14,14 @@ import {
   MCP_TOKEN_ENV,
   type McpAttachment,
 } from "@shoalwork/executors"
-import { type IndexerShape, isIgnoredPath, looksLikeSecret } from "@shoalwork/reef"
+import { type IndexerShape, isIgnoredPath, looksLikeSecret, type RankerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
 import { Effect, Exit, Redacted, Ref, Schema } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
-import type { BriefingCode, BriefingMemory } from "./context/briefing.js"
+import type { BriefingMemory } from "./context/briefing.js"
 import type { ContextConfig } from "./context/config.js"
-import { type InjectDeps, makeInjector } from "./context/inject.js"
+import type { InjectDeps } from "./context/inject.js"
+import { makeInjectorFor } from "./context/injector-for.js"
 import { PermissionBridgeUnavailable } from "./executor-task.js"
 import { type IssuedMcpToken, MAX_MCP_TOKEN_TTL_MS, type McpTokensShape } from "./mcp-tokens.js"
 import { clearProcesses } from "./run-processes.js"
@@ -65,6 +66,8 @@ export interface RunSetupDeps {
   readonly raiseError: RaiseError
   // The repo index for the briefing's code block (T-041). Without it the briefing carries no code.
   readonly indexer?: IndexerShape | undefined
+  // Six-signal ranking of the index's candidates (T-096); needs the indexer.
+  readonly ranker?: RankerShape | undefined
   // config/context.yaml, read once by the composition root.
   readonly context?: ContextConfig | undefined
   readonly recordAssembled?: InjectDeps["recordAssembled"]
@@ -95,15 +98,12 @@ const hasIndexedChunks = (sql: SqlClient, repo: string) =>
 // and the release of all of it. Problems here are reported and the run goes on without the part that failed (MCP,
 // briefing); they never fail it.
 export const makeRunSetup = (deps: RunSetupDeps) => {
-  // The briefing's code block searches the repo the task names, under the same key the MCP scope uses.
-  const indexer = deps.indexer
-  const code: BriefingCode | undefined =
-    indexer === undefined ? undefined : (repo, query, k) => indexer.search(repoKeyOf(repo.url), query, k)
-  const inject = makeInjector({
+  const inject = makeInjectorFor({
     tank: deps.tank,
     memory: deps.memory,
-    code,
-    config: deps.context,
+    indexer: deps.indexer,
+    ranker: deps.ranker,
+    context: deps.context,
     recordAssembled: deps.recordAssembled,
     raiseError: deps.raiseError,
   })

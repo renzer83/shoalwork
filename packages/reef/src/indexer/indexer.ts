@@ -9,9 +9,26 @@ import { Embedder, EmbedderTest, type EmbedError } from "../embedder.js"
 import { EmbeddingShapeError, encodeEmbedding } from "../rows.js"
 import { type CodeChunk, chunkFile, MAX_CHUNK_CHARS } from "./chunk.js"
 import { CodeChunkKey, CodeChunkRow } from "./rows.js"
-import { CODE_SEARCH_DEFAULT_K, type CodeSearchHit, searchCodeChunks } from "./search.js"
+import {
+  CODE_SEARCH_DEFAULT_K,
+  type CodeCandidate,
+  type CodeSearchHit,
+  RANK_CANDIDATES,
+  searchCodeCandidates,
+  searchCodeChunks,
+} from "./search.js"
 import { langOf } from "./symbols.js"
-import { listRepoFiles, originUrlOf, readIndexable, resolveRepoRoot, type WalkError } from "./walk.js"
+import {
+  lastCommitIso,
+  listRepoFiles,
+  originUrlOf,
+  readIndexable,
+  resolveRepoRoot,
+  type WalkError,
+} from "./walk.js"
+
+// last_commit_at of a file git has no commit for: the file was asked about, there is nothing to cache.
+const NO_COMMIT = ""
 
 export interface IndexOptions {
   // Stable repo id stored with each chunk. Wins over repoUrl and the origin remote.
@@ -58,6 +75,12 @@ export interface IndexerShape {
     query: string,
     k?: number,
   ) => Effect.Effect<ReadonlyArray<CodeSearchHit>, SearchError>
+  // Raw candidates for the ranker (T-096): the best `limit` hits with the signals the search measured.
+  readonly candidates: (
+    repo: string,
+    query: string,
+    limit?: number,
+  ) => Effect.Effect<ReadonlyArray<CodeCandidate>, SearchError>
 }
 
 export class Indexer extends Context.Service<Indexer, IndexerShape>()("@shoalwork/Indexer") {}
@@ -109,6 +132,7 @@ export const IndexerLive = (
         repo: string,
         path: string,
         chunks: ReadonlyArray<CodeChunk>,
+        commitAt: string,
       ): Effect.Effect<
         { readonly embedded: number; readonly reused: number },
         EmbedError | EmbeddingShapeError | SqlError | Schema.SchemaError
@@ -153,9 +177,9 @@ export const IndexerLive = (
               yield* deletePath(repo, path)
               for (const entry of prepared) {
                 const embedding = entry.embedding ?? fresh.get(entry.id) ?? null
-                yield* sql`INSERT INTO code_chunks (id, repo, path, start_line, end_line, sha256, lang, symbols, content, embedding, indexed_at)
+                yield* sql`INSERT INTO code_chunks (id, repo, path, start_line, end_line, sha256, lang, symbols, content, embedding, indexed_at, last_commit_at)
                   VALUES (${entry.id}, ${repo}, ${path}, ${entry.chunk.startLine}, ${entry.chunk.endLine}, ${entry.chunk.sha256},
-                    ${lang}, ${JSON.stringify(entry.chunk.symbols)}, ${entry.chunk.content}, ${embedding}, ${indexedAt})`
+                    ${lang}, ${JSON.stringify(entry.chunk.symbols)}, ${entry.chunk.content}, ${embedding}, ${indexedAt}, ${commitAt})`
               }
             }),
           )
@@ -171,7 +195,8 @@ export const IndexerLive = (
           const repo = yield* repoIdOf(repoDir, indexOptions)
           const paths = yield* listRepoFiles(root)
           const storedRows = yield* decodeKeys(
-            yield* sql`SELECT id, path, start_line, end_line, sha256, embedding IS NOT NULL AS has_embedding
+            yield* sql`SELECT id, path, start_line, end_line, sha256, embedding IS NOT NULL AS has_embedding,
+              last_commit_at IS NOT NULL AS has_commit_time
               FROM code_chunks WHERE repo = ${repo} ORDER BY path, start_line`,
           )
           const byPath = new Map<string, Array<CodeChunkKey>>()
@@ -195,10 +220,18 @@ export const IndexerLive = (
             files++
             seen.add(path)
             const chunks = chunkFile(langOf(path), content)
-            if (sameLayout(byPath.get(path) ?? [], chunks)) {
+            const stored = byPath.get(path) ?? []
+            if (sameLayout(stored, chunks)) {
+              // Unchanged file: only fill the commit time of rows indexed before it was recorded. A file git has no
+              // commit for is marked "asked" with '' (no recency) so that git is not asked again until it changes.
+              if (stored.some((row) => row.has_commit_time === 0)) {
+                const at = (yield* lastCommitIso(root, path)) ?? NO_COMMIT
+                yield* sql`UPDATE code_chunks SET last_commit_at = ${at} WHERE repo = ${repo} AND path = ${path}`
+              }
               continue
             }
-            const result = yield* rewriteFile(repo, path, chunks).pipe(
+            const commitAt = (yield* lastCommitIso(root, path)) ?? NO_COMMIT
+            const result = yield* rewriteFile(repo, path, chunks, commitAt).pipe(
               Effect.catchTags({
                 EmbedError: (error) => Effect.succeed(`embed ${error.reason}: ${error.detail}`),
                 EmbeddingShapeError: (error) => Effect.succeed(`embedding shape: ${error.detail}`),
@@ -240,7 +273,13 @@ export const IndexerLive = (
           Effect.provideService(Embedder, embedder),
         )
 
-      return { index, search }
+      const candidates = (repo: string, query: string, limit: number = RANK_CANDIDATES) =>
+        searchCodeCandidates(repo, query, limit, { maxSemanticChunks: options.maxSemanticChunks }).pipe(
+          Effect.provideService(SqlClient, sql),
+          Effect.provideService(Embedder, embedder),
+        )
+
+      return { index, search, candidates }
     }),
   )
 

@@ -29,10 +29,12 @@ export interface LifecycleDeps {
   readonly beacon: BeaconShape
   readonly tasks: TaskStoreShape
   readonly bots: BotRegistryShape
+  // Runs just before a run's executor.finished is written (the ranking feedback of T-096). It must not fail.
+  readonly onAttempt?: ((spec: TaskSpec, verdict: Verdict) => Effect.Effect<void>) | undefined
 }
 
 // Event and state recording for one task: everything the runner writes about a task other than the executor stream.
-export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
+export const makeLifecycle = ({ beacon, tasks, bots, onAttempt }: LifecycleDeps) => {
   const taskEvent = (taskId: TaskId, type: EventType, payload: unknown) =>
     emit(beacon, {
       streamId: streamIds.task(taskId),
@@ -168,13 +170,16 @@ export const makeLifecycle = ({ beacon, tasks, bots }: LifecycleDeps) => {
 
   // One executor.finished per run, whatever the run ended with.
   const recordAttempt = (spec: TaskSpec, verdict: Verdict, durationMs: number, progress: Progress) =>
-    taskEvent(spec.id, "executor.finished", {
-      taskId: spec.id,
-      ...(progress.stepId === undefined ? {} : { stepId: progress.stepId }),
-      botId: spec.botId,
-      verdict,
-      ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
-      durationMs,
+    Effect.gen(function* () {
+      if (onAttempt !== undefined) yield* onAttempt(spec, verdict)
+      yield* taskEvent(spec.id, "executor.finished", {
+        taskId: spec.id,
+        ...(progress.stepId === undefined ? {} : { stepId: progress.stepId }),
+        botId: spec.botId,
+        verdict,
+        ...(verdict.sessionId === undefined ? {} : { sessionId: verdict.sessionId }),
+        durationMs,
+      })
     })
 
   // recorded = false means the round could not be written down (database trouble).

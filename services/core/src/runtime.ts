@@ -1,6 +1,6 @@
 import { accessSync, constants } from "node:fs"
 import { join } from "node:path"
-import { BeaconLive } from "@shoalwork/beacon"
+import { type Beacon, BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
 import { ExecutorId } from "@shoalwork/contracts"
 import { GhClientLive } from "@shoalwork/currents"
@@ -38,11 +38,12 @@ import {
   TaskStoreLive,
 } from "@shoalwork/lead"
 import { makeApprovalsLive, makePolicyLive, UNRESOLVED_POLICY } from "@shoalwork/policy"
-import { EmbedderOllamaLive, IndexerLive, ReefLive } from "@shoalwork/reef"
+import { EmbedderOllamaLive, IndexerLive, Ranker, RankerLive, ReefLive, runRankTune } from "@shoalwork/reef"
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
-import { Tides, TidesLive } from "@shoalwork/tides"
+import { startSystemTide, Tides, TidesLive } from "@shoalwork/tides"
 import { Effect, Layer, ManagedRuntime, Schema } from "effect"
+import { SqlClient } from "effect/sql/SqlClient"
 import { acpExecutors } from "./acp-executors.js"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
@@ -169,6 +170,11 @@ export const AppLayer = Layer.unwrap(
     // Code search for the MCP routes (T-167) and the briefing's code block (T-041). Same embedder and database as the Reef.
     // Below the Lead, so the Lead finds the Indexer in its context.
     const withIndexer = IndexerLive().pipe(Layer.provideMerge(withReef))
+    // The six-signal ranker of the briefing's code block (T-096): the weights of config/context.yaml, overridden by the
+    // ones the weekly rank-tune stores. Same place as the Indexer, so the Lead finds it in its context.
+    const withRanker = RankerLive({ weights: contextConfig.rank?.weights }).pipe(
+      Layer.provideMerge(withIndexer),
+    )
     // The reef MCP server of a Bot run: its entrypoint and the origin of this core (T-168).
     // With PERMISSION_BRIDGE on, a claude-code run also gets the bridge server (inline: the CLI waits for the person).
     const mcp = {
@@ -184,7 +190,7 @@ export const AppLayer = Layer.unwrap(
       tiers,
       { botBudgetWindowMs, mcp, context: contextConfig },
       { maxAgentMsgsPerTask: config.maxAgentMsgsPerTask },
-    ).pipe(Layer.provideMerge(withIndexer), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
+    ).pipe(Layer.provideMerge(withRanker), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
     // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
     // The delivery cycle (T-061) sits above the Lead, the Policy and the Approvals it asks, and the GitHub client.
@@ -282,6 +288,29 @@ export const startIndexFiber = (options: IndexHookOptions) =>
   appRuntime.runFork(
     Effect.gen(function* () {
       yield* startIndexHook(options)
+      return yield* Effect.never
+    }).pipe(Effect.scoped),
+  )
+
+// Sundays at 04:00 UTC.
+export const RANK_TUNE_CRON = "0 4 * * 0"
+
+// The weekly rank-tune (T-096) in its own fiber, as a system tide: tunes the ranking weights on the last briefings and
+// records context.weights_updated. The config weights (or the stored ones) are where the tuning starts from.
+export const startRankTuneFiber = (options: { readonly pollMs: number }) =>
+  appRuntime.runFork(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient
+      const ranker = yield* Ranker
+      const context = yield* Effect.context<SqlClient | Beacon>()
+      yield* startSystemTide(sql, {
+        name: "rank-tune",
+        expr: RANK_TUNE_CRON,
+        pollMs: options.pollMs,
+        run: Effect.flatMap(ranker.weights(), (weights) => runRankTune(weights)).pipe(
+          Effect.provide(context),
+        ),
+      })
       return yield* Effect.never
     }).pipe(Effect.scoped),
   )
