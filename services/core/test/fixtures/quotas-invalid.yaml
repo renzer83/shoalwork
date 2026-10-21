@@ -1,0 +1,4 @@
+executors:
+  codex:
+    windows:
+      - { kind: "1h", soft_tokens: 10 }

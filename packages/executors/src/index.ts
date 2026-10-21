@@ -40,6 +40,23 @@ export {
 } from "./openai-compat/index.js"
 export { type OpencodeProvider, opencodeConfigFor, writeOpencodeConfig } from "./opencode/config.js"
 export { makeOpencode, OPENCODE_ID, type OpencodeOptions } from "./opencode/index.js"
+export {
+  decodeQuotaConfig,
+  loadQuotaConfig,
+  QuotaConfig,
+  QuotaWindow,
+  WINDOW_MS,
+  WindowKind,
+} from "./quota/config.js"
+export { LIMIT_TEXT, limitSignalOf, observeQuota } from "./quota/signals.js"
+export {
+  type ExhaustedSource,
+  makeQuotaStore,
+  QuotaStore,
+  QuotaStoreLive,
+  type QuotaStoreShape,
+  quotaStatusOf,
+} from "./quota/store.js"
 export { makeQuotaCounter, type QuotaCounter } from "./quota.js"
 export {
   decodeTierConfig,

@@ -16,6 +16,7 @@ import { registerBotRoutes } from "./routes/bots.js"
 import { registerControlRoutes } from "./routes/control.js"
 import { registerCostRoutes } from "./routes/costs.js"
 import { registerEventRoutes } from "./routes/events.js"
+import { registerExecutorRoutes } from "./routes/executors.js"
 import { registerLiveRoutes } from "./routes/live.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
 import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
@@ -177,6 +178,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerControlRoutes(app, deps.runEffect)
   registerCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
+  registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
   if (deps.runMemory !== undefined) {

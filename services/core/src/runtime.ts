@@ -1,20 +1,14 @@
-import { accessSync, constants } from "node:fs"
-import { join } from "node:path"
 import { type Beacon, BeaconLive } from "@shoalwork/beacon"
 import { BotRegistry, BotRegistryLive } from "@shoalwork/bots"
-import { ExecutorId } from "@shoalwork/contracts"
 import { GhClientLive } from "@shoalwork/currents"
 import { makeDbLayer } from "@shoalwork/db"
 import {
   CHAT_ID,
   ChatSessionsLive,
   defaultChatMapTier,
-  defaultMapTier,
-  type Executor,
-  makeClaudeCode,
-  makeClaudeCodeChat,
-  makeCodexExecutor,
-  makeRegistry,
+  loadQuotaConfig,
+  type QuotaConfig,
+  QuotaStoreLive,
   type TierConfig,
   tierMappingFrom,
 } from "@shoalwork/executors"
@@ -42,12 +36,12 @@ import { EmbedderOllamaLive, IndexerLive, Ranker, RankerLive, ReefLive, runRankT
 import { loadReflexConfig, makeReflexLive } from "@shoalwork/reflex"
 import { TankLocalLive, TankServerLive } from "@shoalwork/tank"
 import { startSystemTide, Tides, TidesLive } from "@shoalwork/tides"
-import { Effect, Layer, ManagedRuntime, Schema } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
-import { acpExecutors } from "./acp-executors.js"
 import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot, REPO_ROOT } from "./config.js"
-import { codexModelsFrom, loadModelTiers } from "./model-tiers.js"
+import { executorsFor, RegistryFromConfig } from "./executors-compose.js"
+import { loadModelTiers } from "./model-tiers.js"
 import {
   PodInboundSlot,
   PodInboundSlotLive,
@@ -56,53 +50,6 @@ import {
   telegramSettings,
 } from "./telegram.js"
 import { startWatchdog, type WatchdogConfig } from "./watchdog.js"
-
-// `which` without a shell: walks PATH and checks the execute bit. A lookup failure just means "not installed".
-const isExecutable = (path: string): boolean => {
-  try {
-    accessSync(path, constants.X_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
-const findOnPath = (name: string, pathValue: string | undefined): boolean =>
-  (pathValue ?? "")
-    .split(":")
-    .filter((dir) => dir !== "")
-    .some((dir) => isExecutable(join(dir, name)))
-
-const CLAUDE_CODE_ID = Schema.decodeUnknownSync(ExecutorId)("claude-code")
-
-// Each adapter takes its model per tier from the tier table; tiers served by another executor keep the adapter's
-// built-in mapping. codex is registered only when the binary exists on this host (ADR-011: no API keys).
-const executorsFor = (config: AppConfigShape, tiers: TierConfig): ReadonlyArray<Executor> => {
-  const models = codexModelsFrom(tiers, config.codexModel)
-  const codex = findOnPath("codex", hostEnvSnapshot().PATH)
-    ? [
-        makeCodexExecutor({
-          quotaWindowSeconds: config.codexQuotaWindowSeconds,
-          quotaSoftLimitTokens: config.codexQuotaSoftLimitTokens,
-          ...(models === undefined ? {} : { models }),
-        }),
-      ]
-    : []
-  const acp = acpExecutors({
-    onPath: (bin) => findOnPath(bin, hostEnvSnapshot().PATH),
-    quotaWindowSeconds: config.codexQuotaWindowSeconds,
-    quotaSoftLimitTokens: config.codexQuotaSoftLimitTokens,
-  })
-  return [
-    makeClaudeCode({
-      mapTier: tierMappingFrom(tiers, CLAUDE_CODE_ID, defaultMapTier),
-      permissionBridge: config.permissionBridge,
-    }),
-    makeClaudeCodeChat({ mapTier: tierMappingFrom(tiers, CHAT_ID, defaultChatMapTier) }),
-    ...codex,
-    ...acp,
-  ]
-}
 
 // What a Bot created by conversation may be given: the most it can spend, the one policy and the one Tank of the host.
 const BOT_FACTORY_CEILING = { tokens: 1_000_000, seconds: 3600, usd: 10 } as const
@@ -136,10 +83,14 @@ const TankFromConfig = Layer.unwrap(
   ),
 )
 
-const DomainLive = (config: AppConfigShape, tiers: TierConfig) =>
-  Layer.mergeAll(BotRegistryLive, TankFromConfig, makeRegistry(executorsFor(config, tiers)), KanbanLive).pipe(
-    Layer.provideMerge(PersistenceLive),
-  )
+// The quota store (T-075) is shared by the executors and the quota routes, so it sits above the database.
+const DomainLive = (config: AppConfigShape, tiers: TierConfig, quotaConfig: QuotaConfig) =>
+  Layer.mergeAll(
+    BotRegistryLive,
+    TankFromConfig,
+    RegistryFromConfig(config, tiers, quotaConfig),
+    KanbanLive,
+  ).pipe(Layer.provideMerge(QuotaStoreLive(quotaConfig)), Layer.provideMerge(PersistenceLive))
 
 // The tier table and the Reflex rules are read once per boot. A broken file fails this layer, so the core does not
 // boot; the failure is a ConfigError (tiers) or a SchemaViolation (Reflex) naming the file.
@@ -148,10 +99,12 @@ export const AppLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* AppConfig
     const tiers = yield* loadModelTiers(config.modelTiersPath)
+    // Subscription quota windows (T-075): a broken file fails the boot, like the tier table.
+    const quotaConfig = yield* loadQuotaConfig(config.quotaConfigPath)
     const reflexConfig = yield* loadReflexConfig(config.reflexConfigPath)
     const telegram = yield* telegramSettings(config)
     const contextConfig = yield* loadContextConfig(config.contextConfigPath)
-    const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers)))
+    const withStore = TaskStoreLive.pipe(Layer.provideMerge(DomainLive(config, tiers, quotaConfig)))
     // Execution tokens (T-167) sit under the Lead, so the Lead can issue and revoke them for each Bot run.
     const withMcpTokens = McpTokensLive.pipe(Layer.provideMerge(withStore))
     // Approvals (T-054) sit under the Lead, which records a run that needs one and resumes it once decided.
@@ -220,7 +173,8 @@ export const AppLayer = Layer.unwrap(
       botFactory: {
         botsDir: `${REPO_ROOT}bots`,
         // The chat adapter only answers conversation turns: a Bot never runs on it.
-        executors: executorsFor(config, tiers)
+        // Only the ids are read here: the store is not needed, the registry above shares the real one.
+        executors: executorsFor({ config, tiers, quotaConfig, quota: undefined })
           .map((executor) => executor.id)
           .filter((id) => id !== CHAT_ID),
         config: { ceiling: BOT_FACTORY_CEILING, policy: "default", tank: { mode: "local", host: "mac" } },

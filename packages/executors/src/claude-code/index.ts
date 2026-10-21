@@ -11,6 +11,8 @@ import { Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
 import { type McpAttachment, mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
+import { observeQuota } from "../quota/signals.js"
+import { type QuotaStoreShape, quotaStatusOf } from "../quota/store.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
 import { buildArgs, type McpMode, type TierMapping } from "./args.js"
 import { dropApiKey } from "./env.js"
@@ -20,6 +22,8 @@ export type ClaudeCodeOptions = {
   readonly bin?: string
   readonly envOverrides?: Readonly<Record<string, string>>
   readonly id?: ExecutorId
+  // Subscription quota (T-075). Without it the adapter records nothing and reports unlimited.
+  readonly quota?: QuotaStoreShape
   // Default "none": the run ignores the account's claude.ai connectors (see McpMode in args.ts).
   readonly mcp?: McpMode
   // Model and effort per tier. Default: defaultMapTier (config/model-tiers.yaml replaces it, T-026).
@@ -122,7 +126,8 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
             )
           }),
         )
-        return events.pipe(Stream.concat(tail))
+        // Usage is recorded and limit errors mark the quota; both come after the stream is complete (tail included).
+        return events.pipe(Stream.concat(tail), Stream.tap(observeQuota(opts.quota, id)))
       }),
     )
 
@@ -130,7 +135,6 @@ export const makeClaudeCode = (opts: ClaudeCodeOptions = {}): Executor => {
     id,
     run,
     mapTier,
-    // No local counter yet: the soft limit is not decided. Reports unlimited until F5 (real quota).
-    quota: () => Effect.succeed({ executor: id, usedRatio: 0, available: true }),
+    quota: () => quotaStatusOf(opts.quota, id),
   }
 }

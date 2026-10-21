@@ -65,6 +65,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "review.decided",
   "project_task.state_changed",
   "secret.accessed",
+  "executor.quota_adjusted",
 ]
 
 // Keyed by EventType: the compiler fails if a type is missing.
@@ -224,6 +225,11 @@ const VALID: Record<EventType, Record<string, unknown>> = {
   },
   "project_task.state_changed": { project: "faturium", taskId: "ptask_1", from: "backlog", to: "ready" },
   "secret.accessed": { botId: BOT, key: "TELEGRAM_BOT_TOKEN" },
+  "executor.quota_adjusted": {
+    executor: "claude-code",
+    exhaustedUntil: "2026-10-21T15:00:00.000Z",
+    by: "api",
+  },
 }
 
 // One required field per type; removing it must reject the payload.
@@ -270,6 +276,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "review.decided": "decision",
   "project_task.state_changed": "to",
   "secret.accessed": "key",
+  "executor.quota_adjusted": "executor",
 }
 
 // Probe schemas used to read decoded-output fields without casts.
@@ -290,8 +297,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 42 types", () => {
-    expect(EVENT_TYPES).toHaveLength(42)
+  it("EventType is exactly the 43 types", () => {
+    expect(EVENT_TYPES).toHaveLength(43)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

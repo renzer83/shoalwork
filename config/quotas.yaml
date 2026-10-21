@@ -1,0 +1,12 @@
+# Subscription quota windows per executor (T-075, 02-architecture §16).
+# The CLIs do not expose the plan limits, so these soft limits are conservative on purpose. Tokens are tokensIn +
+# tokensOut (cache reads and writes are not counted). soft_usd is optional. Edit this file; no code change is needed.
+executors:
+  claude-code:
+    windows:
+      - { kind: "5h", soft_tokens: 1500000 }
+      - { kind: "7d", soft_tokens: 20000000 }
+  codex:
+    windows:
+      - { kind: "5h", soft_tokens: 1000000 }
+      - { kind: "7d", soft_tokens: 10000000 }

@@ -86,9 +86,6 @@ export const AppConfig = Config.all({
   ),
   // Only "1" turns on server mode (sudo to the Bot users); anything else is local mode.
   tankSudo: setting("TANK_SUDO", Config.String, "").pipe(Config.map((value) => value === "1")),
-  // Codex quota is a local fixed-window counter. These defaults are provisional until T-026 sets real limits.
-  codexQuotaWindowSeconds: setting("CODEX_QUOTA_WINDOW_SECONDS", Config.Int, 18000),
-  codexQuotaSoftLimitTokens: setting("CODEX_QUOTA_SOFT_LIMIT_TOKENS", Config.Int, 5000000),
   // Until T-026 the same model serves all four codex tiers; blank means codex keeps its own default.
   codexModel: setting("CODEX_MODEL", Config.String, "").pipe(
     Config.map((value) => (value.trim() === "" ? undefined : value.trim())),
@@ -149,6 +146,10 @@ export const AppConfig = Config.all({
   ),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: setting("MODEL_TIERS_PATH", Config.String, "config/model-tiers.yaml").pipe(
+    Config.map((configured) => resolveRepoPath(configured)),
+  ),
+  // Subscription quota windows and soft limits per executor (T-075): the one source of quota numbers.
+  quotaConfigPath: setting("QUOTAS_CONFIG_PATH", Config.String, "config/quotas.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),
   ),
 })

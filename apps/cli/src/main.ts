@@ -8,6 +8,7 @@ import { botCommand } from "./commands/bot.js"
 import { controlScope, controlStatus, controlStopTask } from "./commands/control.js"
 import { costsReport, renderCosts } from "./commands/costs.js"
 import { eventsList } from "./commands/events.js"
+import { executorCommand } from "./commands/executor.js"
 import { factoryCommand } from "./commands/factory.js"
 import { memoryAdd, memoryEdit, memoryForget, memoryHistory, memorySearch } from "./commands/memory.js"
 import { memoryImport } from "./commands/memory-import.js"
@@ -29,6 +30,7 @@ const USAGE = [
   "       shoalwork approve <approval id> | shoalwork deny <approval id>",
   "       shoalwork status",
   "       shoalwork events --stream <stream id> [--after <version>]",
+  "       shoalwork executor quota | shoalwork executor quota set <executor id> --exhausted-until <iso|clear>",
   "       shoalwork costs [--by task|bot|executor] [--since <iso|7d>] [--compare <iso|14d>] [--json]",
   "       shoalwork tide list [--bot <bot id or name>] | shoalwork tide add --bot <bot> --file <tide.json>",
   "       shoalwork tide enable|disable <tide id> | shoalwork tide run <tide id>",
@@ -264,6 +266,8 @@ const program = (argv: ReadonlyArray<string>): Effect.Effect<void, CliError> => 
       return events(rest)
     case "costs":
       return costs(rest)
+    case "executor":
+      return executorCommand(rest)
     case "reflex":
       return reflex(rest)
     case "memory":

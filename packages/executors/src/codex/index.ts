@@ -10,6 +10,8 @@ import { Duration, Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
 import { mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
+import { observeQuota } from "../quota/signals.js"
+import { type QuotaStoreShape, quotaStatusOf } from "../quota/store.js"
 import { makeQuotaCounter, type QuotaCounter } from "../quota.js"
 import { captureStderr, endedWithoutResult } from "../stderr.js"
 import {
@@ -25,12 +27,20 @@ import { CodexEvent, makeCodexMapper } from "./events.js"
 export const CODEX_ID = Schema.decodeUnknownSync(ExecutorId)("codex")
 
 export type CodexOptions = {
-  // Fixed window for the local quota counter; the real subscription quota is F5 work.
+  // Fixed window of the in-memory counter, used only when no `quota` store is injected (T-075 replaces it).
   readonly quotaWindowSeconds: number
   readonly quotaSoftLimitTokens: number
+  // Subscription quota store (T-075): usage is recorded and limit errors mark the executor exhausted.
+  readonly quota?: QuotaStoreShape
   // Model per tier. A missing tier uses the codex default (no -m: the model of the Bot's config.toml).
   readonly models?: CodexModels
 }
+
+// Observer of the run's events for the in-memory counter: usage only.
+const counterObserver =
+  (counter: QuotaCounter) =>
+  (event: ExecutorEvent): Effect.Effect<void> =>
+    event.kind === "usage" ? Effect.sync(() => counter.record(event.usage)) : Effect.void
 
 const spawnFailure = (cause: unknown): ExecutorSpawnError =>
   new ExecutorSpawnError({ executor: "codex", cause })
@@ -42,7 +52,7 @@ const one = (event: ExecutorEvent): Stream.Stream<ExecutorEvent> => Stream.make(
 const runCodex = (
   task: ExecutorTask,
   ctx: ExecutorContext,
-  quota: QuotaCounter,
+  observe: (event: ExecutorEvent) => Effect.Effect<void>,
   target: (tier: ExecutorTask["tier"]) => CodexTarget,
 ): Stream.Stream<ExecutorEvent, ExecutorSpawnError | ExecutorProtocolError, Tank | Scope.Scope> =>
   Stream.unwrap(
@@ -96,12 +106,11 @@ const runCodex = (
       const parse = parseNdjsonLines(CodexEvent, "codex")
       return parse(proc.stdout.pipe(Stream.mapError(spawnFailure))).pipe(
         Stream.flatMap((event) => Stream.fromIterable(mapper.push(event))),
-        Stream.tap((event) =>
-          event.kind === "usage" ? Effect.sync(() => quota.record(event.usage)) : Effect.void,
-        ),
         Stream.takeUntil(isTerminal),
         Stream.interruptWhen(deadline),
         Stream.concat(tail),
+        // After the tail so a budget or exit error is observed too; usage is observed before its terminal event.
+        Stream.tap(observe),
         // Kills the process when the run ends early (terminal event, budget cut); a no-op after a normal exit.
         Stream.ensuring(proc.kill()),
       )
@@ -109,12 +118,17 @@ const runCodex = (
   )
 
 export const makeCodexExecutor = (options: CodexOptions): Executor => {
-  const quota = makeQuotaCounter(CODEX_ID, options.quotaWindowSeconds, options.quotaSoftLimitTokens)
+  const counter = makeQuotaCounter(CODEX_ID, options.quotaWindowSeconds, options.quotaSoftLimitTokens)
   const mapTier = makeMapTier(options.models)
+  const observe =
+    options.quota === undefined ? counterObserver(counter) : observeQuota(options.quota, CODEX_ID)
   return {
     id: CODEX_ID,
     mapTier,
-    quota: () => Effect.sync(() => quota.status()),
-    run: (task, ctx) => runCodex(task, ctx, quota, mapTier),
+    quota: () =>
+      options.quota === undefined
+        ? Effect.sync(() => counter.status())
+        : quotaStatusOf(options.quota, CODEX_ID),
+    run: (task, ctx) => runCodex(task, ctx, observe, mapTier),
   }
 }

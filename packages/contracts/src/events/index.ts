@@ -35,6 +35,7 @@ import {
   WatchdogRecoveredPayload,
 } from "./ops.js"
 import { PodClosedPayload, PodOpenedPayload } from "./pod.js"
+import { ExecutorQuotaAdjustedPayload } from "./quota.js"
 import { SecretAccessedPayload } from "./secret.js"
 import { TaskPlannedPayload, TaskReceivedPayload, TaskStateChangedPayload } from "./task.js"
 import { TideFiredPayload, TideSkippedPayload } from "./tide.js"
@@ -84,6 +85,7 @@ export const EventType = Schema.Literals([
   "review.decided",
   "project_task.state_changed",
   "secret.accessed",
+  "executor.quota_adjusted",
 ])
 export type EventType = typeof EventType.Type
 
@@ -131,6 +133,7 @@ export const EventPayloads = {
   "review.decided": ReviewDecidedPayload,
   "project_task.state_changed": ProjectTaskStateChangedPayload,
   "secret.accessed": SecretAccessedPayload,
+  "executor.quota_adjusted": ExecutorQuotaAdjustedPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.
@@ -176,6 +179,8 @@ export const streamIds = {
   system: "system",
 } as const
 
+// The quota mark of an executor (T-075): the stream id the core writes it to, and its payload.
+export { ExecutorQuotaAdjustedPayload, executorStreamId } from "./quota.js"
 // The payloads of the events the board and the factory read, exported for the packages that decode them.
 export {
   GithubCheckSuitePayload,
