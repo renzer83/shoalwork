@@ -16,12 +16,14 @@
   "dependencies": {
     "@grammyjs/auto-retry": "catalog:",
     "@grammyjs/runner": "catalog:",
+    "@octokit/auth-app": "8.3.1",
     "@shoalwork/beacon": "workspace:*",
     "@shoalwork/bots": "workspace:*",
     "@shoalwork/contracts": "workspace:*",
     "@shoalwork/db": "workspace:*",
     "effect": "catalog:",
-    "grammy": "catalog:"
+    "grammy": "catalog:",
+    "octokit": "5.0.5"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

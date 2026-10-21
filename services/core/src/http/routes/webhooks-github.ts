@@ -4,6 +4,11 @@ import { streamIds } from "@shoalwork/contracts"
 import {
   claimDelivery,
   type GithubReduction,
+  type InstallationChange,
+  installationEventPayload,
+  isInstallationEvent,
+  parseInstallation,
+  recordInstallation,
   reduceGithubDelivery,
   verifyGithubSignature,
 } from "@shoalwork/currents"
@@ -87,6 +92,67 @@ const reduceOrFail = (event: string, text: string, delivery: string): Effect.Eff
     Effect.catch((error) => Effect.succeed<Reduced>({ _tag: "invalid", message: error.message })),
   )
 
+// installation and installation_repositories keep github_installations in step (T-084). Same order: the claim and the
+// row write share one transaction, so a failed write gives the claim back and the redelivery is applied.
+const handleInstallation = (
+  ctx: WebhookContext,
+  body: Uint8Array,
+  headers: WebhookHeaders,
+  delivery: string,
+): Effect.Effect<WebhookResponse, never, Beacon | SqlClient> =>
+  Effect.gen(function* () {
+    const event = headers.event ?? ""
+    const parsed = yield* parseInstallation(event, new TextDecoder().decode(body)).pipe(
+      Effect.map((change): { readonly _tag: "ok"; readonly change: InstallationChange } => ({
+        _tag: "ok",
+        change,
+      })),
+      Effect.catch((error) => Effect.succeed({ _tag: "invalid" as const, message: error.message })),
+    )
+    if (parsed._tag === "invalid") {
+      return yield* refuse(ctx, 400, "InvalidPayload", parsed.message)
+    }
+    if (parsed.change._tag === "ignored") {
+      return { status: 200, body: { ok: true, ignored: parsed.change.name } }
+    }
+    const signatureHash = createHash("sha256")
+      .update(headers.signature ?? "")
+      .digest("hex")
+    const sql = yield* SqlClient
+    const beacon = yield* Beacon
+    const change = parsed.change
+    // Claim, row and github.installation event commit together: a repeat delivery appends nothing.
+    const outcome = yield* sql
+      .withTransaction(
+        Effect.gen(function* () {
+          const fresh = yield* claimDelivery(sql, delivery, event, signatureHash, ctx.now)
+          if (!fresh) return "duplicate" as const
+          yield* recordInstallation(sql, change)
+          yield* beacon.append({
+            streamId: streamIds.system,
+            type: "github.installation",
+            payload: installationEventPayload(change, delivery),
+            actor: "system:github",
+            correlationId: delivery,
+          })
+          return "recorded" as const
+        }),
+      )
+      .pipe(
+        Effect.catch((error) =>
+          Effect.logError("installation not recorded", error._tag).pipe(Effect.as("failed" as const)),
+        ),
+      )
+    if (outcome === "failed") {
+      yield* refusal(ctx, "RecordFailed", "installation could not be recorded", delivery)
+      return { status: 500, body: { error: "installation not recorded" } }
+    }
+    if (outcome === "duplicate") {
+      return { status: 200, body: { ok: true, duplicate: true } }
+    }
+    return { status: 200, body: { ok: true, type: event } }
+  })
+
 // Order: secret, signature, headers, payload shape, one transaction for claim and event, then the answer.
 // Unsupported events answer 200 and record nothing.
 export const handleGithubWebhook = (
@@ -108,6 +174,9 @@ export const handleGithubWebhook = (
     const delivery = headers.delivery
     if (delivery === undefined || !DELIVERY_ID.test(delivery)) {
       return yield* refuse(ctx, 400, "MissingDelivery", "X-GitHub-Delivery is missing or malformed")
+    }
+    if (isInstallationEvent(headers.event)) {
+      return yield* handleInstallation(ctx, body, headers, delivery)
     }
     const reduced: Reduced = yield* reduceOrFail(headers.event, new TextDecoder().decode(body), delivery)
     if (reduced._tag === "invalid") {

@@ -58,6 +58,7 @@ const EVENT_TYPES: ReadonlyArray<EventType> = [
   "github.workflow_run",
   "github.check_suite",
   "github.push",
+  "github.installation",
   "pod.opened",
   "pod.closed",
   "step.verified",
@@ -213,6 +214,14 @@ const VALID: Record<EventType, Record<string, unknown>> = {
     botAuthored: false,
     ref: "refs/heads/main",
   },
+  "github.installation": {
+    deliveryId: "5f0c2a7e-1111-4a2b-9c3d-000000000001",
+    installationId: 42,
+    account: "renzer83",
+    action: "added",
+    added: ["renzer83/shoalwork"],
+    removed: [],
+  },
   "project_task.state_changed": { project: "faturium", taskId: "ptask_1", from: "backlog", to: "ready" },
   "secret.accessed": { botId: BOT, key: "TELEGRAM_BOT_TOKEN" },
 }
@@ -254,6 +263,7 @@ const REQUIRED_FIELD: Record<EventType, string> = {
   "github.workflow_run": "deliveryId",
   "github.check_suite": "repo",
   "github.push": "ref",
+  "github.installation": "installationId",
   "pod.opened": "podId",
   "pod.closed": "summary",
   "step.verified": "final",
@@ -280,8 +290,8 @@ const envelope = (type: string, payload: unknown): Record<string, unknown> => ({
 })
 
 describe("events", () => {
-  it("EventType is exactly the 41 types", () => {
-    expect(EVENT_TYPES).toHaveLength(41)
+  it("EventType is exactly the 42 types", () => {
+    expect(EVENT_TYPES).toHaveLength(42)
     expect(Object.keys(VALID).sort()).toEqual([...EVENT_TYPES].sort())
     for (const type of EVENT_TYPES) {
       expect(Schema.decodeUnknownSync(EventType)(type)).toBe(type)

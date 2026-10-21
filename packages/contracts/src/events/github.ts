@@ -48,3 +48,16 @@ export const GithubPushPayload = Schema.Struct({
   ...GithubCommonFields,
   ref: Schema.String,
 })
+
+// A change to a GitHub App installation (T-084), appended in the same transaction as its github_installations row.
+// Only ids, the account login and repo names: no token, no key, no delivery body. `repos` is the list an
+// installation delivery set; `added` / `removed` are the names an installation_repositories delivery changed.
+export const GithubInstallationPayload = Schema.Struct({
+  deliveryId: Schema.String,
+  installationId: Schema.Int,
+  account: Schema.String,
+  action: Schema.String,
+  repos: Schema.optional(Schema.Array(Schema.String)),
+  added: Schema.optional(Schema.Array(Schema.String)),
+  removed: Schema.optional(Schema.Array(Schema.String)),
+})

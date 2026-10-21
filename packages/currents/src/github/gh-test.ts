@@ -22,8 +22,9 @@ export const GhClientTest = (replies: GhTestReplies = {}) => {
       record("issueView", [repo, n])
       return Effect.succeed(replies.issue ?? { title: "Issue", body: "", labels: [] })
     },
-    prCreate: (ctx, o) => {
-      record("prCreate", [ctx.cwd, o])
+    prCreate: (ctx, o, auth) => {
+      // The auth is recorded only when the caller gave one, so calls without it record exactly as before.
+      record("prCreate", auth === undefined ? [ctx.cwd, o] : [ctx.cwd, o, auth])
       return Effect.succeed(
         replies.prCreate ?? { url: "https://github.com/renzer83/shoalwork-sandbox/pull/1", number: 1 },
       )

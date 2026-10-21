@@ -229,3 +229,103 @@ describe("POST /webhooks/github", () => {
     expect((await post(PR_BODY, { delivery: "../../etc" })).status).toBe(400)
   })
 })
+
+// Installation deliveries keep github_installations in step (T-084).
+const INSTALLATION_BODY = JSON.stringify({
+  action: "created",
+  installation: { id: 42, account: { login: "renzer83" } },
+  repositories: [{ full_name: "renzer83/shoalwork-sandbox" }],
+})
+const DELIVERY_2 = "5f0c2a7e-1111-4a2b-9c3d-000000000002"
+const DELIVERY_3 = "5f0c2a7e-1111-4a2b-9c3d-000000000003"
+
+describe("POST /webhooks/github installation deliveries", () => {
+  it("a signed installation.created writes the installation row and answers 200", async () => {
+    const { post, query } = harness()
+    const response = await post(INSTALLATION_BODY, { event: "installation" })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, type: "installation" })
+    const rows = await query((sql) => sql`SELECT installation_id, account, repos FROM github_installations`)
+    expect(rows).toEqual([
+      { installation_id: 42, account: "renzer83", repos: '["renzer83/shoalwork-sandbox"]' },
+    ])
+  })
+
+  it("a repeated delivery is acknowledged as a duplicate and changes nothing", async () => {
+    const { post, query } = harness()
+    await post(INSTALLATION_BODY, { event: "installation" })
+    const repeat = await post(
+      JSON.stringify({ action: "deleted", installation: { id: 42, account: { login: "renzer83" } } }),
+      { event: "installation", delivery: DELIVERY },
+    )
+    expect(await repeat.json()).toEqual({ ok: true, duplicate: true })
+    const rows = await query((sql) => sql<{ readonly repos: string }>`SELECT repos FROM github_installations`)
+    expect(rows).toHaveLength(1)
+  })
+
+  it("installation_repositories patches the stored repos", async () => {
+    const { post, query } = harness()
+    await post(INSTALLATION_BODY, { event: "installation" })
+    const added = JSON.stringify({
+      action: "added",
+      installation: { id: 42, account: { login: "renzer83" } },
+      repositories_added: [{ full_name: "renzer83/second" }],
+    })
+    expect((await post(added, { event: "installation_repositories", delivery: DELIVERY_2 })).status).toBe(200)
+    const rows = await query((sql) => sql`SELECT installation_id, account, repos FROM github_installations`)
+    expect(rows).toEqual([
+      {
+        installation_id: 42,
+        account: "renzer83",
+        repos: '["renzer83/second","renzer83/shoalwork-sandbox"]',
+      },
+    ])
+  })
+
+  it("an installation body that is not the expected shape is refused with 400 and writes nothing", async () => {
+    const { post, query } = harness()
+    const response = await post('{"action":"created"}', { event: "installation", delivery: DELIVERY_3 })
+    expect(response.status).toBe(400)
+    const rows = await query((sql) => sql<{ readonly repos: string }>`SELECT repos FROM github_installations`)
+    expect(rows).toEqual([])
+  })
+})
+
+describe("github.installation event (T-084 R12)", () => {
+  const installationEvents = (events: ReadonlyArray<{ readonly type: string; readonly payload: unknown }>) =>
+    events.filter((event) => event.type === "github.installation")
+
+  it("a signed installation.created appends one github.installation event alongside its row", async () => {
+    const { post, events, query } = harness()
+    await post(INSTALLATION_BODY, { event: "installation" })
+    const recorded = installationEvents(await events())
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.payload).toEqual({
+      deliveryId: DELIVERY,
+      installationId: 42,
+      account: "renzer83",
+      action: "created",
+      repos: ["renzer83/shoalwork-sandbox"],
+    })
+    const rows = await query((sql) => sql`SELECT installation_id FROM github_installations`)
+    expect(rows).toHaveLength(1)
+  })
+
+  it("a redelivery of the same delivery appends no second event and changes no row", async () => {
+    const { post, events, query } = harness()
+    await post(INSTALLATION_BODY, { event: "installation" })
+    const repeat = await post(INSTALLATION_BODY, { event: "installation" })
+    expect(await repeat.json()).toEqual({ ok: true, duplicate: true })
+    expect(installationEvents(await events())).toHaveLength(1)
+    expect(await query((sql) => sql`SELECT installation_id FROM github_installations`)).toHaveLength(1)
+  })
+
+  it("when the event cannot be appended, neither the row nor the claim is kept", async () => {
+    const { post, events, query } = harness({ failAppend: true })
+    const response = await post(INSTALLATION_BODY, { event: "installation" })
+    expect(response.status).toBe(500)
+    expect(installationEvents(await events())).toEqual([])
+    expect(await query((sql) => sql`SELECT installation_id FROM github_installations`)).toEqual([])
+    expect(await query((sql) => sql`SELECT delivery_id FROM webhook_deliveries`)).toEqual([])
+  })
+})

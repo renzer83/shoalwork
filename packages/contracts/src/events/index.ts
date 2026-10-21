@@ -18,6 +18,7 @@ import {
 import { ProjectTaskState, ProjectTaskStateChangedPayload } from "./factory.js"
 import {
   GithubCheckSuitePayload,
+  GithubInstallationPayload,
   GithubIssuesPayload,
   GithubPullRequestPayload,
   GithubPushPayload,
@@ -76,6 +77,7 @@ export const EventType = Schema.Literals([
   "github.workflow_run",
   "github.check_suite",
   "github.push",
+  "github.installation",
   "pod.opened",
   "pod.closed",
   "step.verified",
@@ -122,6 +124,7 @@ export const EventPayloads = {
   "github.workflow_run": GithubWorkflowRunPayload,
   "github.check_suite": GithubCheckSuitePayload,
   "github.push": GithubPushPayload,
+  "github.installation": GithubInstallationPayload,
   "pod.opened": PodOpenedPayload,
   "pod.closed": PodClosedPayload,
   "step.verified": StepVerifiedPayload,
@@ -176,6 +179,7 @@ export const streamIds = {
 // The payloads of the events the board and the factory read, exported for the packages that decode them.
 export {
   GithubCheckSuitePayload,
+  GithubInstallationPayload,
   GithubIssuesPayload,
   GithubPullRequestPayload,
   GithubPushPayload,

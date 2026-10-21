@@ -1,4 +1,5 @@
 import { Context, Duration, Effect, Layer, Schema } from "effect"
+import { authedEnv, type GhAuth, type InstallationTokens } from "./gh-auth.js"
 import {
   type GhContext,
   type GhEnv,
@@ -16,29 +17,35 @@ const CALL_TIMEOUT_MS = 120_000
 // Watch mode polls the checks this often until they are decided or the caller's deadline passes.
 const CHECKS_POLL = Duration.seconds(10)
 
+// Every method takes an optional trailing `auth` (default: the Bot's own gh login, as before T-084).
 export interface GhClientShape {
   readonly issueView: (
     repo: string,
     n: number,
+    auth?: GhAuth,
   ) => Effect.Effect<{ title: string; body: string; labels: ReadonlyArray<string> }, GhError>
   readonly prCreate: (
     ctx: GhContext,
     o: { title: string; body: string; base: string; draft?: boolean },
+    auth?: GhAuth,
   ) => Effect.Effect<{ url: string; number: number }, GhError>
   // Decided from the checks' own JSON (bucket and state), not from the exit code. Without valid JSON it is a GhError.
   readonly prChecks: (
     repo: string,
     n: number,
     o: { watch: boolean; timeoutMs: number },
+    auth?: GhAuth,
   ) => Effect.Effect<"pass" | "fail" | "pending", GhError>
   readonly prMerge: (
     repo: string,
     n: number,
     o: { squash: true; auto: boolean; deleteBranch: boolean },
+    auth?: GhAuth,
   ) => Effect.Effect<void, GhError>
   readonly prView: (
     repo: string,
     n: number,
+    auth?: GhAuth,
   ) => Effect.Effect<{ state: string; mergeable: string; headRef: string }, GhError>
 }
 
@@ -195,13 +202,20 @@ const requireSuccess =
       ? Effect.succeed(out)
       : Effect.fail(new GhError({ op, message: exitMessage(op, out) }))
 
-export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
-  const hostCall = (op: string, argv: ReadonlyArray<string>) =>
-    run(op, argv, hostEnv, undefined, CALL_TIMEOUT_MS).pipe(Effect.flatMap(requireSuccess(op)))
+export const makeGhClient = (run: GhRun, hostEnv: GhEnv, tokens?: InstallationTokens): GhClientShape => {
+  // The same process runner, with GH_TOKEN added to the env of a call that acts as an installation.
+  const runAs =
+    (auth: GhAuth | undefined): GhRun =>
+    (op, argv, env, cwd, timeoutMs) =>
+      authedEnv(op, env, auth, tokens).pipe(
+        Effect.flatMap((callEnv) => run(op, argv, callEnv, cwd, timeoutMs)),
+      )
+  const hostCall = (op: string, argv: ReadonlyArray<string>, auth?: GhAuth) =>
+    runAs(auth)(op, argv, hostEnv, undefined, CALL_TIMEOUT_MS).pipe(Effect.flatMap(requireSuccess(op)))
 
-  const checksOnce = (repo: string, n: number) => {
+  const checksOnce = (repo: string, n: number, auth?: GhAuth) => {
     const op = "gh pr checks"
-    return run(op, prChecksArgv(repo, n), hostEnv, undefined, CALL_TIMEOUT_MS).pipe(
+    return runAs(auth)(op, prChecksArgv(repo, n), hostEnv, undefined, CALL_TIMEOUT_MS).pipe(
       Effect.flatMap((out) => {
         if (out.timedOut) return Effect.fail(new GhError({ op, message: exitMessage(op, out) }))
         return decodeChecks(out.stdout).pipe(
@@ -219,8 +233,8 @@ export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
   }
 
   return {
-    issueView: (repo, n) =>
-      hostCall("gh issue view", issueViewArgv(repo, n)).pipe(
+    issueView: (repo, n, auth) =>
+      hostCall("gh issue view", issueViewArgv(repo, n), auth).pipe(
         Effect.flatMap((out) =>
           decodeIssue(out.stdout).pipe(
             Effect.mapError(
@@ -234,8 +248,8 @@ export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
           labels: issue.labels.map((label) => label.name),
         })),
       ),
-    prCreate: (ctx, o) =>
-      run("gh pr create", prCreateArgv(o), ctx.env, ctx.cwd, CALL_TIMEOUT_MS).pipe(
+    prCreate: (ctx, o, auth) =>
+      runAs(auth)("gh pr create", prCreateArgv(o), ctx.env, ctx.cwd, CALL_TIMEOUT_MS).pipe(
         Effect.flatMap(requireSuccess("gh pr create")),
         Effect.flatMap((out) => {
           const pr = pullRequestFromOutput(out.stdout)
@@ -244,10 +258,10 @@ export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
             : Effect.succeed(pr)
         }),
       ),
-    prChecks: (repo, n, o) => {
+    prChecks: (repo, n, o, auth) => {
       const deadline = Date.now() + o.timeoutMs
       const poll = (): Effect.Effect<"pass" | "fail" | "pending", GhError> =>
-        checksOnce(repo, n).pipe(
+        checksOnce(repo, n, auth).pipe(
           Effect.flatMap((verdict) =>
             verdict !== "pending" || !o.watch || Date.now() >= deadline
               ? Effect.succeed(verdict)
@@ -256,9 +270,9 @@ export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
         )
       return poll()
     },
-    prMerge: (repo, n, o) => hostCall("gh pr merge", prMergeArgv(repo, n, o)).pipe(Effect.asVoid),
-    prView: (repo, n) =>
-      hostCall("gh pr view", prViewArgv(repo, n)).pipe(
+    prMerge: (repo, n, o, auth) => hostCall("gh pr merge", prMergeArgv(repo, n, o), auth).pipe(Effect.asVoid),
+    prView: (repo, n, auth) =>
+      hostCall("gh pr view", prViewArgv(repo, n), auth).pipe(
         Effect.flatMap((out) =>
           decodePrView(out.stdout).pipe(
             Effect.mapError(
@@ -273,4 +287,6 @@ export const makeGhClient = (run: GhRun, hostEnv: GhEnv): GhClientShape => {
 
 export const GhClientLive = (options: {
   readonly baseEnv: Readonly<Record<string, string | undefined>>
-}): Layer.Layer<GhClient> => Layer.succeed(GhClient, makeGhClient(runGhProcess, hostGhEnv(options.baseEnv)))
+  readonly tokens?: InstallationTokens
+}): Layer.Layer<GhClient> =>
+  Layer.succeed(GhClient, makeGhClient(runGhProcess, hostGhEnv(options.baseEnv), options.tokens))
