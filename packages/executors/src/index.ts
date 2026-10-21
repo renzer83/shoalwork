@@ -23,6 +23,7 @@ export {
   ExecutorRegistry,
   makeRegistry,
 } from "./executor.js"
+export { type GeminiOptions, makeGemini } from "./gemini/index.js"
 export {
   MCP_NAME_PATTERN,
   MCP_TOKEN_ENV,

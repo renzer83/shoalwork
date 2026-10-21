@@ -1,0 +1,11 @@
+{"type":"init","timestamp":"2026-10-21T10:05:00.000Z","session_id":"6f1c2a4e-1111-4a2b-9c3d-000000000003","model":"gemini-pro-latest"}
+{"type":"message","timestamp":"2026-10-21T10:05:00.010Z","role":"user","content":"fix the failing test"}
+{"type":"tool_use","timestamp":"2026-10-21T10:05:01.000Z","tool_name":"run_shell_command","tool_id":"run_shell_command_1","parameters":{"command":"pnpm test"}}
+{"type":"tool_result","timestamp":"2026-10-21T10:05:02.000Z","tool_id":"run_shell_command_1","status":"success","output":"Exit Code: 1\n1 failed"}
+{"type":"tool_use","timestamp":"2026-10-21T10:05:03.000Z","tool_name":"replace","tool_id":"replace_1","parameters":{"file_path":"src/sum.ts","instruction":"fix the operator","old_string":"a - b","new_string":"a + b"}}
+{"type":"tool_result","timestamp":"2026-10-21T10:05:03.500Z","tool_id":"replace_1","status":"success","output":"Successfully modified file: src/sum.ts"}
+{"type":"tool_use","timestamp":"2026-10-21T10:05:04.000Z","tool_name":"run_shell_command","tool_id":"run_shell_command_2","parameters":{"command":"pnpm test"}}
+{"type":"tool_result","timestamp":"2026-10-21T10:05:05.000Z","tool_id":"run_shell_command_2","status":"success","output":"Exit Code: 0\n1 passed"}
+{"type":"message","timestamp":"2026-10-21T10:05:05.500Z","role":"assistant","content":"Fixed the operator in src/sum.ts; the test passes.","delta":true}
+{"type":"message","timestamp":"2026-10-21T10:05:05.600Z","role":"assistant","content":"Fixed the operator in src/sum.ts; the test passes."}
+{"type":"result","timestamp":"2026-10-21T10:05:06.000Z","status":"success","stats":{"total_tokens":24100,"input_tokens":23000,"output_tokens":1100,"cached":18000,"input":5000,"duration_ms":6000,"tool_calls":3,"models":{"gemini-pro-latest":{"total_tokens":24100,"input_tokens":23000,"output_tokens":1100,"cached":18000,"input":5000}}}}
