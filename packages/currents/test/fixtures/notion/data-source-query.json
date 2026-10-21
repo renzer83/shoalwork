@@ -1,0 +1,67 @@
+{
+  "object": "list",
+  "type": "page_or_data_source",
+  "page_or_data_source": {},
+  "has_more": false,
+  "next_cursor": null,
+  "results": [
+    {
+      "object": "page",
+      "id": "3b1f0c2e-1111-4a2b-9c3d-0000000000a1",
+      "created_time": "2026-10-19T08:00:00.000Z",
+      "last_edited_time": "2026-10-21T10:00:00.000Z",
+      "archived": false,
+      "in_trash": false,
+      "parent": { "type": "data_source_id", "data_source_id": "ds_ideas" },
+      "url": "https://www.notion.so/Ideia-agendador-3b1f0c2e11114a2b9c3d0000000000a1",
+      "properties": {
+        "Ideia": {
+          "id": "title",
+          "type": "title",
+          "title": [
+            {
+              "type": "text",
+              "text": { "content": "Ideia: agendador de pautas", "link": null },
+              "plain_text": "Ideia: agendador de pautas",
+              "href": null
+            }
+          ]
+        },
+        "Status": { "id": "s1", "type": "select", "select": { "name": "Nova", "color": "blue" } }
+      }
+    },
+    {
+      "object": "page",
+      "id": "3b1f0c2e-1111-4a2b-9c3d-0000000000b2",
+      "created_time": "2026-10-18T08:00:00.000Z",
+      "last_edited_time": "2026-10-21T09:00:00.000Z",
+      "archived": false,
+      "in_trash": false,
+      "parent": { "type": "data_source_id", "data_source_id": "ds_ideas" },
+      "url": "https://www.notion.so/Ideia-cupons-3b1f0c2e11114a2b9c3d0000000000b2",
+      "properties": {
+        "Ideia": {
+          "id": "title",
+          "type": "title",
+          "title": [
+            {
+              "type": "text",
+              "text": { "content": "Ideia: cupons", "link": null },
+              "plain_text": "Ideia: cupons",
+              "href": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "object": "data_source",
+      "id": "ds_ideas",
+      "name": "Ideias"
+    },
+    {
+      "object": "page",
+      "id": "3b1f0c2e-1111-4a2b-9c3d-0000000000c3"
+    }
+  ]
+}

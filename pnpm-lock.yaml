@@ -180,6 +180,9 @@ importers:
       '@grammyjs/runner':
         specifier: 'catalog:'
         version: 2.0.3(grammy@1.46.0)
+      '@notionhq/client':
+        specifier: 5.27.1
+        version: 5.27.1
       '@octokit/auth-app':
         specifier: 8.3.1
         version: 8.3.1
@@ -887,6 +890,10 @@ packages:
   '@modelcontextprotocol/server@2.3.1':
     resolution: {integrity: sha512-e59MfWuSssj6DoQ96JCTqdW1AXT5/XtnTl0WWd6MU1Ka434fFUGGosCLJbGNySDhHGvxQWoRWK137FXYFkYNWw==}
     engines: {node: '>=20'}
+
+  '@notionhq/client@5.27.1':
+    resolution: {integrity: sha512-WedYyPNMpQbE4Dz5h7zHTsh03veUGqBzxWyztbIh0tNbgHU+XbDi/jc1KgL3j1p8y06nHLEmGYygntwICxJUNw==}
+    engines: {node: '>=18'}
 
   '@octokit/app@16.1.4':
     resolution: {integrity: sha512-g70WONQyGoBgqIJtv4O0MUEfOF1iJpTfFt3qAW7HaiwiJ6k607xg/gBezCa4tuq6BpO6qXn7qvq8v9tjWtgGQg==}
@@ -1940,6 +1947,8 @@ snapshots:
     dependencies:
       '@modelcontextprotocol/core': 2.3.1
       zod: 4.6.7
+
+  '@notionhq/client@5.27.1': {}
 
   '@octokit/app@16.1.4':
     dependencies:

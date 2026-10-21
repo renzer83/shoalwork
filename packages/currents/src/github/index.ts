@@ -7,7 +7,7 @@ export {
   makeGithubApp,
   TOKEN_RENEW_BEFORE_MS,
 } from "./app.js"
-export { type Connector, githubConnector } from "./connector.js"
+export { type GithubConnector, githubConnector } from "./connector.js"
 export { claimDelivery, DELIVERY_WINDOW_MS } from "./deliveries.js"
 export {
   checksVerdict,

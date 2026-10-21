@@ -26,6 +26,7 @@ import {
 } from "./github.js"
 import { MemoryAddedPayload, MemoryForgottenPayload, MemorySupersededPayload } from "./memory.js"
 import { AgentMsgPayload, MessageInboundPayload, MessageOutboundPayload } from "./message.js"
+import { NotionPagePayload, NotionToolCalledPayload } from "./notion.js"
 import {
   BudgetExceededPayload,
   ContextAssembledPayload,
@@ -86,6 +87,9 @@ export const EventType = Schema.Literals([
   "project_task.state_changed",
   "secret.accessed",
   "executor.quota_adjusted",
+  "notion.page_created",
+  "notion.page_updated",
+  "notion.tool_called",
 ])
 export type EventType = typeof EventType.Type
 
@@ -134,6 +138,9 @@ export const EventPayloads = {
   "project_task.state_changed": ProjectTaskStateChangedPayload,
   "secret.accessed": SecretAccessedPayload,
   "executor.quota_adjusted": ExecutorQuotaAdjustedPayload,
+  "notion.page_created": NotionPagePayload,
+  "notion.page_updated": NotionPagePayload,
+  "notion.tool_called": NotionToolCalledPayload,
 } satisfies Record<EventType, Schema.Top>
 
 // Input shape for appending: the core assigns id, version, position and occurredAt.
