@@ -15,13 +15,15 @@
   },
   "dependencies": {
     "@shoalwork/api-client": "workspace:*",
+    "@dagrejs/dagre": "3.1.1",
     "@shoalwork/contracts": "workspace:*",
     "effect": "catalog:",
     "expo-secure-store": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-paper": "catalog:",
-    "react-native-safe-area-context": "catalog:"
+    "react-native-safe-area-context": "catalog:",
+    "react-native-svg": "catalog:"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

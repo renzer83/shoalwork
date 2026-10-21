@@ -23,6 +23,7 @@ import { registerLiveRoutes } from "./routes/live.js"
 import { MCP_OAUTH_CALLBACK_PATH, type RunMcpServers, registerMcpServerRoutes } from "./routes/mcp-servers.js"
 import { type RunMemory, registerMemoryRoutes } from "./routes/memory.js"
 import { registerMessageRoutes } from "./routes/messages.js"
+import { registerPodRoutes } from "./routes/pods.js"
 import { isExecutionPolicyPath, type RunPolicy, registerPolicyRoutes } from "./routes/policy.js"
 import { registerProjectRoutes } from "./routes/projects.js"
 import { registerReefRoutes } from "./routes/reef.js"
@@ -193,6 +194,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerExecutorRoutes(app, deps.runEffect)
   registerLiveRoutes(app, deps.runEffect)
   registerMessageRoutes(app, deps.runEffect)
+  registerPodRoutes(app, deps.runEffect)
   registerReflexRoutes(app, deps.runEffect)
   if (deps.runMcpServers !== undefined) registerMcpServerRoutes(app, deps.runMcpServers)
   if (deps.runMemory !== undefined) {
