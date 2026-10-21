@@ -32,7 +32,7 @@ afterEach(cleanup)
 describe("AppNavigation", () => {
   it("renders the visible entries, Projetos and Times included", () => {
     show("/")
-    for (const label of ["Conversa", "Bots", "Saúde", "Configurar", "Projetos", "Times"]) {
+    for (const label of ["Conversa", "Bots", "Saúde", "Configurar", "Projetos", "Times", "Executores"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy()
     }
     expect(screen.getByText("screen body")).toBeTruthy()
@@ -93,6 +93,7 @@ describe("AppNavigation", () => {
       "/beacon",
       "/currents",
       "/tides",
+      "/executors",
     ])
     expect(
       NAV_ENTRIES.filter((entry) => entry.href === "/projects" || entry.href === "/pods").every(

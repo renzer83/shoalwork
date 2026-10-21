@@ -229,3 +229,13 @@ export const doctor = (): Effect.Effect<ReadonlyArray<DoctorReport>, never, Doct
       concurrency: PROBE_CONCURRENCY,
     })
   })
+
+// The report of one CLI, probed alone (the API's re-probe). Undefined: the doctor does not check that binary.
+export const doctorBin = (bin: string): Effect.Effect<DoctorReport | undefined, never, DoctorConfig> =>
+  Effect.gen(function* () {
+    const entry = CLI_EXECUTORS.find((candidate) => candidate.bin === bin)
+    if (entry === undefined) return undefined
+    const cfg = yield* DoctorConfig
+    const probe: Probe = { env: cfg.env, timeoutMs: cfg.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS }
+    return yield* checkCli(cfg.pinned, probe, entry)
+  })

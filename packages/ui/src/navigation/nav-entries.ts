@@ -17,6 +17,7 @@ export const NAV_ENTRIES: ReadonlyArray<NavEntry> = [
   { key: "beacon", href: "/beacon", label: "Farol", ready: true },
   { key: "currents", href: "/currents", label: "Correntes", ready: true },
   { key: "tides", href: "/tides", label: "Marés", ready: true },
+  { key: "executors", href: "/executors", label: "Executores", ready: true },
 ]
 
 export const visibleNavEntries = (entries: ReadonlyArray<NavEntry> = NAV_ENTRIES): ReadonlyArray<NavEntry> =>

@@ -9,6 +9,7 @@ import {
   type DoctorReport,
   defaultChatMapTier,
   doctor,
+  doctorBin,
   type Executor,
   type ExecutorRegistry,
   type ExecutorsConfigDeps,
@@ -157,6 +158,12 @@ export type DoctorRun = () => Effect.Effect<ReadonlyArray<DoctorReport>, ConfigE
 export const hostDoctor: DoctorRun = () =>
   doctor().pipe(Effect.provide(DoctorConfigLive(DEFAULT_EXECUTOR_VERSIONS, doctorEnvOf(hostEnvSnapshot()))))
 
+// One CLI's report, probed alone (POST /executors/:id/doctor, T-117). The same env allowlist as hostDoctor.
+export const hostDoctorBin = (bin: string) =>
+  doctorBin(bin).pipe(
+    Effect.provide(DoctorConfigLive(DEFAULT_EXECUTOR_VERSIONS, doctorEnvOf(hostEnvSnapshot()))),
+  )
+
 // The doctor's verdict as the registry reads it. Empty until the boot's probes finish: until then every instance runs
 // as before. A service, so the registry and the probes share the one reference.
 export class DoctorGate extends Context.Service<DoctorGate, Ref.Ref<ReadonlyArray<DoctorReport>>>()(
@@ -166,7 +173,7 @@ const DoctorGateLive = Layer.effect(DoctorGate, Ref.make<ReadonlyArray<DoctorRep
 
 // The CLI an executor runs on. Every instance of one binary shares that CLI's status: claude-code, claude-code@zai and
 // claude-code@ollama all run `claude`. Undefined: the doctor does not check that executor's CLI.
-const doctorBinOf = (id: string): string | undefined => {
+export const doctorBinOf = (id: string): string | undefined => {
   if (id === "claude-code" || id.startsWith("claude-code@")) return "claude"
   if (id === "codex" || id.startsWith("codex@")) return "codex"
   if (id === "acp-gemini") return "gemini"
@@ -254,7 +261,7 @@ export const RegistryFromConfig = (
   tiers: TierConfig,
   quotaConfig: QuotaConfig,
   doctorRun: DoctorRun = hostDoctor,
-): Layer.Layer<ExecutorRegistry, ConfigError, QuotaStore | Beacon> => {
+): Layer.Layer<ExecutorRegistry | DoctorGate, ConfigError, QuotaStore | Beacon> => {
   const registry = Layer.unwrap(
     Effect.gen(function* () {
       const quota = yield* QuotaStore

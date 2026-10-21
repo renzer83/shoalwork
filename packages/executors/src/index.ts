@@ -29,6 +29,7 @@ export {
   type DoctorReport,
   type DoctorStatus,
   doctor,
+  doctorBin,
   ExecutorVersions,
   loadExecutorVersions,
   parseSemver,
