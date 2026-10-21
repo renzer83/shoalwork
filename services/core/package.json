@@ -26,6 +26,7 @@
     "@shoalwork/reflex": "workspace:*",
     "@shoalwork/tank": "workspace:*",
     "@shoalwork/tides": "workspace:*",
+    "@shoalwork/vault": "workspace:*",
     "effect": "catalog:",
     "hono": "catalog:"
   },

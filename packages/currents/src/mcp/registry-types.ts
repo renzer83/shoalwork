@@ -7,7 +7,7 @@ import type {
   SchemaViolation,
   ToolCall,
 } from "@shoalwork/contracts"
-import type { Effect } from "effect"
+import type { Effect, Redacted } from "effect"
 import type { SqlError } from "effect/sql/SqlError"
 import type { McpSecrets } from "./client.js"
 import type { McpOAuthStore } from "./oauth.js"
@@ -65,6 +65,9 @@ export interface McpRegistryShape {
     args: unknown,
     options?: { readonly policyChecked?: boolean },
   ) => Effect.Effect<unknown, PolicyDenied | McpError>
+  // The OAuth access token of a server (id or name) for a CLI run, renewed when it can be. `undefined`: no token the run
+  // may use (not authorized yet, link already sent, refresh refused). Never fails.
+  readonly accessToken: (serverId: string) => Effect.Effect<Redacted.Redacted<string> | undefined>
   // GET /oauth/mcp/callback: swaps the code for tokens (state is single use) and returns the server name.
   readonly completeOAuth: (
     state: string,

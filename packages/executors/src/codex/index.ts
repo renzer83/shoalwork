@@ -8,7 +8,7 @@ import {
 import { Tank } from "@shoalwork/tank"
 import { Duration, Effect, Schema, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
-import { mcpConfigFor } from "../mcp-config.js"
+import { clearCodexMcp, mcpConfigFor } from "../mcp-config.js"
 import { parseNdjsonLines } from "../ndjson.js"
 import { observeQuota } from "../quota/signals.js"
 import { type QuotaStoreShape, quotaStatusOf } from "../quota/store.js"
@@ -73,9 +73,10 @@ const runCodex = (
         yield* writeCodexProviderConfig(ctx, provider).pipe(Effect.mapError(spawnFailure))
       }
       // Merges the reef table into the Bot's CODEX_HOME/config.toml before codex starts (T-042).
-      if (ctx.mcp !== undefined) {
-        yield* mcpConfigFor("codex", ctx).pipe(Effect.mapError(spawnFailure))
-      }
+      // Without an attachment the servers of an earlier run are removed (a revoked or refused server must not start).
+      yield* (ctx.mcp === undefined ? clearCodexMcp(ctx) : mcpConfigFor("codex", ctx)).pipe(
+        Effect.mapError(spawnFailure),
+      )
       const argv =
         task.resumeSessionId === undefined
           ? buildRunArgs(task, ctx.cwd, targetFor(task, target))

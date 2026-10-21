@@ -9,6 +9,9 @@ export interface McpInject {
   readonly args?: ReadonlyArray<string>
   // Env vars the server process needs (stdio). Values come from the Vault, injected by the core.
   readonly envKeys?: ReadonlyArray<string>
+  // Name each env key has in the executor's env (T-185): `MCP_SECRET_<n>`, the one shape the Tank passes (and sudo keeps).
+  // The server still sees its own name: Claude Code maps it in the config, Codex through a fixed `sh -c` wrapper.
+  readonly envRefs?: Readonly<Record<string, string>>
   readonly url?: string
   // Env var that holds the bearer token for an http server (Vault key or the OAuth access token).
   readonly bearerEnv?: string
@@ -23,6 +26,8 @@ export interface McpInject {
 const TOOL = /^[A-Za-z0-9_.-]{1,64}$/
 const NAME = /^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/
 const ENV = /^[A-Z][A-Z0-9_]{0,63}$/
+const REF = /^MCP_SECRET_[0-9]{1,3}$/
+const refOf = (server: McpInject, key: string): string => server.envRefs?.[key] ?? key
 
 // `${` is how the CLI expands env references: a value that carries it could pull in a variable we did not name.
 const hasExpansion = (text: string | undefined): boolean => (text ?? "").includes("${")
@@ -32,6 +37,9 @@ export const isInjectable = (server: McpInject): boolean =>
   !["reef", "permission-bridge"].includes(server.name.toLowerCase()) &&
   (server.envKeys ?? []).every((key) => ENV.test(key)) &&
   (server.bearerEnv === undefined || ENV.test(server.bearerEnv)) &&
+  Object.entries(server.envRefs ?? {}).every(
+    ([key, ref]) => (server.envKeys ?? []).includes(key) && REF.test(ref),
+  ) &&
   (server.allowedTools === "*"
     ? true
     : server.allowedTools.length > 0 && server.allowedTools.every((tool) => TOOL.test(tool))) &&
@@ -50,7 +58,7 @@ export const claudeServerEntries = (servers: ReadonlyArray<McpInject>): Record<s
         ? {
             command: server.command,
             args: [...(server.args ?? [])],
-            env: Object.fromEntries((server.envKeys ?? []).map((key) => [key, `\${${key}}`])),
+            env: Object.fromEntries((server.envKeys ?? []).map((key) => [key, `\${${refOf(server, key)}}`])),
           }
         : {
             type: "http",
@@ -81,7 +89,7 @@ export const mcpEnvNames = (servers: ReadonlyArray<McpInject>): ReadonlyArray<st
     servers
       .filter(isInjectable)
       .flatMap((server) => [
-        ...(server.envKeys ?? []),
+        ...(server.envKeys ?? []).map((key) => refOf(server, key)),
         ...(server.bearerEnv === undefined ? [] : [server.bearerEnv]),
       ]),
   ),
@@ -97,19 +105,36 @@ const quote = (text: string): string => JSON.stringify(text)
 const enabledTools = (server: McpInject): ReadonlyArray<string> =>
   server.allowedTools === "*" ? [] : [`enabled_tools = [${server.allowedTools.map(quote).join(", ")}]`]
 
+// The command of a stdio server in config.toml. With aliased secrets Codex passes `MCP_SECRET_<n>` through (`env_vars`) and a
+// fixed `sh -c` script renames them for the server; the server's command and args follow as positional arguments, never
+// inside the script text. The env names in the script are checked by `isInjectable`.
+const codexStdioLines = (server: McpInject): ReadonlyArray<string> => {
+  const keys = (server.envKeys ?? []).filter((key) => server.envRefs?.[key] !== undefined)
+  if (keys.length === 0) {
+    return [
+      `command = ${quote(server.command ?? "")}`,
+      `args = [${(server.args ?? []).map(quote).join(", ")}]`,
+      `env_vars = [${(server.envKeys ?? []).map(quote).join(", ")}]`,
+    ]
+  }
+  const rename = keys.map((key) => `${key}="$${refOf(server, key)}"`).join(" ")
+  const script = `${rename} exec "$0" "$@"`
+  const args = ["-c", script, server.command ?? "", ...(server.args ?? [])]
+  const passed = (server.envKeys ?? []).map((key) => refOf(server, key))
+  return [
+    `command = "sh"`,
+    `args = [${args.map(quote).join(", ")}]`,
+    `env_vars = [${passed.map(quote).join(", ")}]`,
+  ]
+}
+
 // config.toml tables of the Bot's servers, between markers so a later run replaces them whole.
 export const codexServerBlock = (servers: ReadonlyArray<McpInject>): string => {
   const tables = servers
     .filter(isInjectable)
     .map((server) =>
       (server.transport === "stdio"
-        ? [
-            `[mcp_servers.${server.name}]`,
-            `command = ${quote(server.command ?? "")}`,
-            `args = [${(server.args ?? []).map(quote).join(", ")}]`,
-            `env_vars = [${(server.envKeys ?? []).map(quote).join(", ")}]`,
-            ...enabledTools(server),
-          ]
+        ? [`[mcp_servers.${server.name}]`, ...codexStdioLines(server), ...enabledTools(server)]
         : [
             `[mcp_servers.${server.name}]`,
             `url = ${quote(server.url ?? "")}`,

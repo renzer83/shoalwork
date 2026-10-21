@@ -13,8 +13,18 @@ export const McpServerName = Schema.String.check(
 export const MCP_TOOL_NAME = /^[A-Za-z0-9_.-]{1,64}$/
 export const McpToolName = Schema.String.check(Schema.isPattern(MCP_TOOL_NAME))
 
-// A Vault key, which is also the name of the env var the secret is injected as.
-export const McpEnvKey = Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{0,63}$/))
+// A Vault key, which is also the name of the env var the server process reads. Allowlist by shape (T-185): a secret looks
+// like one (`*_TOKEN|_KEY|_SECRET|_PASSWORD|_PAT|_API_KEY`) or sits under `MCP_`, and is not a name the process or an
+// executor CLI reads for itself (loader and runtime hooks, the Tank's keys, the executors' credentials of ADR-011).
+const SECRET_SHAPE = /^[A-Z][A-Z0-9_]{1,63}$/
+const SECRET_SUFFIX = /(?:_TOKEN|_KEY|_SECRET|_PASSWORD|_PAT|_API_KEY)$/
+const RESERVED_ENV =
+  /^(?:PATH$|HOME$|SHELL$|LD_|DYLD_|NODE_|NPM_|SSH_|XDG_|JAVA_|PYTHON|RUBY|PERL|SSL_|CURL_|REQUESTS_|CLAUDE_|CODEX_|ANTHROPIC_|SHOALWORK_|GIT_|OPENAI_|GOOGLE_|GEMINI_|ZAI_|MCP_SECRET_)/
+export const isMcpSecretEnvName = (name: string): boolean =>
+  SECRET_SHAPE.test(name) && (SECRET_SUFFIX.test(name) || name.startsWith("MCP_")) && !RESERVED_ENV.test(name)
+export const McpEnvKey = Schema.String.check(
+  Schema.makeFilter((name: string) => isMcpSecretEnvName(name) || "an env name that looks like a secret"),
+)
 
 // Remote servers are https; http is for the local machine only. Link-local addresses (cloud metadata included) are never
 // a server. Hostnames that resolve elsewhere are the network's business, not the schema's.

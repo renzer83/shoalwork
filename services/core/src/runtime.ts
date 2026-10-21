@@ -37,6 +37,7 @@ import { ApprovalDecisionsLive } from "./approvals.js"
 import { AppConfig, type AppConfigShape, coreApiOrigin, hostEnvSnapshot } from "./config.js"
 import { ConversationFromCore } from "./conversation-layer.js"
 import { RegistryFromConfig } from "./executors-compose.js"
+import { McpFromCore, McpNotifyBindLive } from "./mcp-compose.js"
 import { loadModelTiers } from "./model-tiers.js"
 import { startExecutorQualityTide, startRankTuneTide } from "./system-tides.js"
 import {
@@ -122,6 +123,8 @@ export const AppLayer = Layer.unwrap(
     const withRanker = RankerLive({ weights: contextConfig.rank?.weights }).pipe(
       Layer.provideMerge(withIndexer),
     )
+    // The Bot's own MCP servers (T-185): the registry, the Vault and the services the runs read, below the Lead.
+    const withBotMcp = McpFromCore(config).pipe(Layer.provideMerge(withRanker))
     // The reef MCP server of a Bot run: its entrypoint and the origin of this core (T-168).
     // With PERMISSION_BRIDGE on, a claude-code run also gets the bridge server (inline: the CLI waits for the person).
     const mcp = {
@@ -137,7 +140,7 @@ export const AppLayer = Layer.unwrap(
       tiers,
       { botBudgetWindowMs, mcp, context: contextConfig },
       { maxAgentMsgsPerTask: config.maxAgentMsgsPerTask },
-    ).pipe(Layer.provideMerge(withRanker), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
+    ).pipe(Layer.provideMerge(withBotMcp), Layer.provideMerge(withGh), Layer.provideMerge(PodNotesLive))
     // Tides (T-044) create tasks through the Lead, so they sit above it: cron and event triggers of every Bot.
     const withTides = TidesLive({ botBudgetWindowMs }).pipe(Layer.provideMerge(withLead))
     // The delivery cycle (T-061) sits above the Lead, the Policy and the Approvals it asks, and the GitHub client.
@@ -156,6 +159,8 @@ export const AppLayer = Layer.unwrap(
     const withDecisions = ApprovalDecisionsLive.pipe(Layer.provideMerge(withApprovalFlow))
     const withSlot = PodInboundSlotLive.pipe(Layer.provideMerge(withDecisions))
     const withTelegram = TelegramFromSettings(telegram).pipe(Layer.provideMerge(withSlot))
+    // The authorization links of remote MCP servers go out through the channels that exist only from here up.
+    const withMcpNotify = McpNotifyBindLive.pipe(Layer.provideMerge(withTelegram))
     // Planner -> Pod -> Dispatcher (T-175): above the Lead and the connector, whose topics the Pods use. Without
     // Telegram a Pod has no topic, and the plan runs all the same.
     const withPlanning = Layer.unwrap(
@@ -166,7 +171,7 @@ export const AppLayer = Layer.unwrap(
           topics: status.enabled ? "telegram" : "none",
         }),
       ),
-    ).pipe(Layer.provideMerge(withTelegram))
+    ).pipe(Layer.provideMerge(withMcpNotify))
     return ConversationFromCore({ config, tiers, quotaConfig, reflexConfig, botBudgetWindowMs }).pipe(
       Layer.provideMerge(withPlanning),
     )

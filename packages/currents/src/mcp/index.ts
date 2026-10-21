@@ -20,6 +20,7 @@ export type { McpAuthNeeded, McpRegistryOptions, McpRegistryShape, McpToolGate }
 export {
   AllowedTools,
   isAllowedServerUrl,
+  isMcpSecretEnvName,
   MCP_RESULT_MAX_CHARS,
   MCP_TOOL_NAME,
   McpAuth,

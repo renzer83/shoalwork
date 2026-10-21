@@ -8,7 +8,7 @@ import type {
   TankMode,
   WorktreeConflict,
 } from "@shoalwork/contracts"
-import { Context, type Effect, type Scope, type Stream } from "effect"
+import { Context, type Effect, type Redacted, type Scope, type Stream } from "effect"
 import type { PublishedArtifacts, PublishRun } from "./artifacts.js"
 
 export type TankContext = {
@@ -74,6 +74,9 @@ export interface TankShape {
       readonly reuse?: { readonly path: string; readonly branch: string }
       // Env of this execution only (e.g. its MCP token). Applied after the Tank's extraEnv, before the Tank's own keys.
       readonly extraEnv?: Readonly<Record<string, string>>
+      // Secrets of this execution's MCP servers (T-185), as MCP_SECRET_<n>. Unwrapped only here; they travel like the
+      // step env (never argv) and any other name is refused (isSecretEnvRef).
+      readonly secretEnv?: Readonly<Record<string, Redacted.Redacted<string>>>
     },
   ) => Effect.Effect<TankContext, TankError | WorktreeConflict>
   readonly exec: (

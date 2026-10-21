@@ -29,6 +29,9 @@ export type McpAttachment = {
   readonly api: string
   // The Bot's own MCP servers (T-083), next to the reef. Names only; the core adds the env values to the run.
   readonly servers?: ReadonlyArray<McpInject>
+  // "off": the run has no repo index to search (T-185), so the reef server is left out of the config (and an old reef table
+  // is removed from the Codex config.toml). The fields above are still required and checked.
+  readonly reef?: "off"
   // Claude Code only (T-055): the permission bridge server joins the same config. Absent: no bridge.
   readonly permissionBridge?: {
     // Built entrypoint (packages/executors/dist/permission-bridge/index.js).
@@ -60,12 +63,16 @@ export const validateAttachment = (
   executor: string,
   attachment: McpAttachment,
 ): Effect.Effect<void, McpConfigError> => {
-  if (!isAbsolute(attachment.serverEntry)) return invalid(executor, "serverEntry must be an absolute path")
-  if (!MCP_NAME_PATTERN.test(attachment.repo))
+  // Without the reef server (reef "off") its entrypoint, repo and the API origin are not written anywhere.
+  const reef = attachment.reef !== "off"
+  if (reef && !isAbsolute(attachment.serverEntry))
+    return invalid(executor, "serverEntry must be an absolute path")
+  if (reef && !MCP_NAME_PATTERN.test(attachment.repo))
     return invalid(executor, "repo has characters outside the allowlist")
   if (!MCP_NAME_PATTERN.test(attachment.bot))
     return invalid(executor, "bot has characters outside the allowlist")
-  if (!isHttpUrl(attachment.api)) return invalid(executor, "api must be an http or https URL")
+  if ((reef || attachment.permissionBridge !== undefined) && !isHttpUrl(attachment.api))
+    return invalid(executor, "api must be an http or https URL")
   if (attachment.permissionBridge !== undefined && !isAbsolute(attachment.permissionBridge.serverEntry))
     return invalid(executor, "permissionBridge.serverEntry must be an absolute path")
   return Effect.void
@@ -89,7 +96,9 @@ export const claudeMcpJson = (attachment: McpAttachment): string => {
     {
       mcpServers: {
         ...claudeServerEntries(attachment.servers ?? []),
-        reef: { command: "node", args: serverArgs(attachment), env },
+        ...(attachment.reef === "off"
+          ? {}
+          : { reef: { command: "node", args: serverArgs(attachment), env } }),
         ...(bridge === undefined
           ? {}
           : {
@@ -171,7 +180,8 @@ const writeCodexConfig = (
         if (isNotFound(cause)) return ""
         throw cause
       })
-      const block = reefTomlBlock(serverArgs(attachment), "node", MCP_TOKEN_ENV)
+      const block =
+        attachment.reef === "off" ? "" : reefTomlBlock(serverArgs(attachment), "node", MCP_TOKEN_ENV)
       const merged = mergeMcpTable(stripManagedServers(existing), block)
       await writeSecureFile(
         codexHome,
@@ -184,6 +194,33 @@ const writeCodexConfig = (
       new McpConfigError({
         executor: "codex",
         reason: failureReason(cause, "cannot write config.toml"),
+        cause,
+      }),
+  })
+
+// A run with no MCP attachment must not inherit the previous run's servers: Codex reads the whole config.toml of the Bot's
+// CODEX_HOME, so the managed region and the reef table are removed (revocation and fail-closed would have no effect
+// otherwise). Written only when something changed; the rest of the file is the operator's and stays as it is.
+export const clearCodexMcp = (ctx: ExecutorContext): Effect.Effect<void, McpConfigError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const codexHome = ctx.env.CODEX_HOME ?? join(ctx.home, ".codex")
+      const path = join(codexHome, "config.toml")
+      await assertNoLink(codexHome)
+      await assertNoLink(path)
+      const existing = await readFile(path, "utf8").catch((cause: unknown) => {
+        if (isNotFound(cause)) return undefined
+        throw cause
+      })
+      if (existing === undefined) return
+      const cleaned = mergeMcpTable(stripManagedServers(existing), "").trimEnd()
+      if (cleaned === existing.trimEnd()) return
+      await writeSecureFile(codexHome, path, cleaned === "" ? "" : `${cleaned}\n`)
+    },
+    catch: (cause) =>
+      new McpConfigError({
+        executor: "codex",
+        reason: failureReason(cause, "cannot clear config.toml"),
         cause,
       }),
   })

@@ -147,6 +147,10 @@ export const AppConfig = Config.all({
   githubWebhookSecret: setting("GITHUB_WEBHOOK_SECRET", Config.String, "").pipe(
     Config.map((value) => (value.trim() === "" ? undefined : Redacted.make(value.trim()))),
   ),
+  // Vault (T-064): the encrypted file backend and its key. The key also seals the OAuth tokens of remote MCP servers
+  // (T-185); without it those servers cannot be authorized. Blank counts as unset.
+  vaultFile: optionalSetting("VAULT_FILE", Config.String),
+  vaultKey: optionalSetting("VAULT_KEY", Config.Redacted),
   // Model tier table (T-164). Relative paths resolve against the repo root.
   modelTiersPath: setting("MODEL_TIERS_PATH", Config.String, "config/model-tiers.yaml").pipe(
     Config.map((configured) => resolveRepoPath(configured)),

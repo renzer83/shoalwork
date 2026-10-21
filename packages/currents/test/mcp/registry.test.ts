@@ -195,7 +195,7 @@ describe("McpRegistry over a stdio server", () => {
   it.live("a missing Vault key is a secret error that names no value", () =>
     Effect.gen(function* () {
       const registry = yield* McpRegistry
-      const server = yield* registry.upsert(stdioServer("fake", ["NOT_IN_VAULT"]))
+      const server = yield* registry.upsert(stdioServer("fake", ["NOT_IN_VAULT_KEY"]))
       const error = yield* Effect.flip(registry.test(server.id))
       expect(error).toMatchObject({ _tag: "McpError", reason: "secret" })
     }).pipe(Effect.provide(Live)),

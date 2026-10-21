@@ -827,6 +827,9 @@ importers:
       '@shoalwork/tides':
         specifier: workspace:*
         version: link:../../packages/tides
+      '@shoalwork/vault':
+        specifier: workspace:*
+        version: link:../../packages/vault
       effect:
         specifier: 'catalog:'
         version: 4.0.5

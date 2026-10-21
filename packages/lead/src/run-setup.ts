@@ -1,29 +1,18 @@
 import type { BotRegistryShape } from "@shoalwork/bots"
-import {
-  type Bot,
-  type ExecutorId,
-  repoKeyOf,
-  type StepId,
-  type TankError,
-  type TaskSpec,
-  type WorktreeConflict,
-} from "@shoalwork/contracts"
-import {
-  type ExecutorContext,
-  MCP_NAME_PATTERN,
-  MCP_TOKEN_ENV,
-  type McpAttachment,
-} from "@shoalwork/executors"
+import type { Bot, ExecutorId, StepId, TankError, TaskSpec, WorktreeConflict } from "@shoalwork/contracts"
+import type { ExecutorContext, McpAttachment } from "@shoalwork/executors"
 import { type IndexerShape, isIgnoredPath, looksLikeSecret, type RankerShape } from "@shoalwork/reef"
 import type { TankContext, TankShape } from "@shoalwork/tank"
-import { Effect, Exit, Redacted, Ref, Schema } from "effect"
+import { Effect, Exit, type Redacted, Ref } from "effect"
 import type { SqlClient } from "effect/sql/SqlClient"
+import type { BotMcpShape } from "./bot-mcp.js"
 import type { BriefingMemory } from "./context/briefing.js"
 import type { ContextConfig } from "./context/config.js"
 import type { InjectDeps } from "./context/inject.js"
 import { makeInjectorFor } from "./context/injector-for.js"
 import { PermissionBridgeUnavailable } from "./executor-task.js"
-import { type IssuedMcpToken, MAX_MCP_TOKEN_TTL_MS, type McpTokensShape } from "./mcp-tokens.js"
+import type { McpTokensShape } from "./mcp-tokens.js"
+import { makeWithMcp } from "./run-mcp.js"
 import { clearProcesses } from "./run-processes.js"
 import { describeFailure, type Progress } from "./verdict.js"
 
@@ -47,6 +36,8 @@ export interface McpServerConfig {
 export interface McpGrant {
   readonly extraEnv: Readonly<Record<string, string>>
   readonly attachment: McpAttachment
+  // Secrets of the Bot's own MCP servers (T-185), by env name; only the Tank unwraps them.
+  readonly secretEnv?: Readonly<Record<string, Redacted.Redacted<string>>>
 }
 
 type RaiseError = (
@@ -62,6 +53,8 @@ export interface RunSetupDeps {
   readonly tank: TankShape
   readonly tokens: McpTokensShape
   readonly mcp: McpServerConfig | undefined
+  // The Bot's own MCP servers and their secrets (T-185). Without it a run gets only the reef server.
+  readonly botMcp?: BotMcpShape | undefined
   readonly memory: BriefingMemory | undefined
   readonly raiseError: RaiseError
   // The repo index for the briefing's code block (T-041). Without it the briefing carries no code.
@@ -82,17 +75,6 @@ export interface AcquireInput {
   readonly reuse: { readonly path: string; readonly branch: string } | undefined
   readonly progress: Ref.Ref<Progress>
 }
-
-// Only the executors whose adapters know how to write the reef server into their config (mcp-config.ts).
-const MCP_EXECUTORS: ReadonlySet<string> = new Set(["claude-code", "codex"])
-
-const IndexedRows = Schema.Array(Schema.Struct({ n: Schema.Number }))
-
-const hasIndexedChunks = (sql: SqlClient, repo: string) =>
-  Effect.gen(function* () {
-    const rows = yield* sql`SELECT 1 AS n FROM code_chunks WHERE repo = ${repo} LIMIT 1`
-    return (yield* Schema.decodeUnknownEffect(IndexedRows)(rows)).length > 0
-  })
 
 // Everything between the decision to run and the executor's first byte: the Tank context, the MCP token, the briefing,
 // and the release of all of it. Problems here are reported and the run goes on without the part that failed (MCP,
@@ -125,76 +107,7 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
   // Revoking is the last thing every execution does, on every path (ok, failure, stop, timeout, defect).
   const revokeTask = (spec: TaskSpec) =>
     deps.tokens.revoke(spec.id).pipe(Effect.catch((cause) => report(spec, "lead.mcp", cause)))
-
-  // Runs `use` with this execution's MCP grant, or with none when the run gets no reef server: no repo, an executor that
-  // cannot take it, no server configured, no time left, a repo key or bot id outside the MCP name allowlist, no indexed
-  // chunks for the repo, or a token that could not be issued. The token exists only inside `use`.
-  const withMcp = <A, E, R>(
-    spec: TaskSpec,
-    bot: Bot,
-    executorId: ExecutorId,
-    budgetLeftMs: number,
-    use: (grant: McpGrant | undefined) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | PermissionBridgeUnavailable, R> => {
-    const server = deps.mcp
-    if (
-      server === undefined ||
-      spec.repo === undefined ||
-      !MCP_EXECUTORS.has(executorId) ||
-      budgetLeftMs < 1
-    ) {
-      return use(undefined)
-    }
-    const repo = repoKeyOf(spec.repo.url)
-    const bridge = executorId === "claude-code" ? server.permissionBridge : undefined
-    if (!MCP_NAME_PATTERN.test(repo) || !MCP_NAME_PATTERN.test(bot.id)) {
-      return deps
-        .raiseError(spec, "lead.mcp", "McpScopeRefused", "repo or bot id is outside the MCP name allowlist")
-        .pipe(Effect.andThen(use(undefined)))
-    }
-    return Effect.uninterruptibleMask((restore) =>
-      Effect.gen(function* () {
-        const indexed = yield* hasIndexedChunks(deps.sql, repo).pipe(
-          Effect.catch((cause) => report(spec, "lead.mcp", cause).pipe(Effect.as(false))),
-        )
-        // The bridge needs the token and the config file even when the repo has nothing indexed.
-        if (!indexed && bridge === undefined) return yield* restore(use(undefined))
-        // The issue is not interruptible: once the row exists, the revoke below is always attached to it.
-        const issued = yield* deps.tokens
-          .issue({
-            botId: bot.id,
-            repo,
-            taskId: spec.id,
-            ttl: Math.max(1, Math.min(Math.floor(budgetLeftMs), MAX_MCP_TOKEN_TTL_MS)),
-            ...(bridge === undefined ? {} : { bridgeMode: bridge.mode }),
-          })
-          .pipe(
-            Effect.map((token): IssuedMcpToken | undefined => token),
-            Effect.catch((cause) =>
-              report(spec, "lead.mcp", cause).pipe(
-                Effect.andThen(
-                  bridge === undefined
-                    ? Effect.succeed<IssuedMcpToken | undefined>(undefined)
-                    : Effect.fail(new PermissionBridgeUnavailable({ step: "token" })),
-                ),
-              ),
-            ),
-          )
-        if (issued === undefined) return yield* restore(use(undefined))
-        const grant: McpGrant = {
-          extraEnv: { [MCP_TOKEN_ENV]: Redacted.value(issued.token) },
-          attachment: {
-            serverEntry: server.serverEntry,
-            repo,
-            bot: bot.id,
-            api: server.api,
-            ...(bridge === undefined ? {} : { permissionBridge: bridge }),
-          },
-        }
-        return yield* restore(use(grant)).pipe(Effect.ensuring(revokeTask(spec)))
-      }),
-    )
-  }
+  const withMcp = makeWithMcp({ ...deps, report, revokeTask })
 
   // The Tank context of the execution. Only the step's own SHOALWORK_* keys reach the Tank (extraEnv).
   // A carried worktree is reused: a retry continues the step of the run before it.
@@ -210,6 +123,7 @@ export const makeRunSetup = (deps: RunSetupDeps) => {
       ...(spec.repo === undefined ? {} : { repo: spec.repo }),
       ...(reuse === undefined ? {} : { reuse }),
       ...(grant === undefined ? {} : { extraEnv: grant.extraEnv }),
+      ...(grant?.secretEnv === undefined ? {} : { secretEnv: grant.secretEnv }),
     })
 
   // The run's files (its `file` artifacts, paths relative to the worktree) are published at the end of every run, before

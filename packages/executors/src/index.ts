@@ -43,6 +43,7 @@ export {
 export { FORJA_ID, type ForjaOptions, makeForja } from "./forja/index.js"
 export { type GeminiOptions, makeGemini } from "./gemini/index.js"
 export {
+  clearCodexMcp,
   MCP_NAME_PATTERN,
   MCP_TOKEN_ENV,
   type McpAttachment,
@@ -61,6 +62,7 @@ export { parseNdjsonLines } from "./ndjson.js"
 export {
   type FetchLike,
   type McpToolHost,
+  McpToolHosts,
   makeOpenAICompat,
   type OpenAICompatOptions,
   type OpenAICompatPolicy,

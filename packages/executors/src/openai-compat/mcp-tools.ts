@@ -1,5 +1,5 @@
 import type { BotId, ToolCall } from "@shoalwork/contracts"
-import { Effect, Schema } from "effect"
+import { Context, Effect, Option, Schema } from "effect"
 import type { ToolDef } from "./client.js"
 import {
   clip,
@@ -27,6 +27,18 @@ export type McpToolHost = {
     args: Readonly<Record<string, unknown>>,
   ) => Effect.Effect<string, string>
 }
+
+// Where a run finds the MCP tools of its Bot when the instance was not given a resolver of its own: the core provides this
+// service (T-185), and the run reads it from the context it runs in. Absent: the model gets only the built-in tools.
+export class McpToolHosts extends Context.Service<
+  McpToolHosts,
+  { readonly forBot: (botId: BotId) => Effect.Effect<McpToolHost | undefined> }
+>()("@shoalwork/McpToolHosts") {}
+
+export const hostFromContext = (botId: BotId): Effect.Effect<McpToolHost | undefined> =>
+  Effect.serviceOption(McpToolHosts).pipe(
+    Effect.flatMap((hosts) => (Option.isSome(hosts) ? hosts.value.forBot(botId) : Effect.succeed(undefined))),
+  )
 
 const DESCRIPTION_MAX = 512
 

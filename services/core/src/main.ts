@@ -197,6 +197,7 @@ const serveUntilInterrupted = (
         runEffect,
         runMemory: runEffect,
         runMcp: runEffect,
+        runMcpServers: runEffect,
         runPolicy: runEffect,
         githubWebhookSecret: settings.githubWebhookSecret,
         botsDir: BOTS_DIR,

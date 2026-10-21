@@ -13,10 +13,26 @@ export const McpCalledPayload = Schema.Struct({
 })
 export type McpCalledPayload = typeof McpCalledPayload.Type
 
-// The registry changed: a server was added or updated, or a Bot's access to one was set. Names only.
+// The registry changed (a server was added or updated, a Bot's access to one was set), or a server was handed to a run
+// or refused to it, or its authorization link went out. Names only, never a token, a link, a value or an argument.
+// `attached`/`attach_refused` are the record of what a CLI run could call: the CLI's own MCP calls do not pass through
+// the registry, so they have no `mcp.called` (R12); this is the per-run trace that stands in for it.
 export const McpServerChangedPayload = Schema.Struct({
-  action: Schema.Literals(["upserted", "allowed"]),
+  action: Schema.Literals(["upserted", "allowed", "attached", "attach_refused", "auth_requested"]),
   server: Schema.String,
   botId: Schema.optionalKey(BotId),
+  taskId: Schema.optionalKey(Schema.String),
+  // The tools the run may call on the server ("*" = all of them); only on `attached`.
+  tools: Schema.optionalKey(Schema.Array(Schema.String)),
+  // Why the server was not handed over; only on `attach_refused`.
+  reason: Schema.optionalKey(
+    Schema.Literals([
+      "list_tools_failed",
+      "secret_missing",
+      "auth_required",
+      "oauth_unavailable",
+      "not_injectable",
+    ]),
+  ),
 })
 export type McpServerChangedPayload = typeof McpServerChangedPayload.Type

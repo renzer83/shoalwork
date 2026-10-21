@@ -8,6 +8,7 @@ import { Indexer, Ranker, Reef } from "@shoalwork/reef"
 import { Tank } from "@shoalwork/tank"
 import { Context, Effect, Layer, Option } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
+import { BotMcp } from "./bot-mcp.js"
 import { Control, makeControl } from "./control.js"
 import { MAX_AGENT_MSGS_PER_TASK, makeHandoff } from "./handoff.js"
 import { makeIntake } from "./intake.js"
@@ -54,6 +55,8 @@ export const LeadLive = (
       const ranker = Option.getOrUndefined(yield* Effect.serviceOption(Ranker))
       // Approvals (T-054): without them a task that needs one waits, but nothing can decide it.
       const approvals = Option.getOrUndefined(yield* Effect.serviceOption(Approvals))
+      // The Bot's own MCP servers (T-185): without them a run gets only the reef server.
+      const botMcp = Option.getOrUndefined(yield* Effect.serviceOption(BotMcp))
       const config: LeadConfig = { ...DEFAULT_LEAD_CONFIG, ...overrides }
       const control = makeControl({ sql, beacon, tasks, bots, stopWaitMs: config.stopWaitMs, approvals })
       const intake = makeIntake({
@@ -88,6 +91,7 @@ export const LeadLive = (
         ranker,
         approvals,
         notes,
+        botMcp,
       })
       const { abandon } = runner
       // A settled child reports its verdict to its parent's stream (T-046), after every run, whoever started it.
@@ -164,6 +168,7 @@ export {
   parseConfirmBot,
   proposeBot,
 } from "./bot-factory.js"
+export { BotMcp, type BotMcpGrant, type BotMcpShape } from "./bot-mcp.js"
 export { type Chat, ChatFailure, makeChat } from "./chat.js"
 export {
   FORGET_CANDIDATES,
@@ -270,6 +275,7 @@ export {
 export { Planning, PlanningLive, type PlanningOptions, type PlanningShape } from "./planning.js"
 export { makePodNotes, PodNotes, PodNotesLive, type PodNotesShape } from "./pod-notes.js"
 export { makePods, type Pods, type PodsDeps, type PodTopicPort } from "./pods.js"
+export { appChannelOut, makeReplyPort, telegramChannelOut } from "./reply-port.js"
 export {
   type ApprovalResume,
   type Carry,

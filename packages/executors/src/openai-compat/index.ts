@@ -11,11 +11,11 @@ import { Duration, Effect, type Redacted, type Scope, Stream } from "effect"
 import type { Executor, ExecutorContext } from "../executor.js"
 import type { FetchLike } from "./client.js"
 import { runLoop } from "./loop.js"
-import type { McpToolHost } from "./mcp-tools.js"
+import { hostFromContext, type McpToolHost } from "./mcp-tools.js"
 import type { OpenAICompatPolicy } from "./tools.js"
 
 export type { FetchLike } from "./client.js"
-export type { McpToolHost } from "./mcp-tools.js"
+export { type McpToolHost, McpToolHosts } from "./mcp-tools.js"
 export type { OpenAICompatPolicy } from "./tools.js"
 
 export type OpenAICompatOptions = {
@@ -57,7 +57,7 @@ const runOpenAICompat = (
   Stream.unwrap(
     Effect.gen(function* () {
       const tank = yield* Tank
-      const mcp = opts.mcp === undefined ? undefined : yield* opts.mcp(task.botId)
+      const mcp = yield* (opts.mcp ?? hostFromContext)(task.botId)
       let secondsExpired = false
       // Wall-clock budget: when it fires the upstream is cut (aborting the request); `tail` reports it.
       const deadline = Effect.sleep(Duration.seconds(task.budget.seconds)).pipe(

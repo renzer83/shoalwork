@@ -36,6 +36,7 @@ if [[ "$dry_run" -eq 1 ]]; then
   echo "dry-run: the core user then needs the sudoers rule from ADR-004 (sudoers section), e.g.:"
   echo "  <core-user> ALL=(bot-*) NOPASSWD: ALL"
   echo "  Defaults:<core-user> env_keep += \"SHOALWORK_API_TOKEN\"   # one line per step env key (ADR-004)"
+  echo "  Defaults:<core-user> env_keep += \"MCP_SECRET_*\"          # the MCP servers' secrets, once (T-185)"
   exit 0
 fi
 

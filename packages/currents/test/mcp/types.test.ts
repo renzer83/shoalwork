@@ -19,7 +19,7 @@ const http = {
   name: "remote",
   transport: "http",
   url: "https://mcp.example/mcp",
-  auth: { kind: "bearer", tokenKey: "TOKEN" },
+  auth: { kind: "bearer", tokenKey: "API_TOKEN" },
 }
 
 describe("MCP server schemas", () => {

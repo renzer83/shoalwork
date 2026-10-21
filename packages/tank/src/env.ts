@@ -31,6 +31,12 @@ const DROPPED_EXTRA_KEYS: ReadonlySet<string> = new Set(["ANTHROPIC_API_KEY"])
 // Keys one execution (step) may receive, e.g. its MCP token (T-167). Anything else is refused by prepare.
 export const STEP_ENV_PATTERN = /^SHOALWORK_[A-Z0-9_]+$/
 
+// The one name shape an execution's MCP secrets take in the executor's env (T-185): `MCP_SECRET_<n>`. The core aliases every
+// secret a server needs to such a name and the server's config references it, so the env the Tank passes never depends on
+// what a server calls its variables, and server mode (sudo) needs one `env_keep` rule: `MCP_SECRET_*`.
+export const SECRET_ENV_REF = /^MCP_SECRET_[0-9]{1,3}$/
+export const isSecretEnvRef = (name: string): boolean => SECRET_ENV_REF.test(name)
+
 // Env a Bot process receives: an allowlist of the base env, then extraEnv (minus dropped keys), then the keys the
 // Tank always owns (Bot home, CLI config dirs, git safety defaults). Tank keys win over extraEnv.
 export const buildBotEnv = (

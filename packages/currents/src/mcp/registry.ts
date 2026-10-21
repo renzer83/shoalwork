@@ -14,7 +14,7 @@ import { SqlClient } from "effect/sql/SqlClient"
 import type { SqlError } from "effect/sql/SqlError"
 import { type McpClientDeps, withMcpSession } from "./client.js"
 import { makeOAuthProvider } from "./oauth.js"
-import { makeOAuthFlow } from "./oauth-flow.js"
+import { dbFailure, makeOAuthFlow } from "./oauth-flow.js"
 import type { McpRegistryOptions, McpRegistryShape } from "./registry-types.js"
 import { type BotServerRow, decodeAllowed, decodeServer, type ServerRow } from "./rows.js"
 import {
@@ -35,9 +35,6 @@ const argumentsOf = (args: unknown): Readonly<Record<string, unknown>> | undefin
   if (typeof args !== "object" || args === null || Array.isArray(args)) return undefined
   return Object.fromEntries(Object.entries(args))
 }
-
-const dbFailure = (op: string): McpError =>
-  new McpError({ server: "", op, reason: "call", message: "registry database error" })
 
 export const makeMcpRegistry = (
   sql: SqlClient,
@@ -280,7 +277,8 @@ export const makeMcpRegistry = (
       )
     })
 
-  return { upsert, list, test, allow, forBot, call, completeOAuth: flow.completeOAuth }
+  const { completeOAuth, accessToken } = flow
+  return { upsert, list, test, allow, forBot, call, completeOAuth, accessToken }
 }
 
 export const McpRegistryLive = (

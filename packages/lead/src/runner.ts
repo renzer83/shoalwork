@@ -23,6 +23,7 @@ import { makeRankFeedback } from "./rank-feedback.js"
 import { carryFor } from "./resume.js"
 import { type Carry, decideRetry, MIN_RETRY_BUDGET_MS, type RoundResult } from "./retry.js"
 import { watchProcesses } from "./run-processes.js"
+import type { RunSetupDeps } from "./run-setup.js"
 import { executorTaskFor, type McpServerConfig, makeRunSetup, withBridgeMode } from "./run-setup.js"
 import { chooseForTask } from "./runner-choose.js"
 import { crashResult } from "./runner-crash.js"
@@ -74,7 +75,7 @@ export interface RunResult {
   readonly stopped: boolean
 }
 
-export interface RunnerDeps {
+export interface RunnerDeps extends Pick<RunSetupDeps, "botMcp"> {
   readonly sql: SqlClient
   readonly beacon: BeaconShape
   readonly tasks: TaskStoreShape
@@ -118,6 +119,7 @@ export const makeRunner = (deps: RunnerDeps) => {
     tank,
     tokens: deps.tokens,
     mcp: config.mcp,
+    botMcp: deps.botMcp,
     memory: deps.memory,
     raiseError,
     indexer: deps.indexer,

@@ -12,6 +12,7 @@ export {
   publishArtifacts,
   readArtifactManifest,
 } from "./artifacts.js"
+export { isSecretEnvRef } from "./env.js"
 export {
   ensureClone,
   type GitEnv,

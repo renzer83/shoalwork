@@ -4,7 +4,7 @@ import { type Bot, TankError, type TankMode } from "@shoalwork/contracts"
 import { Effect, Layer, Redacted, Semaphore } from "effect"
 import { publishArtifacts } from "./artifacts.js"
 import { checkSegment, escapes, isInside, resolveUnder } from "./confine.js"
-import { type BaseEnv, buildBotEnv, STEP_ENV_PATTERN } from "./env.js"
+import { type BaseEnv, buildBotEnv, isSecretEnvRef, STEP_ENV_PATTERN } from "./env.js"
 import { ensureClone, worktreeAdd, worktreeList, worktreeRemove, worktreeReuse } from "./git.js"
 import { type BotOps, localOps } from "./ops.js"
 import { type OwnedWorktree, Tank, type TankShape } from "./tank.js"
@@ -66,6 +66,21 @@ const checkStepEnv = (
     : Effect.fail(new TankError({ op: "prepare", cause: `step env key not allowed: ${JSON.stringify(bad)}` }))
 }
 
+// MCP secrets of one execution: names checked, values unwrapped at this last boundary (the error names the key only).
+const checkSecretEnv = (
+  secrets: Readonly<Record<string, Redacted.Redacted<string>>> = {},
+): Effect.Effect<Record<string, string>, TankError> => {
+  const bad = Object.keys(secrets).find((key) => !isSecretEnvRef(key))
+  return bad === undefined
+    ? Effect.succeed(unwrapSecretEnv(secrets))
+    : Effect.fail(
+        new TankError({
+          op: "prepare",
+          cause: `secret env name must be MCP_SECRET_<n>: ${JSON.stringify(bad)}`,
+        }),
+      )
+}
+
 export const makeBotTank = (
   layout: TankLayout,
   baseEnv: BaseEnv,
@@ -90,7 +105,7 @@ export const makeBotTank = (
     Effect.gen(function* () {
       yield* checkSegment("bot name", bot.name)
       yield* checkSegment("step id", step.stepId)
-      const stepEnv = yield* checkStepEnv(step.extraEnv)
+      const stepEnv = { ...(yield* checkStepEnv(step.extraEnv)), ...(yield* checkSecretEnv(step.secretEnv)) }
       yield* layout.preflight(bot.name)
       const ops = layout.opsFor(bot.name)
       const botDir = layout.botDir(bot.name)
