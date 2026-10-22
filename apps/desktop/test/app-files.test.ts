@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { resolveAppUrl } from "../src/app-config.js"
-import { resolveAppFile } from "../src/app-files.js"
+import { resolveAppFile, resolveDistDir } from "../src/app-files.js"
 import { preflightStatusLine, withCors } from "../src/cors.js"
 
 let dist = ""
@@ -79,5 +79,22 @@ describe("cors", () => {
   it("turns a preflight into a 204 and leaves other methods alone", () => {
     expect(preflightStatusLine("OPTIONS")).toBe("HTTP/1.1 204 No Content")
     expect(preflightStatusLine("GET")).toBeUndefined()
+  })
+})
+
+describe("resolveDistDir", () => {
+  it("resolves the packaged path using resourcesPath", () => {
+    const customResources = "/Applications/shoalwork.app/Contents/Resources"
+    expect(resolveDistDir(true, customResources)).toBe(path.join(customResources, "dist"))
+    expect(resolveDistDir({ isPackaged: true, resourcesPath: customResources })).toBe(
+      path.join(customResources, "dist"),
+    )
+  })
+
+  it("resolves the dev path relative to the workspace baseDir", () => {
+    const baseDir = "/repo/shoalwork/apps/desktop/.vite/build"
+    const expected = path.resolve("/repo/shoalwork/apps/web/dist")
+    expect(resolveDistDir(false, undefined, baseDir)).toBe(expected)
+    expect(resolveDistDir({ isPackaged: false, baseDir })).toBe(expected)
   })
 })

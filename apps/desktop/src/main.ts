@@ -3,15 +3,14 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { app, BrowserWindow, ipcMain, net, protocol, session } from "electron"
 import { APP_URL_ARG, resolveAppUrl } from "./app-config.js"
-import { APP_ORIGIN, APP_SCHEME, resolveAppFile } from "./app-files.js"
+import { APP_ORIGIN, APP_SCHEME, resolveAppFile, resolveDistDir } from "./app-files.js"
 import { CoreOrigins } from "./core-origins.js"
 import { preflightStatusLine, withCors } from "./cors.js"
 import { buildCsp, inlineScriptHashes } from "./csp.js"
 import { loadSavedCoreUrl, saveCoreUrl } from "./saved-core.js"
 
 // The Expo export (apps/web/dist) is shipped as a resource when packaged and read from the workspace in development.
-const distDir = (): string =>
-  app.isPackaged ? path.join(process.resourcesPath, "dist") : path.resolve(__dirname, "../../../web/dist")
+const distDir = (): string => resolveDistDir(app.isPackaged)
 
 const appUrl = resolveAppUrl(process.env)
 const coreOrigins = new CoreOrigins([appUrl])
