@@ -96,6 +96,7 @@ const serveUntilInterrupted = (
     | "policyDir"
     | "permissionBridge"
     | "permissionBridgeEntry"
+    | "executorsConfigPath"
   >,
   watchdog: WatchdogConfig,
 ) =>
@@ -201,6 +202,7 @@ const serveUntilInterrupted = (
         runPolicy: runEffect,
         githubWebhookSecret: settings.githubWebhookSecret,
         botsDir: BOTS_DIR,
+        executorsConfigPath: settings.executorsConfigPath,
       }),
       port,
     )

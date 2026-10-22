@@ -63,6 +63,8 @@ export interface AppDeps {
   readonly githubWebhookSecret?: Redacted.Redacted<string> | undefined
   // The directory of bots/*.yaml. Mounts the write routes (POST /bots, PATCH /bots/:id, clone) when given.
   readonly botsDir?: string | undefined
+  // The path to config/executors.yaml (EXECUTORS_CONFIG_PATH).
+  readonly executorsConfigPath?: string | undefined
 }
 
 export interface HealthBody {
@@ -195,7 +197,7 @@ export const makeApp = (deps: AppDeps): Hono => {
   registerCostRoutes(app, deps.runEffect)
   registerContextCostRoutes(app, deps.runEffect)
   registerEventRoutes(app, deps.runEffect)
-  registerExecutorRoutes(app, deps.runEffect)
+  registerExecutorRoutes(app, deps.runEffect, deps.executorsConfigPath)
   registerLiveRoutes(app, deps.runEffect)
   registerMessageRoutes(app, deps.runEffect)
   registerReplayRoutes(app, deps.runEffect)

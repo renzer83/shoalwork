@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { Beacon, type ExecutorQualityRow, readExecutorQualityRows } from "@shoalwork/beacon"
 import { BotRegistry } from "@shoalwork/bots"
 import { ExecutorId, executorStreamId, NotFound, QuotaStatus, TaskKind } from "@shoalwork/contracts"
@@ -6,6 +7,8 @@ import { type DoctorReport, ExecutorRegistry, QuotaStore } from "@shoalwork/exec
 import { DateTime, Effect, Ref, Schema } from "effect"
 import { SqlClient } from "effect/sql/SqlClient"
 import type { Hono } from "hono"
+import { parseDocument, type YAMLMap } from "yaml"
+import { resolveRepoPath } from "../../config.js"
 import { botLogins, LOGIN_BINS, type LoginBin, LoginView } from "../../executor-logins.js"
 import { DoctorGate, doctorBinOf, hostDoctor, hostDoctorBin } from "../../executors-compose.js"
 import { failureResponse, type RouteResponse, type RunEffect, sendResponse } from "./respond.js"
@@ -199,10 +202,90 @@ const reprobe = (rawId: string) =>
     Effect.catch(failureResponse),
   )
 
-export const registerExecutorRoutes = (app: Hono, runEffect: RunEffect): void => {
+// PATCH /executors/:id body: enabled, isDefault and priority are optional, persisted to config/executors.yaml.
+const PatchExecutorBody = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean),
+  isDefault: Schema.optionalKey(Schema.Boolean),
+  priority: Schema.optionalKey(Schema.Number),
+})
+
+// PUT /executors/routing body: order of routes or executor ids.
+const PutRoutingBody = Schema.Struct({
+  order: Schema.Array(Schema.Unknown),
+})
+
+const patchExecutorConfig = (configPath: string, rawId: string, raw: unknown) =>
+  Effect.gen(function* () {
+    const id = yield* Schema.decodeUnknownEffect(ExecutorId)(rawId).pipe(
+      Effect.mapError(() => new NotFound({ entity: "Executor", id: rawId })),
+    )
+    const body = yield* Schema.decodeUnknownEffect(PatchExecutorBody)(raw)
+    const text = existsSync(configPath) ? readFileSync(configPath, "utf8") : "executors:\n"
+    const doc = parseDocument(text)
+    const executorsNode = doc.get("executors")
+    if (!executorsNode || typeof executorsNode !== "object" || !("items" in executorsNode)) {
+      return yield* Effect.fail(new NotFound({ entity: "Executor", id }))
+    }
+    const items = executorsNode.items as Array<YAMLMap>
+    const target = items.find((item) => item.get("id") === id)
+    if (target === undefined) {
+      return yield* Effect.fail(new NotFound({ entity: "Executor", id }))
+    }
+    if (body.enabled !== undefined) {
+      target.set("enabled", body.enabled)
+    }
+    if (body.priority !== undefined) {
+      target.set("priority", body.priority)
+    }
+    if (body.isDefault !== undefined) {
+      if (body.isDefault) {
+        target.set("isDefault", true)
+        for (const item of items) {
+          if (item !== target && item.has("isDefault")) {
+            item.delete("isDefault")
+          }
+        }
+      } else {
+        target.delete("isDefault")
+      }
+    }
+    writeFileSync(configPath, doc.toString(), "utf8")
+    const updated = target.toJSON() as Record<string, unknown>
+    return { status: 200, body: { ...updated, executor: updated } } satisfies RouteResponse
+  }).pipe(Effect.catch(failureResponse))
+
+const putRoutingConfig = (configPath: string, raw: unknown) =>
+  Effect.gen(function* () {
+    const body = yield* Schema.decodeUnknownEffect(PutRoutingBody)(raw)
+    const text = existsSync(configPath) ? readFileSync(configPath, "utf8") : "executors:\n"
+    const doc = parseDocument(text)
+    doc.set("routing", { order: body.order })
+    writeFileSync(configPath, doc.toString(), "utf8")
+    return {
+      status: 200,
+      body: { routing: { order: body.order }, order: body.order },
+    } satisfies RouteResponse
+  }).pipe(Effect.catch(failureResponse))
+
+export const registerExecutorRoutes = (
+  app: Hono,
+  runEffect: RunEffect,
+  executorsConfigPath?: string,
+): void => {
+  const configPath =
+    executorsConfigPath ?? resolveRepoPath(process.env.EXECUTORS_CONFIG_PATH ?? "config/executors.yaml")
+
   app.get("/executors", async (c) => sendResponse(c, await runEffect(listExecutors)))
   app.get("/executors/quota", async (c) => sendResponse(c, await runEffect(listQuotas)))
   app.get("/executors/doctor", async (c) => sendResponse(c, await runEffect(doctorReports)))
+  app.put("/executors/routing", async (c) => {
+    const raw: unknown = await c.req.json().catch(() => null)
+    return sendResponse(c, await runEffect(putRoutingConfig(configPath, raw)))
+  })
+  app.patch("/executors/:id", async (c) => {
+    const raw: unknown = await c.req.json().catch(() => null)
+    return sendResponse(c, await runEffect(patchExecutorConfig(configPath, c.req.param("id"), raw)))
+  })
   app.post("/executors/:id/doctor", async (c) => sendResponse(c, await runEffect(reprobe(c.req.param("id")))))
   app.post("/executors/:id/quota", async (c) => {
     const raw: unknown = await c.req.json().catch(() => null)

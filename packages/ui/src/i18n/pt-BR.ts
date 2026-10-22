@@ -3,6 +3,7 @@ import { ptBot } from "./pt-BR-bot.js"
 import { ptCore } from "./pt-BR-core.js"
 import { ptFarol } from "./pt-BR-farol.js"
 import { ptOps } from "./pt-BR-ops.js"
+import { ptSettings } from "./pt-BR-settings.js"
 import { ptShell } from "./pt-BR-shell.js"
 
 // Every key of the English table must be here: a missing one is a type error.
@@ -12,4 +13,5 @@ export const ptBR: Readonly<Record<MessageKey, string>> = {
   ...ptOps,
   ...ptFarol,
   ...ptShell,
+  ...ptSettings,
 }
