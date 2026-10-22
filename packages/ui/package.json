@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "biome check .",
     "test": "vitest run",
-    "build": "tsc"
+    "build": "tsc && node -e \"require('node:fs').cpSync('src/assets','dist/assets',{recursive:true})\""
   },
   "dependencies": {
     "@shoalwork/api-client": "workspace:*",

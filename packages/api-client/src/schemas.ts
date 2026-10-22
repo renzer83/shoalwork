@@ -19,6 +19,8 @@ export const BotSummary = Schema.Struct({
   name: Schema.String,
   role: Schema.String,
   state: BotState,
+  // The project the Bot belongs to, when the core says so; the sidebar groups by it.
+  project: Schema.optionalKey(Schema.String),
 })
 export type BotSummary = typeof BotSummary.Type
 
@@ -26,7 +28,11 @@ export const BotList = Schema.Struct({ bots: Schema.Array(BotSummary) })
 export const BotOne = Schema.Struct({ bot: BotSummary })
 
 // The ficha: the full Bot definition plus the live state (GET /bots/:idOrName).
-export const BotDetail = Schema.Struct({ ...Bot.fields, state: BotState })
+export const BotDetail = Schema.Struct({
+  ...Bot.fields,
+  state: BotState,
+  project: Schema.optionalKey(Schema.String),
+})
 export type BotDetail = typeof BotDetail.Type
 export const BotDetailOne = Schema.Struct({ bot: BotDetail })
 
